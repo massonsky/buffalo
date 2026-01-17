@@ -8,12 +8,48 @@
 ## [Unreleased]
 
 ### Планируется
-- CLI интерфейс с Cobra (v0.2.0)
-- Система конфигурации с Viper (v0.2.0)
 - Core builder реализация (v0.3.0)
+- Proto parser и dependency resolution (v0.3.0)
 - Компиляторы для языков (v0.4.0-v0.7.0)
 - Система плагинов (v0.8.0)
 - Расширенные возможности (v0.9.0-v1.0.0)
+
+---
+
+## [0.2.0] - 2026-01-17
+
+### Added
+- **internal/cli** - CLI интерфейс с Cobra
+  - Root command с глобальными флагами (--config, --verbose)
+  - `buffalo build` - Сборка proto файлов (placeholder, реализация в v0.3.0)
+  - `buffalo init` - Инициализация проекта с buffalo.yaml
+  - `buffalo version` - Информация о версии и компонентах
+  - `buffalo completion` - Shell completions (bash, zsh, fish, powershell)
+  - Интеграция с pkg/logger (verbose режим)
+
+- **internal/config** - Система конфигурации с Viper
+  - Config struct с валидацией (93.6% coverage, 18 тестов)
+  - Поддержка YAML конфигурации
+  - Environment variables (BUFFALO_* prefix)
+  - Разделы: project, proto, output, languages, build, logging
+  - GetOutputDir, IsLanguageEnabled, GetEnabledLanguages helpers
+
+### Changed
+- cmd/buffalo/main.go переписан для использования CLI
+- README.md обновлён со статусом v0.2.0
+- Добавлен docs/v0.2.0-STATUS.md с полной документацией
+
+### Dependencies
+- Added: github.com/spf13/cobra v1.10.2 - CLI framework
+- Added: github.com/spf13/viper v1.21.0 - Configuration management
+- Added: 10+ транзитивных зависимостей
+
+### Technical Details
+- 6 новых файлов (4 CLI, 2 config)
+- 18 новых тестов для config
+- CLI команды работают, но build - placeholder
+- Default buffalo.yaml с комментариями
+- Example proto файл при инициализации
 
 ---
 
