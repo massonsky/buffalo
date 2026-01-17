@@ -8,7 +8,7 @@ proto:
         - '**/*_test.proto'
     importpaths: []
 output:
-    basedir: ""
+    basedir: "./generated"
     directories:
         cpp: cpp
         go: go
