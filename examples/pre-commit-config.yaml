@@ -1,0 +1,54 @@
+# Pre-commit Configuration Example for Buffalo
+# Copy this to your project root as .pre-commit-config.yaml
+
+# See https://pre-commit.com for more information
+# Install: pip install pre-commit
+# Setup: pre-commit install
+
+repos:
+  # Buffalo hooks
+  - repo: https://github.com/massonsky/buffalo
+    rev: v0.7.0  # Use the latest version
+    hooks:
+      - id: buffalo-lint
+        name: Lint Proto Files
+        stages: [commit]
+      
+      - id: buffalo-format
+        name: Format Proto Files
+        stages: [commit]
+      
+      - id: buffalo-validate
+        name: Validate Proto Files
+        stages: [commit]
+      
+      - id: buffalo-check
+        name: Check Buffalo Config
+        stages: [commit]
+      
+      # Optional: Dry-run build (can be slow)
+      # - id: buffalo-dry-run
+      #   name: Dry-Run Build
+      #   stages: [push]
+
+  # Additional useful hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+        args: ['-d', '{extends: default, rules: {line-length: {max: 120}}}']
+
+# Configuration
+default_stages: [commit]
+fail_fast: false

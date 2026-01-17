@@ -1,0 +1,42 @@
+# Pre-commit hooks for Buffalo
+# See https://pre-commit.com for more information
+
+- id: buffalo-lint
+  name: Buffalo Lint Proto Files
+  description: Lint protobuf files using Buffalo
+  entry: buffalo lint
+  language: system
+  files: '\.proto$'
+  pass_filenames: false
+
+- id: buffalo-format
+  name: Buffalo Format Proto Files
+  description: Format protobuf files using Buffalo
+  entry: buffalo format
+  language: system
+  files: '\.proto$'
+  pass_filenames: false
+
+- id: buffalo-validate
+  name: Buffalo Validate Proto Files
+  description: Validate protobuf files using Buffalo
+  entry: buffalo validate
+  language: system
+  files: '\.proto$'
+  pass_filenames: false
+
+- id: buffalo-check
+  name: Buffalo Check Config
+  description: Check Buffalo configuration file
+  entry: buffalo check
+  language: system
+  files: '^buffalo\.(yaml|yml)$'
+  pass_filenames: false
+
+- id: buffalo-dry-run
+  name: Buffalo Dry-Run Build
+  description: Run dry-run build to check for compilation errors
+  entry: buffalo build --dry-run
+  language: system
+  files: '\.proto$'
+  pass_filenames: false

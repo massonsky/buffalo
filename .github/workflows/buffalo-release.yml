@@ -1,0 +1,73 @@
+# Buffalo Release Workflow
+# Automatically creates a release when a version tag is pushed
+
+name: Buffalo Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  BUFFALO_VERSION: ${{ github.ref_name }}
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '25.x'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Install dependencies
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          pip install grpcio-tools
+      
+      - name: Download Buffalo
+        run: |
+          # Use released version or build from source
+          curl -L -o buffalo https://github.com/massonsky/buffalo/releases/download/${BUFFALO_VERSION}/buffalo-linux-amd64 || \
+          (cd cmd/buffalo && go build -o ../../buffalo .)
+          chmod +x buffalo
+      
+      - name: Build Proto Files
+        run: ./buffalo build
+      
+      - name: Package Generated Files
+        run: |
+          mkdir -p release
+          tar -czf release/generated-${BUFFALO_VERSION}.tar.gz generated/
+          zip -r release/generated-${BUFFALO_VERSION}.zip generated/
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/generated-*.tar.gz
+            release/generated-*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

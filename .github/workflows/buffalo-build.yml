@@ -1,0 +1,110 @@
+# Buffalo Build Workflow for GitHub Actions
+# This workflow runs on every push and pull request to build protobuf files
+
+name: Buffalo Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  # Allow manual trigger
+  workflow_dispatch:
+
+env:
+  # Buffalo version to use
+  BUFFALO_VERSION: "0.7.0"
+
+jobs:
+  build:
+    name: Build Proto Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '25.x'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Install protoc-gen-go
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+      
+      - name: Install grpcio-tools
+        run: pip install grpcio-tools
+      
+      - name: Download Buffalo
+        run: |
+          curl -L -o buffalo https://github.com/massonsky/buffalo/releases/download/v${BUFFALO_VERSION}/buffalo-linux-amd64
+          chmod +x buffalo
+          sudo mv buffalo /usr/local/bin/
+      
+      - name: Run Buffalo Doctor
+        run: buffalo doctor
+      
+      - name: Build Proto Files
+        run: buffalo build
+      
+      - name: Upload Generated Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-proto-files
+          path: generated/
+          retention-days: 7
+      
+      - name: Validate Generated Code (Go)
+        if: hashFiles('generated/go/**/*.go') != ''
+        run: |
+          cd generated/go
+          go mod init generated || true
+          go mod tidy || true
+          go build ./...
+      
+      - name: Validate Generated Code (Python)
+        if: hashFiles('generated/python/**/*.py') != ''
+        run: |
+          cd generated/python
+          python -m py_compile **/*.py
+
+  lint:
+    name: Lint Proto Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '25.x'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Download Buffalo
+        run: |
+          curl -L -o buffalo https://github.com/massonsky/buffalo/releases/download/v${BUFFALO_VERSION}/buffalo-linux-amd64
+          chmod +x buffalo
+          sudo mv buffalo /usr/local/bin/
+      
+      - name: Lint Proto Files
+        run: buffalo lint
+        continue-on-error: true
+      
+      - name: Format Check
+        run: buffalo format --check
+        continue-on-error: true
