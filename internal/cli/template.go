@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,8 +67,9 @@ Templates are defined in buffalo.yaml:
 
 	templateLang   string
 	templateName   string
-	templateOutput string
-	templateData   string
+	templateOutput   string
+	templateData     string
+	templateDataFile string
 )
 
 func init() {
@@ -84,6 +86,7 @@ func init() {
 	templateGenerateCmd.Flags().StringVarP(&templateName, "template", "t", "", "template name to use (required)")
 	templateGenerateCmd.Flags().StringVarP(&templateOutput, "output", "o", "", "output directory (required)")
 	templateGenerateCmd.Flags().StringVar(&templateData, "data", "", "JSON data to pass to template")
+	templateGenerateCmd.Flags().StringVar(&templateDataFile, "data-file", "", "path to JSON file with template data")
 	templateGenerateCmd.MarkFlagRequired("template")
 	templateGenerateCmd.MarkFlagRequired("output")
 
@@ -234,9 +237,29 @@ func runTemplateGenerate(cmd *cobra.Command, args []string) error {
 
 	// Parse template data if provided
 	var data interface{}
-	if templateData != "" {
-		// TODO: Parse JSON data
-		log.Debug("Using template data", logger.String("data", templateData))
+	var jsonBytes []byte
+	
+	// Read from file if specified
+	if templateDataFile != "" {
+		var err error
+		jsonBytes, err = os.ReadFile(templateDataFile)
+		if err != nil {
+			log.Error("Failed to read data file", logger.Any("error", err))
+			return fmt.Errorf("failed to read data file: %w", err)
+		}
+		log.Debug("Read data from file", logger.String("file", templateDataFile))
+	} else if templateData != "" {
+		jsonBytes = []byte(templateData)
+	}
+	
+	if len(jsonBytes) > 0 {
+		var jsonData map[string]interface{}
+		if err := json.Unmarshal(jsonBytes, &jsonData); err != nil {
+			log.Error("Failed to parse template data", logger.Any("error", err))
+			return fmt.Errorf("invalid JSON data: %w", err)
+		}
+		data = jsonData
+		log.Debug("Parsed template data", logger.Int("keys", len(jsonData)))
 	}
 
 	// Render template

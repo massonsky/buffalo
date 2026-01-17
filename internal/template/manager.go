@@ -53,6 +53,13 @@ func (m *Manager) Register(tmpl *Template) error {
 		return fmt.Errorf("template path is required")
 	}
 
+	// Convert to absolute path if relative
+	absPath, err := filepath.Abs(tmpl.Path)
+	if err != nil {
+		return fmt.Errorf("failed to resolve template path: %w", err)
+	}
+	tmpl.Path = absPath
+
 	// Check if template path exists
 	if _, err := os.Stat(tmpl.Path); os.IsNotExist(err) {
 		return fmt.Errorf("template path does not exist: %s", tmpl.Path)
@@ -164,16 +171,9 @@ func (m *Manager) Render(ctx context.Context, templateName string, data interfac
 // findTemplateFiles finds all template files matching patterns
 func (m *Manager) findTemplateFiles(tmpl *Template) ([]string, error) {
 	var files []string
+	seen := make(map[string]bool)
 
-	for _, pattern := range tmpl.Patterns {
-		matches, err := filepath.Glob(filepath.Join(tmpl.Path, pattern))
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, matches...)
-	}
-
-	// Walk directory for recursive patterns
+	// Walk directory recursively
 	err := filepath.Walk(tmpl.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -185,18 +185,17 @@ func (m *Manager) findTemplateFiles(tmpl *Template) ([]string, error) {
 
 		// Check if file matches any pattern
 		for _, pattern := range tmpl.Patterns {
-			if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
-				// Avoid duplicates
-				found := false
-				for _, f := range files {
-					if f == path {
-						found = true
-						break
-					}
-				}
-				if !found {
-					files = append(files, path)
-				}
+			// Remove **/ prefix from pattern for matching
+			cleanPattern := pattern
+			if len(pattern) > 3 && pattern[:3] == "**/" {
+				cleanPattern = pattern[3:]
+			}
+			
+			matched, _ := filepath.Match(cleanPattern, filepath.Base(path))
+			if matched && !seen[path] {
+				files = append(files, path)
+				seen[path] = true
+				break
 			}
 		}
 
@@ -223,11 +222,20 @@ func (m *Manager) renderTemplateFile(ctx context.Context, tmpl *Template, templa
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
 
-	// Prepare template data with vars
-	templateData := map[string]interface{}{
-		"Data": data,
-		"Vars": tmpl.Vars,
+	// Prepare template data - merge data map with vars
+	templateData := make(map[string]interface{})
+	
+	// If data is a map, merge it directly
+	if dataMap, ok := data.(map[string]interface{}); ok {
+		for k, v := range dataMap {
+			templateData[k] = v
+		}
+	} else {
+		templateData["Data"] = data
 	}
+	
+	// Add vars
+	templateData["Vars"] = tmpl.Vars
 
 	// Determine output file name (remove .tmpl extension)
 	relPath, err := filepath.Rel(tmpl.Path, templateFile)

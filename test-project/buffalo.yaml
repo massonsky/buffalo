@@ -62,3 +62,28 @@ plugins:
         - post-build
       priority: 100
       options: {}
+templates:
+    - name: custom-go
+      language: go
+      path: ./templates/go
+      patterns:
+        - "**/*.tmpl"
+      enabled: true
+      vars:
+        packagePrefix: github.com/yourorg
+    - name: custom-python
+      language: python
+      path: ./templates/python
+      patterns:
+        - "**/*.tmpl"
+      enabled: true
+      vars:
+        modulePrefix: proto_gen
+    - name: custom-rust
+      language: rust
+      path: ./templates/rust
+      patterns:
+        - "**/*.tmpl"
+      enabled: true
+      vars:
+        cratePrefix: proto_rust
