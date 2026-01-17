@@ -10,12 +10,13 @@ import (
 
 // Config represents the Buffalo configuration
 type Config struct {
-	Project   ProjectConfig   `mapstructure:"project"`
-	Proto     ProtoConfig     `mapstructure:"proto"`
-	Output    OutputConfig    `mapstructure:"output"`
-	Languages LanguagesConfig `mapstructure:"languages"`
-	Build     BuildConfig     `mapstructure:"build"`
-	Logging   LoggingConfig   `mapstructure:"logging"`
+	Project    ProjectConfig    `mapstructure:"project"`
+	Proto      ProtoConfig      `mapstructure:"proto"`
+	Output     OutputConfig     `mapstructure:"output"`
+	Languages  LanguagesConfig  `mapstructure:"languages"`
+	Build      BuildConfig      `mapstructure:"build"`
+	Versioning VersioningConfig `mapstructure:"versioning"`
+	Logging    LoggingConfig    `mapstructure:"logging"`
 }
 
 // ProjectConfig contains project-level settings
@@ -33,8 +34,9 @@ type ProtoConfig struct {
 
 // OutputConfig contains output settings
 type OutputConfig struct {
-	BaseDir     string            `mapstructure:"base_dir"`
-	Directories map[string]string `mapstructure:"directories"`
+	BaseDir                string            `mapstructure:"base_dir"`
+	Directories            map[string]string `mapstructure:"directories"`
+	PreserveProtoStructure bool              `mapstructure:"preserve_proto_structure"`
 }
 
 // LanguagesConfig contains language-specific settings
@@ -82,6 +84,14 @@ type BuildConfig struct {
 type CacheConfig struct {
 	Enabled   bool   `mapstructure:"enabled"`
 	Directory string `mapstructure:"directory"`
+}
+
+// VersioningConfig contains versioning settings
+type VersioningConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	Strategy     string `mapstructure:"strategy"`      // hash, timestamp, semantic, git
+	OutputFormat string `mapstructure:"output_format"` // directory, suffix
+	KeepVersions int    `mapstructure:"keep_versions"` // 0 = keep all, >0 = keep N latest
 }
 
 // LoggingConfig contains logging settings

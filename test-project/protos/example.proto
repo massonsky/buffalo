@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package example;
+
+option go_package = "github.com/yourorg/yourproject/protos/example";
+
+// Example service
+service ExampleService {
+  // Example RPC method
+  rpc GetExample(ExampleRequest) returns (ExampleResponse);
+}
+
+// Example request message
+message ExampleRequest {
+  string id = 1;
+}
+
+// Example response message
+message ExampleResponse {
+  string id = 1;
+  string name = 2;
+  int32 value = 3;
+  string description = 4; // New field for v2
+  int64 timestamp = 5; // New field for v3
+}

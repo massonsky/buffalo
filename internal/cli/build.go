@@ -1,7 +1,12 @@
 package cli
 
 import (
+	"context"
+
+	"github.com/massonsky/buffalo/internal/builder"
+	"github.com/massonsky/buffalo/internal/config"
 	"github.com/massonsky/buffalo/pkg/logger"
+	"github.com/massonsky/buffalo/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -43,22 +48,184 @@ func init() {
 
 func runBuild(cmd *cobra.Command, args []string) error {
 	log := GetLogger()
+	ctx := context.Background()
 
 	log.Info("🔨 Starting build process")
-	log.Info("Configuration",
-		logger.String("output", buildOutputDir),
-		logger.Any("languages", buildLanguages),
-		logger.Any("proto_paths", buildProtoPath),
-		logger.Bool("dry_run", buildDryRun),
-	)
 
-	if buildDryRun {
-		log.Warn("🏃 Dry run mode - no files will be generated")
+	// Load configuration
+	cfg, err := loadConfig(log)
+	if err != nil {
+		log.Warn("Failed to load config, using defaults", logger.Any("error", err))
+		cfg = getDefaultConfig()
 	}
 
-	// TODO: Implement actual build logic in v0.3.0
-	log.Warn("⚠️  Build functionality coming in v0.3.0")
-	log.Info("Current status: CLI interface ready, awaiting core builder implementation")
+	// Override config with flags
+	if buildOutputDir != "./generated" {
+		cfg.Output.BaseDir = buildOutputDir
+	}
+	if len(buildLanguages) > 0 {
+		// Enable specified languages
+		enableLanguages(cfg, buildLanguages)
+	}
+	if len(buildProtoPath) > 0 {
+		cfg.Proto.Paths = buildProtoPath
+	}
+
+	// Get enabled languages
+	languages := cfg.GetEnabledLanguages()
+	if len(buildLanguages) > 0 {
+		languages = buildLanguages
+	}
+
+	if len(languages) == 0 {
+		log.Warn("⚠️  No languages enabled. Please enable at least one language in config or use --lang flag")
+		return nil
+	}
+
+	log.Info("Build configuration",
+		logger.String("output", cfg.Output.BaseDir),
+		logger.Any("languages", languages),
+		logger.Any("proto_paths", cfg.Proto.Paths),
+		logger.Bool("dry_run", buildDryRun),
+		logger.Bool("cache", cfg.Build.Cache.Enabled),
+		logger.Int("workers", cfg.Build.Workers),
+	)
+
+	// Find proto files
+	var allProtoFiles []string
+	for _, path := range cfg.Proto.Paths {
+		fileInfos, err := utils.FindFiles(path, utils.FindFilesOptions{
+			Pattern:   "*.proto",
+			Recursive: true,
+		})
+		if err != nil {
+			log.Warn("Failed to find proto files", logger.String("path", path), logger.Any("error", err))
+			continue
+		}
+		for _, fi := range fileInfos {
+			allProtoFiles = append(allProtoFiles, fi.Path)
+		}
+	}
+
+	if len(allProtoFiles) == 0 {
+		log.Warn("⚠️  No proto files found in specified paths")
+		return nil
+	}
+
+	log.Info("Found proto files", logger.Int("count", len(allProtoFiles)))
+
+	// Create builder
+	b, err := builder.New(
+		cfg,
+		builder.WithLogger(log),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Create build plan
+	plan := &builder.BuildPlan{
+		ProtoFiles:  allProtoFiles,
+		ImportPaths: cfg.Proto.ImportPaths,
+		OutputDir:   cfg.Output.BaseDir,
+		Languages:   languages,
+		Options: builder.BuildOptions{
+			Workers:     cfg.Build.Workers,
+			Incremental: cfg.Build.Incremental,
+			Cache:       cfg.Build.Cache.Enabled,
+			CacheDir:    cfg.Build.Cache.Directory,
+			DryRun:      buildDryRun,
+			Verbose:     verbose,
+		},
+	}
+
+	// Execute build
+	result, err := b.Build(ctx, plan)
+	if err != nil {
+		log.Error("❌ Build failed", logger.Any("error", err))
+		return err
+	}
+
+	// Display results
+	log.Info("✅ Build completed successfully!",
+		logger.String("duration", result.Duration.String()),
+		logger.Int("files_processed", result.FilesProcessed),
+		logger.Int("files_generated", result.FilesGenerated),
+	)
+
+	if cfg.Build.Cache.Enabled {
+		log.Info("Cache statistics",
+			logger.Int("hits", result.CacheHits),
+			logger.Int("misses", result.CacheMisses),
+		)
+	}
+
+	if len(result.Warnings) > 0 {
+		log.Warn("Build completed with warnings", logger.Int("count", len(result.Warnings)))
+		for _, warning := range result.Warnings {
+			log.Warn("⚠️  " + warning)
+		}
+	}
+
+	// Display metrics if verbose
+	if verbose {
+		metrics := b.GetMetrics()
+		snapshot := metrics.Snapshot()
+		log.Debug("Build metrics",
+			logger.Int("total_metrics", len(snapshot.Metrics)),
+		)
+	}
 
 	return nil
+}
+
+// loadConfig loads configuration from viper
+func loadConfig(log *logger.Logger) (*config.Config, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// getDefaultConfig returns default configuration
+func getDefaultConfig() *config.Config {
+	return &config.Config{
+		Project: config.ProjectConfig{
+			Name:    "unnamed",
+			Version: "0.1.0",
+		},
+		Proto: config.ProtoConfig{
+			Paths:       []string{"."},
+			ImportPaths: []string{},
+		},
+		Output: config.OutputConfig{
+			BaseDir: "./generated",
+		},
+		Languages: config.LanguagesConfig{},
+		Build: config.BuildConfig{
+			Workers:     0,
+			Incremental: true,
+			Cache: config.CacheConfig{
+				Enabled:   true,
+				Directory: ".buffalo-cache",
+			},
+		},
+	}
+}
+
+// enableLanguages enables specified languages in config
+func enableLanguages(cfg *config.Config, languages []string) {
+	for _, lang := range languages {
+		switch lang {
+		case "python":
+			cfg.Languages.Python.Enabled = true
+		case "go":
+			cfg.Languages.Go.Enabled = true
+		case "rust":
+			cfg.Languages.Rust.Enabled = true
+		case "cpp":
+			cfg.Languages.Cpp.Enabled = true
+		}
+	}
 }

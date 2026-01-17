@@ -1,0 +1,103 @@
+# Buffalo Configuration File
+# See https://github.com/massonsky/buffalo for full documentation
+
+# Project settings
+project:
+  name: my-proto-project
+  version: 0.1.0
+
+# Proto files configuration
+proto:
+  # Paths to search for .proto files (can use glob patterns)
+  paths:
+    - ./protos
+  # Files to exclude (glob patterns)
+  exclude:
+    - "**/*_test.proto"
+  # Import paths for proto dependencies
+  import_paths:
+    - ./third_party
+
+# Output configuration
+output:
+  # Base directory for generated code
+  base_dir: ./generated
+  # Per-language output directories (relative to base_dir)
+  directories:
+    python: python
+    go: go
+    rust: rust
+    cpp: cpp
+  # Preserve proto directory structure in output
+  # true: generated/{language}/{version}/protos/example/file.pb
+  # false: generated/{language}/{version}/file.pb
+  preserve_proto_structure: false
+
+# Language-specific settings
+languages:
+  # Python settings
+  python:
+    enabled: true
+    # Package name for generated Python code
+    package: proto_gen
+    # Use grpcio-tools or betterproto
+    generator: grpcio-tools
+    
+  # Go settings
+  go:
+    enabled: true
+    # Go module path
+    module: github.com/yourorg/yourproject
+    # Use protoc-gen-go or other generator
+    generator: protoc-gen-go
+    
+  # Rust settings
+  rust:
+    enabled: false
+    # Use prost or other generator
+    generator: prost
+    
+  # C++ settings
+  cpp:
+    enabled: false
+    # C++ namespace
+    namespace: myproject
+
+# Build options
+build:
+  # Number of parallel workers (0 = auto-detect)
+  workers: 0
+  # Enable incremental builds
+  incremental: true
+  # Enable caching
+  cache:
+    enabled: true
+    directory: .buffalo-cache
+
+# Versioning options
+versioning:
+  # Enable version management for generated files
+  enabled: true
+  # Versioning strategy: hash, timestamp, semantic, git
+  # - hash: Use content hash (e.g., a1b2c3d4)
+  # - timestamp: Use timestamp (e.g., 20260117093000)
+  # - semantic: Use semantic versioning (e.g., v1, v2, v3)
+  # - git: Use git commit hash
+  strategy: semantic
+  # Output format: directory or suffix
+  # - directory: Create version directories (generated/v1/, generated/v2/)
+  # - suffix: Add version suffix (example_v1.pb.py, example_v2.pb.py)
+  output_format: directory
+  # Keep N latest versions (0 = keep all)
+  keep_versions: 3
+
+# Logging
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+  # Log format: json, text, colored
+  format: colored
+  # Log output: stdout, stderr, file
+  output: stdout
+  # Log file path (if output is file)
+  file: buffalo.log
