@@ -376,18 +376,64 @@ type PluginRegistry struct {
 
 ---
 
-### v0.7.0 - CI/CD и Автоматизация 🎯 ТЕКУЩАЯ ВЕРСИЯ
-**Статус:** Планируется
-**Срок:** Q1 2025
+### v0.7.0 - CI/CD и Автоматизация ✅ ЗАВЕРШЕНО
+**Статус:** Завершено
+**Дата:** Январь 2026
+**Commit:** 46b6202
 
 #### Задачи:
-- [ ] Dry-run режим для build команды
+- [x] Dry-run режим для build команды (уже был реализован ранее)
+- [x] Plugin CLI команды (list, install, remove, enable, disable)
+- [x] Doctor команда для диагностики окружения
+- [x] GitHub Actions workflow templates (buffalo-build.yml, buffalo-release.yml)
+- [x] GitLab CI templates (examples/ci/gitlab-ci.yml)
+- [x] Pre-commit hooks (.pre-commit-hooks.yaml)
+- [x] Документация (CI_CD_GUIDE.md, PLUGIN_CLI.md)
+- [ ] Diff режим (отложено на v0.8.0)
+- [ ] Jenkins pipeline examples (отложено на v0.8.0)
+
+#### Plugin Management CLI:
+```bash
+buffalo plugin list              # Список всех плагинов
+buffalo plugin install [source]  # Установка из URL/файла
+buffalo plugin remove [name]     # Удаление плагина
+buffalo plugin enable [name]     # Включение в config
+buffalo plugin disable [name]    # Отключение в config
+```
+
+#### Doctor Command:
+- Проверка protoc, Go, Python, Rust, C++
+- Валидация buffalo.yaml
+- Проверка зависимостей
+- Статистика pass/warn/fail
+
+#### CI/CD Integration:
+- GitHub Actions workflows для build и release
+- GitLab CI multi-stage pipeline
+- Pre-commit hooks для валидации proto
+- Docker integration examples
+- Comprehensive documentation
+
+#### Deliverables:
+- ✅ Plugin CLI (5 commands)
+- ✅ Doctor command с диагностикой окружения
+- ✅ GitHub Actions templates (2 workflows)
+- ✅ GitLab CI pipeline template
+- ✅ Pre-commit hooks integration
+- ✅ CI/CD Guide (complete with examples)
+- ✅ Plugin CLI Reference (complete documentation)
+- ✅ Dry-run mode (уже был)
+
+---
+
+### v0.8.0 - Расширенные возможности 🔜 СЛЕДУЮЩАЯ ВЕРСИЯ
+**Статус:** Планируется
+**Срок:** Q1 2026
+
+#### Задачи:
 - [ ] Diff режим (показ изменений в generated файлах)
-- [ ] GitHub Actions workflow templates
-- [ ] GitLab CI templates
 - [ ] Jenkins pipeline examples
-- [ ] Pre-commit hooks
-- [ ] Doctor команда для диагностики окружения
+- [ ] Watch mode улучшения
 татус:** Планируется
 **Срок:** Q3 2026
 
