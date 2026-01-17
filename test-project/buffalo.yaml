@@ -6,15 +6,15 @@ proto:
         - ./protos
     exclude:
         - '**/*_test.proto'
-    importpaths: []
+    import_paths: []
 output:
-    basedir: "./generated"
+    base_dir: "./generated"
     directories:
         cpp: cpp
         go: go
         python: python
         rust: rust
-    preserveprotostructure: false
+    preserve_proto_structure: false
 languages:
     python:
         enabled: true

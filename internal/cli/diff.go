@@ -15,14 +15,14 @@ import (
 )
 
 var (
-	diffLang       []string
-	diffOutput     string
-	diffFormat     string
-	diffContext    int
-	diffShowSame   bool
-	diffColorize   bool
-	diffExclude    []string
-	
+	diffLang     []string
+	diffOutput   string
+	diffFormat   string
+	diffContext  int
+	diffShowSame bool
+	diffColorize bool
+	diffExclude  []string
+
 	diffCmd = &cobra.Command{
 		Use:   "diff",
 		Short: "Show differences between current and new generated files",
@@ -60,7 +60,7 @@ Output formats:
 
 func init() {
 	rootCmd.AddCommand(diffCmd)
-	
+
 	diffCmd.Flags().StringSliceVarP(&diffLang, "lang", "l", []string{}, "languages to diff (python,go,rust,cpp)")
 	diffCmd.Flags().StringVarP(&diffOutput, "output", "o", "", "save diff to file instead of stdout")
 	diffCmd.Flags().StringVarP(&diffFormat, "format", "f", "unified", "output format: unified, side-by-side, summary")
@@ -73,53 +73,53 @@ func init() {
 func runDiff(cmd *cobra.Command, args []string) error {
 	log := GetLogger()
 	ctx := context.Background()
-	
+
 	log.Info("🔍 Computing differences in generated files")
-	
+
 	// Load configuration
 	cfg, err := loadConfig(log)
 	if err != nil {
 		log.Warn("Failed to load config, using defaults", logger.Any("error", err))
 		cfg = getDefaultConfig()
 	}
-	
+
 	// Override languages if specified
 	if len(diffLang) > 0 {
 		enableLanguages(cfg, diffLang)
 	}
-	
+
 	languages := cfg.GetEnabledLanguages()
 	if len(diffLang) > 0 {
 		languages = diffLang
 	}
-	
+
 	if len(languages) == 0 {
 		log.Warn("⚠️  No languages enabled")
 		return nil
 	}
-	
+
 	// Check if output directory exists
 	if _, err := os.Stat(cfg.Output.BaseDir); os.IsNotExist(err) {
 		log.Info("No existing generated files found. Run 'buffalo build' first.")
 		return nil
 	}
-	
+
 	// Create temporary directory for new generation
 	tempDir, err := os.MkdirTemp("", "buffalo-diff-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tempDir)
-	
+
 	log.Debug("Temporary directory created", logger.String("path", tempDir))
-	
+
 	// Build proto files in temp directory
 	log.Info("Generating new files for comparison...")
-	
+
 	// Save original output dir
 	originalOutputDir := cfg.Output.BaseDir
 	cfg.Output.BaseDir = tempDir
-	
+
 	// Find proto files
 	var allProtoFiles []string
 	for _, path := range cfg.Proto.Paths {
@@ -135,7 +135,7 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		if shouldExclude {
 			continue
 		}
-		
+
 		fileInfos, err := utils.FindFiles(path, utils.FindFilesOptions{
 			Pattern:   "*.proto",
 			Recursive: true,
@@ -158,18 +158,18 @@ func runDiff(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	
+
 	if len(allProtoFiles) == 0 {
 		log.Warn("⚠️  No proto files found")
 		return nil
 	}
-	
+
 	// Create builder
 	b, err := builder.New(cfg, builder.WithLogger(log))
 	if err != nil {
 		return err
 	}
-	
+
 	// Build in temp directory
 	plan := &builder.BuildPlan{
 		ProtoFiles:  allProtoFiles,
@@ -184,21 +184,21 @@ func runDiff(cmd *cobra.Command, args []string) error {
 			Verbose:     false,
 		},
 	}
-	
+
 	_, err = b.Build(ctx, plan)
 	if err != nil {
 		log.Error("Failed to generate new files", logger.Any("error", err))
 		return err
 	}
-	
+
 	// Compare directories
 	log.Info("Comparing files...")
-	
+
 	diffs, err := compareDirectories(originalOutputDir, tempDir, languages)
 	if err != nil {
 		return fmt.Errorf("failed to compare directories: %w", err)
 	}
-	
+
 	// Output results
 	var output io.Writer = os.Stdout
 	if diffOutput != "" {
@@ -210,7 +210,7 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		output = f
 		diffColorize = false // No colors in file
 	}
-	
+
 	// Check if stdout is a terminal for colorization
 	if diffColorize && diffOutput == "" {
 		fileInfo, _ := os.Stdout.Stat()
@@ -218,7 +218,7 @@ func runDiff(cmd *cobra.Command, args []string) error {
 			diffColorize = false // Piped output, no colors
 		}
 	}
-	
+
 	switch diffFormat {
 	case "summary":
 		printSummary(output, diffs, diffShowSame, diffColorize)
@@ -227,13 +227,13 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	default: // unified
 		printUnified(output, diffs, diffContext, diffShowSame, diffColorize)
 	}
-	
+
 	// Print statistics
 	added := 0
 	modified := 0
 	deleted := 0
 	unchanged := 0
-	
+
 	for _, diff := range diffs {
 		switch diff.Status {
 		case "added":
@@ -246,7 +246,7 @@ func runDiff(cmd *cobra.Command, args []string) error {
 			unchanged++
 		}
 	}
-	
+
 	log.Info("")
 	log.Info("📊 Summary:",
 		logger.Int("added", added),
@@ -254,11 +254,11 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		logger.Int("deleted", deleted),
 		logger.Int("unchanged", unchanged),
 	)
-	
+
 	if added+modified+deleted == 0 {
 		log.Info("✅ No changes detected - all generated files are up to date!")
 	}
-	
+
 	return nil
 }
 
@@ -271,10 +271,10 @@ type FileDiff struct {
 
 func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, error) {
 	diffs := []FileDiff{}
-	
+
 	// Map to track all files
 	allFiles := make(map[string]bool)
-	
+
 	// Scan old directory
 	oldFiles := make(map[string]string) // relative path -> absolute path
 	for _, lang := range languages {
@@ -282,7 +282,7 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 		if _, err := os.Stat(langDir); os.IsNotExist(err) {
 			continue
 		}
-		
+
 		filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
@@ -293,7 +293,7 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 			return nil
 		})
 	}
-	
+
 	// Scan new directory
 	newFiles := make(map[string]string)
 	for _, lang := range languages {
@@ -301,7 +301,7 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 		if _, err := os.Stat(langDir); os.IsNotExist(err) {
 			continue
 		}
-		
+
 		filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
@@ -312,12 +312,12 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 			return nil
 		})
 	}
-	
+
 	// Compare files
 	for relPath := range allFiles {
 		oldPath, oldExists := oldFiles[relPath]
 		newPath, newExists := newFiles[relPath]
-		
+
 		if !oldExists && newExists {
 			// Added
 			newLines, _ := readFileLines(newPath)
@@ -338,7 +338,7 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 			// Check if modified
 			oldLines, _ := readFileLines(oldPath)
 			newLines, _ := readFileLines(newPath)
-			
+
 			if !linesEqual(oldLines, newLines) {
 				diffs = append(diffs, FileDiff{
 					Path:     relPath,
@@ -354,7 +354,7 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 			}
 		}
 	}
-	
+
 	return diffs, nil
 }
 
@@ -383,15 +383,15 @@ func printSummary(w io.Writer, diffs []FileDiff, showSame bool, colorize bool) {
 		if diff.Status == "unchanged" && !showSame {
 			continue
 		}
-		
+
 		symbol := " "
 		color := ""
 		resetColor := ""
-		
+
 		if colorize {
 			resetColor = "\033[0m"
 		}
-		
+
 		switch diff.Status {
 		case "added":
 			symbol = "+"
@@ -414,7 +414,7 @@ func printSummary(w io.Writer, diffs []FileDiff, showSame bool, colorize bool) {
 				color = "\033[90m" // Gray
 			}
 		}
-		
+
 		fmt.Fprintf(w, "%s%s %s%s\n", color, symbol, diff.Path, resetColor)
 	}
 }
@@ -424,9 +424,9 @@ func printUnified(w io.Writer, diffs []FileDiff, contextLines int, showSame bool
 		if diff.Status == "unchanged" && !showSame {
 			continue
 		}
-		
+
 		fmt.Fprintf(w, "diff --buffalo %s\n", diff.Path)
-		
+
 		switch diff.Status {
 		case "added":
 			if colorize {
@@ -441,7 +441,7 @@ func printUnified(w io.Writer, diffs []FileDiff, contextLines int, showSame bool
 					fmt.Fprintf(w, "+%s\n", line)
 				}
 			}
-			
+
 		case "deleted":
 			if colorize {
 				fmt.Fprintf(w, "\033[31m--- %s\033[0m\n", diff.Path)
@@ -455,11 +455,11 @@ func printUnified(w io.Writer, diffs []FileDiff, contextLines int, showSame bool
 					fmt.Fprintf(w, "-%s\n", line)
 				}
 			}
-			
+
 		case "modified":
 			fmt.Fprintf(w, "--- %s (old)\n", diff.Path)
 			fmt.Fprintf(w, "+++ %s (new)\n", diff.Path)
-			
+
 			// Simple diff algorithm
 			for i := 0; i < len(diff.OldLines) || i < len(diff.NewLines); i++ {
 				if i < len(diff.OldLines) && i < len(diff.NewLines) {
@@ -489,7 +489,7 @@ func printUnified(w io.Writer, diffs []FileDiff, contextLines int, showSame bool
 				}
 			}
 		}
-		
+
 		fmt.Fprintln(w)
 	}
 }
@@ -499,9 +499,9 @@ func printSideBySide(w io.Writer, diffs []FileDiff, contextLines int, showSame b
 		if diff.Status == "unchanged" && !showSame {
 			continue
 		}
-		
+
 		fmt.Fprintf(w, "=== %s (%s) ===\n", diff.Path, diff.Status)
-		
+
 		switch diff.Status {
 		case "added":
 			for _, line := range diff.NewLines {
@@ -511,7 +511,7 @@ func printSideBySide(w io.Writer, diffs []FileDiff, contextLines int, showSame b
 					fmt.Fprintf(w, "%-50s | + %s\n", "", line)
 				}
 			}
-			
+
 		case "deleted":
 			for _, line := range diff.OldLines {
 				if colorize {
@@ -520,13 +520,13 @@ func printSideBySide(w io.Writer, diffs []FileDiff, contextLines int, showSame b
 					fmt.Fprintf(w, "- %s | %-50s\n", line, "")
 				}
 			}
-			
+
 		case "modified":
 			maxLen := len(diff.OldLines)
 			if len(diff.NewLines) > maxLen {
 				maxLen = len(diff.NewLines)
 			}
-			
+
 			for i := 0; i < maxLen; i++ {
 				oldLine := ""
 				if i < len(diff.OldLines) {
@@ -536,7 +536,7 @@ func printSideBySide(w io.Writer, diffs []FileDiff, contextLines int, showSame b
 				if i < len(diff.NewLines) {
 					newLine = diff.NewLines[i]
 				}
-				
+
 				if oldLine == newLine {
 					fmt.Fprintf(w, "  %-48s |   %-48s\n", oldLine, newLine)
 				} else {
@@ -548,7 +548,7 @@ func printSideBySide(w io.Writer, diffs []FileDiff, contextLines int, showSame b
 				}
 			}
 		}
-		
+
 		fmt.Fprintln(w)
 	}
 }

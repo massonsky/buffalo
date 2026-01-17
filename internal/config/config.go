@@ -20,6 +20,7 @@ type Config struct {
 	Logging      LoggingConfig           `mapstructure:"logging"`
 	Dependencies []dependency.Dependency `mapstructure:"dependencies"`
 	Plugins      []PluginConfig          `mapstructure:"plugins"`
+	Templates    []TemplateConfig        `mapstructure:"templates"`
 }
 
 // ProjectConfig contains project-level settings
@@ -112,6 +113,15 @@ type PluginConfig struct {
 	HookPoints []string               `mapstructure:"hooks"`
 	Priority   int                    `mapstructure:"priority"`
 	Options    map[string]interface{} `mapstructure:"config"`
+}
+
+// TemplateConfig contains template configuration
+type TemplateConfig struct {
+	Name     string            `mapstructure:"name"`
+	Language string            `mapstructure:"language"`
+	Path     string            `mapstructure:"path"`
+	Patterns []string          `mapstructure:"patterns"`
+	Vars     map[string]string `mapstructure:"vars"`
 }
 
 // Load loads configuration from viper

@@ -426,15 +426,114 @@ buffalo plugin disable [name]    # Отключение в config
 
 ---
 
-### v0.8.0 - Расширенные возможности 🔜 СЛЕДУЮЩАЯ ВЕРСИЯ
+### v0.8.0 - Расширенные возможности ✅ ЗАВЕРШЕНО
+**Статус:** Завершено
+**Дата:** Январь 2026
+**Commit:** f1f84ad
+
+#### Задачи:
+- [x] Diff режим (показ изменений в generated файлах)
+- [x] Exclude paths поддержка (--exclude flag, default: .buffalo/depends)
+- [ ] Jenkins pipeline examples (отложено на v0.9.0)
+- [ ] Watch mode улучшения (отложено на v0.9.0)
+
+#### Diff Command:
+```bash
+buffalo diff                     # Show all differences
+buffalo diff --lang go,python    # Specific languages
+buffalo diff --format summary    # Summary only
+buffalo diff --format side-by-side  # Side-by-side view
+buffalo diff --exclude .buffalo/depends,vendor  # Exclude paths
+buffalo diff --output changes.diff  # Save to file
+```
+
+#### Features:
+- 3 output formats: unified (default), side-by-side, summary
+- Colorized output with auto-detection for pipes
+- Context lines control (--context flag)
+- Path exclusion patterns (--exclude flag)
+- Statistics: added, modified, deleted, unchanged files
+- Dry-run generation in temp directory for comparison
+
+#### Deliverables:
+- ✅ Diff command (internal/cli/diff.go, 555 lines)
+- ✅ Multiple output formats
+- ✅ Path exclusion support (исключает .buffalo/depends по умолчанию)
+- ✅ Colorized terminal output
+- ✅ File comparison statistics
+
+---
+
+### v0.9.0 - Продвинутая конфигурация и метрики 🔜 СЛЕДУЮЩАЯ ВЕРСИЯ
 **Статус:** Планируется
 **Срок:** Q1 2026
 
 #### Задачи:
-- [ ] Diff режим (показ изменений в generated файлах)
+- [ ] Template system (кастомные шаблоны для генерации)
+- [ ] Config validation (подробная валидация buffalo.yaml)
+- [ ] Build metrics и статистика (timing, file sizes, memory usage, cache hit rate)
+- [ ] Error recovery improvements (graceful error handling)
 - [ ] Jenkins pipeline examples
-- [ ] Watch mode улучшения
-татус:** Планируется
+- [ ] Документация по новым функциям
+
+#### Template System:
+```yaml
+# buffalo.yaml
+templates:
+  - name: "custom-go"
+    language: "go"
+    path: "./templates/go"
+    patterns:
+      - "**/*.tmpl"
+    vars:
+      packagePrefix: "github.com/myorg"
+```
+
+```bash
+buffalo template list            # List available templates
+buffalo template generate --template custom-go  # Use custom template
+```
+
+#### Config Validation:
+- Schema validation для buffalo.yaml
+- Подробные error messages с suggestions
+- Проверка существования путей
+- Валидация плагинов и их конфигурации
+- `buffalo config validate` команда
+
+#### Build Metrics:
+```bash
+buffalo build --metrics          # Show build metrics
+buffalo metrics show             # Show last build metrics
+buffalo metrics history          # Build metrics history
+```
+
+Metrics include:
+- Build duration по языкам
+- File sizes (input/output)
+- Memory usage
+- Cache hit/miss rate
+- Compilation speed (files/sec)
+- Error rate
+
+#### Error Recovery:
+- Graceful handling ошибок компиляции
+- Продолжение сборки остальных файлов при ошибке
+- Детальные error reports с stack traces
+- Suggested fixes для распространённых ошибок
+
+#### Deliverables:
+- ⏳ Template system implementation
+- ⏳ Config validator CLI command
+- ⏳ Metrics collection и reporting
+- ⏳ Improved error handling
+- ⏳ Jenkins pipeline examples
+- ⏳ Documentation (TEMPLATES.md, METRICS.md)
+
+---
+
+### v0.10.0 - Качество и тестирование
+**Статус:** Планируется
 **Срок:** Q3 2026
 
 #### Задачи:
