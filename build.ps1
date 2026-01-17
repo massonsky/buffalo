@@ -8,7 +8,7 @@ param(
     [string]$Target = "help",
     
     [string]$InstallPrefix = "$env:ProgramFiles\buffalo",
-    [switch]$Verbose = $false
+    [switch]$ShowDetails = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,7 +82,7 @@ function Build-Binary {
     
     $ldflags = @"
     -X ${Module}/internal/version.Version=${version} `
-    -X ${Module}/internal/version.BuildTime=${buildTime} `
+    -X ${Module}/internal/version.BuildDate=${buildTime} `
     -X ${Module}/internal/version.GitCommit=${gitCommit} `
     -s -w
 "@
@@ -126,10 +126,10 @@ function Build-Binary {
 
 function Target-Help {
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════════════════════╗" -ForegroundColor Blue
-    Write-Host "║   Buffalo - Protocol Buffer Compiler                 ║" -ForegroundColor Blue
-    Write-Host "║   Windows Build Script                                ║" -ForegroundColor Blue
-    Write-Host "╚════════════════════════════════════════════════════════╝" -ForegroundColor Blue
+    Write-Host "======================================================" -ForegroundColor Blue
+    Write-Host "   Buffalo - Protocol Buffer Compiler                 " -ForegroundColor Blue
+    Write-Host "   Windows Build Script                               " -ForegroundColor Blue
+    Write-Host "======================================================" -ForegroundColor Blue
     Write-Host ""
     Write-Host "Usage: .\build.ps1 [target] [options]" -ForegroundColor Green
     Write-Host ""
@@ -142,7 +142,7 @@ function Target-Help {
     Write-Host "  fmt             Format code"
     Write-Host "  vet             Run go vet"
     Write-Host "  lint            Run linter (golangci-lint)"
-    Write-Host "  check           Run all checks (fmt, vet, lint, test)"
+    Write-Host "  check           Run all checks"
     Write-Host "  install         Install to GOPATH/bin"
     Write-Host "  uninstall       Uninstall from system"
     Write-Host "  clean           Clean build artifacts"
@@ -151,14 +151,14 @@ function Target-Help {
     Write-Host "  example         Run example build"
     Write-Host ""
     Write-Host "Options:" -ForegroundColor Cyan
-    Write-Host "  -InstallPrefix <path>   Installation directory (default: $env:ProgramFiles\buffalo)"
-    Write-Host "  -Verbose                Show detailed output"
+    Write-Host "  -InstallPrefix [path]   Installation directory"
+    Write-Host "  -ShowDetails            Show detailed output"
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Green
     Write-Host "  .\build.ps1 build"
     Write-Host "  .\build.ps1 build-all"
     Write-Host "  .\build.ps1 test"
-    Write-Host "  .\build.ps1 install -InstallPrefix 'C:\buffalo'"
+    Write-Host "  .\build.ps1 install -InstallPrefix C:\buffalo"
     Write-Host ""
 }
 
@@ -217,14 +217,23 @@ function Target-Vet {
 function Target-Lint {
     Write-Info "Running linter..."
     
+    # Get GOPATH for finding golangci-lint
+    $gopath = & go env GOPATH
+    $golangciLintPath = Join-Path $gopath "bin\golangci-lint.exe"
+    
     # Check if golangci-lint is installed
     $golangciLint = Get-Command golangci-lint -ErrorAction SilentlyContinue
-    if (-not $golangciLint) {
+    if (-not $golangciLint -and -not (Test-Path $golangciLintPath)) {
         Write-Warning "golangci-lint not found. Installing..."
         & go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     }
     
-    & golangci-lint run ./...
+    # Use full path if command not found in PATH
+    if ($golangciLint) {
+        & golangci-lint run ./...
+    } else {
+        & $golangciLintPath run ./...
+    }
     Write-Success "Lint passed"
 }
 

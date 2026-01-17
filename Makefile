@@ -2,20 +2,31 @@
 
 # Variables
 BINARY_NAME=buffalo
-VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.5.0-dev")
-BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S' 2>/dev/null || echo "unknown")
-GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GO=go
 GOFLAGS=-v
-LDFLAGS=-ldflags "-X github.com/massonsky/buffalo/internal/version.Version=$(VERSION) \
-                  -X github.com/massonsky/buffalo/internal/version.BuildTime=$(BUILD_TIME) \
-                  -X github.com/massonsky/buffalo/internal/version.GitCommit=$(GIT_COMMIT) \
-                  -s -w"
 BUILD_DIR=./build
 BIN_DIR=./bin
 DIST_DIR=./dist
 INSTALL_PREFIX?=/usr/local
 INSTALL_BIN=$(INSTALL_PREFIX)/bin
+
+# Version detection (cross-platform)
+ifeq ($(OS),Windows_NT)
+    VERSION=$(shell git describe --tags --always --dirty 2>NUL || echo v0.5.0-dev)
+    BUILD_TIME=$(shell powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd_HH:mm:ss'" 2>NUL || echo unknown)
+    GIT_COMMIT=$(shell git rev-parse --short HEAD 2>NUL || echo unknown)
+    BINARY_EXT=.exe
+else
+    VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo v0.5.0-dev)
+    BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S' 2>/dev/null || echo unknown)
+    GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+    BINARY_EXT=
+endif
+
+LDFLAGS=-ldflags "-X github.com/massonsky/buffalo/internal/version.Version=$(VERSION) \
+                  -X github.com/massonsky/buffalo/internal/version.BuildDate=$(BUILD_TIME) \
+                  -X github.com/massonsky/buffalo/internal/version.GitCommit=$(GIT_COMMIT) \
+                  -s -w"
 
 # Help target
 help: ## Show this help message
@@ -50,8 +61,8 @@ help: ## Show this help message
 # Build targets
 build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
-	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/buffalo
+	@mkdir -p $(BIN_DIR) 2>/dev/null || powershell -NoProfile -Command "New-Item -ItemType Directory -Path '$(BIN_DIR)' -Force | Out-Null"
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME)$(BINARY_EXT) ./cmd/buffalo
 
 build-all: ## Build for all platforms
 	@echo "Building for all platforms..."
@@ -68,16 +79,36 @@ install: ## Install the binary to $GOPATH/bin
 
 install-system: build ## Install the binary to system (requires sudo on Unix)
 	@echo "Installing $(BINARY_NAME) to $(INSTALL_BIN)..."
-	@mkdir -p $(INSTALL_BIN) 2>/dev/null || true
-	@cp $(BIN_DIR)/$(BINARY_NAME)* $(INSTALL_BIN)/ 2>/dev/null || \
-		powershell -Command "Copy-Item -Path '$(BIN_DIR)\$(BINARY_NAME).exe' -Destination '$(INSTALL_BIN)\$(BINARY_NAME).exe' -Force" 2>/dev/null || \
-		echo "Run as Administrator or use sudo"
+ifeq ($(OS),Windows_NT)
+	@powershell -NoProfile -Command "\
+		$$installPath = '$(INSTALL_BIN)'; \
+		if (-not (Test-Path $$installPath)) { New-Item -ItemType Directory -Path $$installPath -Force | Out-Null }; \
+		Copy-Item -Path '$(BIN_DIR)\$(BINARY_NAME).exe' -Destination \"$$installPath\$(BINARY_NAME).exe\" -Force; \
+		Write-Host 'Installed to' \"$$installPath\$(BINARY_NAME).exe\""
+else
+	@if [ -w "$(INSTALL_BIN)" ]; then \
+		mkdir -p $(INSTALL_BIN) && \
+		cp $(BIN_DIR)/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME) && \
+		chmod +x $(INSTALL_BIN)/$(BINARY_NAME); \
+	else \
+		sudo mkdir -p $(INSTALL_BIN) && \
+		sudo cp $(BIN_DIR)/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME) && \
+		sudo chmod +x $(INSTALL_BIN)/$(BINARY_NAME); \
+	fi
+endif
 	@echo "Installed to $(INSTALL_BIN)/$(BINARY_NAME)"
 
 uninstall-system: ## Uninstall the binary from system
 	@echo "Uninstalling $(BINARY_NAME)..."
-	@rm -f $(INSTALL_BIN)/$(BINARY_NAME) 2>/dev/null || \
-		powershell -Command "Remove-Item '$(INSTALL_BIN)\$(BINARY_NAME).exe' -Force -ErrorAction SilentlyContinue" 2>/dev/null || true
+ifeq ($(OS),Windows_NT)
+	@powershell -NoProfile -Command "Remove-Item '$(INSTALL_BIN)\$(BINARY_NAME).exe' -Force -ErrorAction SilentlyContinue"
+else
+	@if [ -w "$(INSTALL_BIN)" ]; then \
+		rm -f $(INSTALL_BIN)/$(BINARY_NAME); \
+	else \
+		sudo rm -f $(INSTALL_BIN)/$(BINARY_NAME); \
+	fi
+endif
 	@echo "Uninstalled"
 
 # Test targets

@@ -68,7 +68,7 @@ build_binary() {
     local git_commit=$(get_git_commit)
     
     local ldflags="-X ${MODULE}/internal/version.Version=${version} \
-        -X ${MODULE}/internal/version.BuildTime=${build_time} \
+        -X ${MODULE}/internal/version.BuildDate=${build_time} \
         -X ${MODULE}/internal/version.GitCommit=${git_commit} \
         -s -w"
     

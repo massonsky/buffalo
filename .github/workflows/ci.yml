@@ -17,7 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
@@ -31,7 +31,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        go-version: ['1.23', '1.24']
+        go-version: ['1.24']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,8 +48,8 @@ jobs:
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
       - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23'
-        uses: codecov/codecov-action@v3
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage.txt
           flags: unittests
@@ -66,13 +66,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Build
         run: make build
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: buffalo-linux-amd64
           path: bin/buffalo

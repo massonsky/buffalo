@@ -14,7 +14,7 @@ func TestBuilder_Build(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 	)
@@ -85,7 +85,7 @@ func TestBuilder_BuildWithMultipleFiles(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 	)
@@ -150,7 +150,7 @@ func TestBuilder_BuildWithMultipleLanguages(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 	)
@@ -208,7 +208,7 @@ func TestBuilder_BuildWithCache(t *testing.T) {
 
 	logAdapter := NewLoggerAdapter(log)
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 		WithCache(NewCacheManager(logAdapter)),
@@ -286,7 +286,7 @@ func TestBuilder_BuildWithDryRun(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 	)
@@ -339,7 +339,7 @@ func TestBuilder_BuildEmptyPlan(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 	)
@@ -375,7 +375,7 @@ func TestBuilder_GetMetrics(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 	)
@@ -393,7 +393,7 @@ func TestBuilder_BuildWithCancellation(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
 
-	b, err := New(
+	b, err := New(nil,
 		WithLogger(log),
 		WithMetrics(met),
 	)
@@ -433,7 +433,7 @@ message TestMessage {
 	// Cancel immediately
 	cancel()
 
-	_, err := b.Build(ctx, plan)
+	_, err = b.Build(ctx, plan)
 	// Should handle cancellation gracefully
 	// Either error or success is acceptable depending on timing
 	_ = err

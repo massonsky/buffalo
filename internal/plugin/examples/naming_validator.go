@@ -1,6 +1,6 @@
-// Package example provides example plugins for Buffalo
+// Package examples provides example plugins for Buffalo
 // This demonstrates how to create a simple validator plugin
-package main
+package examples
 
 import (
 	"context"

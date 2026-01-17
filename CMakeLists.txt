@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
-project(buffalo VERSION 0.5.0 LANGUAGES GO)
+project(buffalo VERSION 0.5.0 LANGUAGES NONE)
 
 # Go configuration
-set(GO_EXECUTABLE go)
-set(CMAKE_GO_FLAGS -v)
+find_program(GO_EXECUTABLE go REQUIRED)
+set(CMAKE_GO_FLAGS "-v")
 
 # Set variables
 set(BINARY_NAME buffalo)
@@ -34,11 +34,8 @@ endif()
 string(TIMESTAMP BUILD_TIME "%Y-%m-%d_%H:%M:%S" UTC)
 
 # Compiler flags
-set(GO_LDFLAGS "-ldflags")
-set(GO_LDFLAGS "${GO_LDFLAGS} -X github.com/massonsky/buffalo/internal/version.Version=${GIT_VERSION}")
-set(GO_LDFLAGS "${GO_LDFLAGS} -X github.com/massonsky/buffalo/internal/version.BuildTime=${BUILD_TIME}")
-set(GO_LDFLAGS "${GO_LDFLAGS} -X github.com/massonsky/buffalo/internal/version.GitCommit=${GIT_COMMIT}")
-set(GO_LDFLAGS "${GO_LDFLAGS} -s -w")
+set(VERSION_PKG "github.com/massonsky/buffalo/internal/version")
+set(GO_LDFLAGS_VALUE "-X ${VERSION_PKG}.Version=${GIT_VERSION} -X ${VERSION_PKG}.BuildDate=${BUILD_TIME} -X ${VERSION_PKG}.GitCommit=${GIT_COMMIT} -s -w")
 
 # Ensure output directory exists
 file(MAKE_DIRECTORY ${OUTPUT_DIR})
@@ -46,7 +43,7 @@ file(MAKE_DIRECTORY ${OUTPUT_DIR})
 # Main build target
 add_custom_target(build
     COMMAND ${CMAKE_COMMAND} -E echo "Building ${BINARY_NAME} ${GIT_VERSION}..."
-    COMMAND ${GO_EXECUTABLE} build ${CMAKE_GO_FLAGS} ${GO_LDFLAGS} -o ${OUTPUT_DIR}/${BINARY_NAME} ./cmd/buffalo
+    COMMAND ${GO_EXECUTABLE} build ${CMAKE_GO_FLAGS} -ldflags "${GO_LDFLAGS_VALUE}" -o ${OUTPUT_DIR}/${BINARY_NAME}${CMAKE_EXECUTABLE_SUFFIX} ./cmd/buffalo
     WORKING_DIRECTORY ${SOURCE_DIR}
     COMMENT "Building Buffalo..."
     VERBATIM
@@ -56,11 +53,11 @@ add_custom_target(build
 add_custom_target(build-all
     COMMAND ${CMAKE_COMMAND} -E echo "Building for all platforms..."
     COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTPUT_DIR}
-    COMMAND ${CMAKE_COMMAND} -E env GOOS=linux GOARCH=amd64 ${GO_EXECUTABLE} build ${GO_LDFLAGS} -o ${OUTPUT_DIR}/${BINARY_NAME}-linux-amd64 ./cmd/buffalo
-    COMMAND ${CMAKE_COMMAND} -E env GOOS=linux GOARCH=arm64 ${GO_EXECUTABLE} build ${GO_LDFLAGS} -o ${OUTPUT_DIR}/${BINARY_NAME}-linux-arm64 ./cmd/buffalo
-    COMMAND ${CMAKE_COMMAND} -E env GOOS=darwin GOARCH=amd64 ${GO_EXECUTABLE} build ${GO_LDFLAGS} -o ${OUTPUT_DIR}/${BINARY_NAME}-darwin-amd64 ./cmd/buffalo
-    COMMAND ${CMAKE_COMMAND} -E env GOOS=darwin GOARCH=arm64 ${GO_EXECUTABLE} build ${GO_LDFLAGS} -o ${OUTPUT_DIR}/${BINARY_NAME}-darwin-arm64 ./cmd/buffalo
-    COMMAND ${CMAKE_COMMAND} -E env GOOS=windows GOARCH=amd64 ${GO_EXECUTABLE} build ${GO_LDFLAGS} -o ${OUTPUT_DIR}/${BINARY_NAME}-windows-amd64.exe ./cmd/buffalo
+    COMMAND ${CMAKE_COMMAND} -E env GOOS=linux GOARCH=amd64 ${GO_EXECUTABLE} build -ldflags "${GO_LDFLAGS_VALUE}" -o ${OUTPUT_DIR}/${BINARY_NAME}-linux-amd64 ./cmd/buffalo
+    COMMAND ${CMAKE_COMMAND} -E env GOOS=linux GOARCH=arm64 ${GO_EXECUTABLE} build -ldflags "${GO_LDFLAGS_VALUE}" -o ${OUTPUT_DIR}/${BINARY_NAME}-linux-arm64 ./cmd/buffalo
+    COMMAND ${CMAKE_COMMAND} -E env GOOS=darwin GOARCH=amd64 ${GO_EXECUTABLE} build -ldflags "${GO_LDFLAGS_VALUE}" -o ${OUTPUT_DIR}/${BINARY_NAME}-darwin-amd64 ./cmd/buffalo
+    COMMAND ${CMAKE_COMMAND} -E env GOOS=darwin GOARCH=arm64 ${GO_EXECUTABLE} build -ldflags "${GO_LDFLAGS_VALUE}" -o ${OUTPUT_DIR}/${BINARY_NAME}-darwin-arm64 ./cmd/buffalo
+    COMMAND ${CMAKE_COMMAND} -E env GOOS=windows GOARCH=amd64 ${GO_EXECUTABLE} build -ldflags "${GO_LDFLAGS_VALUE}" -o ${OUTPUT_DIR}/${BINARY_NAME}-windows-amd64.exe ./cmd/buffalo
     WORKING_DIRECTORY ${SOURCE_DIR}
     COMMENT "Building for all platforms..."
     VERBATIM
@@ -107,21 +104,46 @@ add_custom_target(vet
     VERBATIM
 )
 
-# Install target
-add_custom_target(install
-    COMMAND ${GO_EXECUTABLE} install ${GO_LDFLAGS} ./cmd/buffalo
+# Install to GOPATH/bin
+add_custom_target(install-go
+    COMMAND ${GO_EXECUTABLE} install -ldflags "${GO_LDFLAGS_VALUE}" ./cmd/buffalo
     WORKING_DIRECTORY ${SOURCE_DIR}
-    COMMENT "Installing..."
+    COMMENT "Installing to GOPATH/bin..."
+    VERBATIM
+)
+
+# Install prefix configuration
+if(NOT INSTALL_PREFIX)
+    if(WIN32)
+        set(INSTALL_PREFIX "$ENV{ProgramFiles}/buffalo")
+    else()
+        set(INSTALL_PREFIX "/usr/local")
+    endif()
+endif()
+
+# Install to system
+add_custom_target(install-system
+    DEPENDS build
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${INSTALL_PREFIX}/bin"
+    COMMAND ${CMAKE_COMMAND} -E copy ${OUTPUT_DIR}/${BINARY_NAME}${CMAKE_EXECUTABLE_SUFFIX} "${INSTALL_PREFIX}/bin/${BINARY_NAME}${CMAKE_EXECUTABLE_SUFFIX}"
+    COMMENT "Installing to ${INSTALL_PREFIX}/bin..."
+    VERBATIM
+)
+
+# Uninstall from system
+add_custom_target(uninstall-system
+    COMMAND ${CMAKE_COMMAND} -E remove -f "${INSTALL_PREFIX}/bin/${BINARY_NAME}${CMAKE_EXECUTABLE_SUFFIX}"
+    COMMENT "Uninstalling from ${INSTALL_PREFIX}/bin..."
     VERBATIM
 )
 
 # Clean target
-add_custom_target(clean
+add_custom_target(clean-build
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${OUTPUT_DIR}
-    COMMAND ${CMAKE_COMMAND} -E remove coverage.out coverage.html
+    COMMAND ${CMAKE_COMMAND} -E remove -f coverage.out coverage.html
     COMMAND ${GO_EXECUTABLE} clean
     WORKING_DIRECTORY ${SOURCE_DIR}
-    COMMENT "Cleaning..."
+    COMMENT "Cleaning build artifacts..."
     VERBATIM
 )
 
@@ -141,11 +163,8 @@ add_custom_target(version
     VERBATIM
 )
 
-# Default target
-add_custom_target(all DEPENDS build)
-
-# Display help
-add_custom_target(help
+# Display usage information
+add_custom_target(usage
     COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "Buffalo - Protocol Buffer Compiler"
     COMMAND ${CMAKE_COMMAND} -E echo "CMake Build System"
@@ -153,24 +172,28 @@ add_custom_target(help
     COMMAND ${CMAKE_COMMAND} -E echo "Usage: cmake --build . --target <target>"
     COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "Available targets:"
-    COMMAND ${CMAKE_COMMAND} -E echo "  all            - Build the binary (default)"
-    COMMAND ${CMAKE_COMMAND} -E echo "  build          - Build the binary"
-    COMMAND ${CMAKE_COMMAND} -E echo "  build-all      - Build for all platforms"
-    COMMAND ${CMAKE_COMMAND} -E echo "  test           - Run tests"
-    COMMAND ${CMAKE_COMMAND} -E echo "  test-coverage  - Run tests with coverage report"
-    COMMAND ${CMAKE_COMMAND} -E echo "  fmt            - Format code"
-    COMMAND ${CMAKE_COMMAND} -E echo "  vet            - Run go vet"
-    COMMAND ${CMAKE_COMMAND} -E echo "  lint           - Run linter"
-    COMMAND ${CMAKE_COMMAND} -E echo "  check          - Run all checks"
-    COMMAND ${CMAKE_COMMAND} -E echo "  clean          - Clean build artifacts"
-    COMMAND ${CMAKE_COMMAND} -E echo "  install        - Install to GOPATH/bin"
-    COMMAND ${CMAKE_COMMAND} -E echo "  version        - Show version information"
+    COMMAND ${CMAKE_COMMAND} -E echo "  build            - Build the binary"
+    COMMAND ${CMAKE_COMMAND} -E echo "  build-all        - Build for all platforms"
+    COMMAND ${CMAKE_COMMAND} -E echo "  test             - Run tests"
+    COMMAND ${CMAKE_COMMAND} -E echo "  test-coverage    - Run tests with coverage report"
+    COMMAND ${CMAKE_COMMAND} -E echo "  fmt              - Format code"
+    COMMAND ${CMAKE_COMMAND} -E echo "  vet              - Run go vet"
+    COMMAND ${CMAKE_COMMAND} -E echo "  lint             - Run linter"
+    COMMAND ${CMAKE_COMMAND} -E echo "  check            - Run all checks"
+    COMMAND ${CMAKE_COMMAND} -E echo "  clean-build      - Clean build artifacts"
+    COMMAND ${CMAKE_COMMAND} -E echo "  install-go       - Install to GOPATH/bin"
+    COMMAND ${CMAKE_COMMAND} -E echo "  install-system   - Install to system (${INSTALL_PREFIX}/bin)"
+    COMMAND ${CMAKE_COMMAND} -E echo "  uninstall-system - Uninstall from system"
+    COMMAND ${CMAKE_COMMAND} -E echo "  version          - Show version information"
     COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "Build options:"
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake -B build"
     COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build build --target build"
-    COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build build --target install"
-    COMMENT "Showing help..."
+    COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build build --target install-system"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Custom install prefix:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  cmake -B build -DINSTALL_PREFIX=/custom/path"
+    COMMENT "Showing usage information..."
     VERBATIM
 )
 
@@ -182,7 +205,8 @@ endif()
 message(STATUS "Buffalo ${GIT_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Output directory: ${OUTPUT_DIR}")
+message(STATUS "Install prefix: ${INSTALL_PREFIX}")
 message(STATUS "Git commit: ${GIT_COMMIT}")
 message(STATUS "Build time: ${BUILD_TIME}")
 message(STATUS "")
-message(STATUS "Run 'cmake --build . --target help' for more information")
+message(STATUS "Run 'cmake --build . --target usage' for available targets")

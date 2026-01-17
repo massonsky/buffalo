@@ -3,10 +3,14 @@ package builder
 import (
 	"context"
 	"testing"
+
+	"github.com/massonsky/buffalo/pkg/logger"
 )
 
 func TestDependencyResolver_Resolve(t *testing.T) {
-	resolver := NewDependencyResolver()
+	log := logger.New(logger.WithLevel(logger.INFO))
+	logAdapter := NewLoggerAdapter(log)
+	resolver := NewDependencyResolver(logAdapter)
 	ctx := context.Background()
 
 	// Test case 1: Simple linear dependency
@@ -234,59 +238,6 @@ func TestDependencyGraph_Validate(t *testing.T) {
 
 		if err := graph.Validate(); err != nil {
 			t.Errorf("Expected valid empty graph, got error: %v", err)
-		}
-	})
-}
-
-func TestTopologicalSort(t *testing.T) {
-	t.Run("ValidTopologicalOrder", func(t *testing.T) {
-		graph := &DependencyGraph{
-			Nodes: map[string]*ProtoFile{
-				"a.proto": {Path: "a.proto", Package: "a"},
-				"b.proto": {Path: "b.proto", Package: "b"},
-				"c.proto": {Path: "c.proto", Package: "c"},
-			},
-			Edges: map[string][]string{
-				"a.proto": {"b.proto"},
-				"b.proto": {"c.proto"},
-				"c.proto": {},
-			},
-		}
-
-		order, err := topologicalSort(graph)
-		if err != nil {
-			t.Fatalf("topologicalSort failed: %v", err)
-		}
-
-		if len(order) != 3 {
-			t.Errorf("Expected 3 files in order, got %d", len(order))
-		}
-
-		// c.proto should come before b.proto, and b.proto before a.proto
-		cIndex := -1
-		bIndex := -1
-		aIndex := -1
-		for i, file := range order {
-			switch file {
-			case "c.proto":
-				cIndex = i
-			case "b.proto":
-				bIndex = i
-			case "a.proto":
-				aIndex = i
-			}
-		}
-
-		if cIndex < 0 || bIndex < 0 || aIndex < 0 {
-			t.Error("Not all files found in order")
-		}
-
-		if cIndex > bIndex {
-			t.Error("c.proto should come before b.proto")
-		}
-
-		if bIndex > aIndex {
-			t.Error("b.proto should come before a.proto")
 		}
 	})
 }

@@ -5,10 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/massonsky/buffalo/pkg/logger"
 )
 
 func TestProtoParser_ParseFile(t *testing.T) {
-	parser := NewProtoParser()
+	log := logger.New(logger.WithLevel(logger.INFO))
+	logAdapter := NewLoggerAdapter(log)
+	parser := NewProtoParser(logAdapter)
 	ctx := context.Background()
 
 	// Create a test proto file
@@ -33,7 +37,7 @@ service TestService {
 
 	// Test successful parse
 	t.Run("Success", func(t *testing.T) {
-		result, err := parser.ParseFile(ctx, protoFile)
+		result, err := parser.ParseFile(ctx, protoFile, []string{tempDir})
 		if err != nil {
 			t.Fatalf("ParseFile failed: %v", err)
 		}
@@ -61,7 +65,7 @@ service TestService {
 
 	// Test non-existent file
 	t.Run("NonExistentFile", func(t *testing.T) {
-		_, err := parser.ParseFile(ctx, "nonexistent.proto")
+		_, err := parser.ParseFile(ctx, "nonexistent.proto", nil)
 		if err == nil {
 			t.Error("Expected error for non-existent file, got nil")
 		}
@@ -69,7 +73,9 @@ service TestService {
 }
 
 func TestProtoParser_ParseFiles(t *testing.T) {
-	parser := NewProtoParser()
+	log := logger.New(logger.WithLevel(logger.INFO))
+	logAdapter := NewLoggerAdapter(log)
+	parser := NewProtoParser(logAdapter)
 	ctx := context.Background()
 
 	// Create multiple test proto files
@@ -94,7 +100,7 @@ message TestMessage` + string(rune('1'+i)) + ` {
 
 	// Test successful parse
 	t.Run("Success", func(t *testing.T) {
-		results, err := parser.ParseFiles(ctx, files)
+		results, err := parser.ParseFiles(ctx, files, []string{tempDir})
 		if err != nil {
 			t.Fatalf("ParseFiles failed: %v", err)
 		}
@@ -113,7 +119,7 @@ message TestMessage` + string(rune('1'+i)) + ` {
 	// Test with invalid file
 	t.Run("InvalidFile", func(t *testing.T) {
 		invalidFiles := append(files, "nonexistent.proto")
-		_, err := parser.ParseFiles(ctx, invalidFiles)
+		_, err := parser.ParseFiles(ctx, invalidFiles, []string{tempDir})
 		if err == nil {
 			t.Error("Expected error for invalid file, got nil")
 		}
@@ -121,7 +127,7 @@ message TestMessage` + string(rune('1'+i)) + ` {
 
 	// Test with empty list
 	t.Run("EmptyList", func(t *testing.T) {
-		results, err := parser.ParseFiles(ctx, []string{})
+		results, err := parser.ParseFiles(ctx, []string{}, nil)
 		if err != nil {
 			t.Errorf("Expected no error for empty list, got %v", err)
 		}
@@ -132,7 +138,9 @@ message TestMessage` + string(rune('1'+i)) + ` {
 }
 
 func TestProtoParser_ParseFileStructures(t *testing.T) {
-	parser := NewProtoParser()
+	log := logger.New(logger.WithLevel(logger.INFO))
+	logAdapter := NewLoggerAdapter(log)
+	parser := NewProtoParser(logAdapter)
 	ctx := context.Background()
 
 	tempDir := t.TempDir()
@@ -176,7 +184,7 @@ service UserService {
 		t.Fatalf("Failed to create test proto file: %v", err)
 	}
 
-	result, err := parser.ParseFile(ctx, protoFile)
+	result, err := parser.ParseFile(ctx, protoFile, []string{tempDir})
 	if err != nil {
 		t.Fatalf("ParseFile failed: %v", err)
 	}

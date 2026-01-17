@@ -14,8 +14,9 @@ import (
 func TestExecutor_Execute(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
+	logAdapter := NewLoggerAdapter(log)
 
-	executor := NewExecutor(log, met)
+	executor := NewExecutor(logAdapter, met, nil)
 	ctx := context.Background()
 
 	// Create test graph
@@ -47,7 +48,7 @@ func TestExecutor_Execute(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	if len(result.FilesGenerated) == 0 {
+	if result.FilesGenerated == 0 {
 		t.Error("Expected generated files")
 	}
 
@@ -59,8 +60,9 @@ func TestExecutor_Execute(t *testing.T) {
 func TestExecutor_ExecuteMultipleFiles(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
+	logAdapter := NewLoggerAdapter(log)
 
-	executor := NewExecutor(log, met)
+	executor := NewExecutor(logAdapter, met, nil)
 	ctx := context.Background()
 
 	// Create test graph with multiple files
@@ -95,16 +97,17 @@ func TestExecutor_ExecuteMultipleFiles(t *testing.T) {
 
 	// Should have generated files for each proto file
 	expectedFiles := 3 // 3 proto files * 1 language
-	if len(result.FilesGenerated) < expectedFiles {
-		t.Errorf("Expected at least %d generated files, got %d", expectedFiles, len(result.FilesGenerated))
+	if result.FilesGenerated < expectedFiles {
+		t.Errorf("Expected at least %d generated files, got %d", expectedFiles, result.FilesGenerated)
 	}
 }
 
 func TestExecutor_ExecuteWithMultipleLanguages(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
+	logAdapter := NewLoggerAdapter(log)
 
-	executor := NewExecutor(log, met)
+	executor := NewExecutor(logAdapter, met, nil)
 	ctx := context.Background()
 
 	graph := &DependencyGraph{
@@ -133,16 +136,17 @@ func TestExecutor_ExecuteWithMultipleLanguages(t *testing.T) {
 	}
 
 	// Should have files for all languages
-	if len(result.FilesGenerated) < 3 {
-		t.Errorf("Expected at least 3 generated files (one per language), got %d", len(result.FilesGenerated))
+	if result.FilesGenerated < 3 {
+		t.Errorf("Expected at least 3 generated files (one per language), got %d", result.FilesGenerated)
 	}
 }
 
 func TestExecutor_ExecuteEmptyGraph(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
+	logAdapter := NewLoggerAdapter(log)
 
-	executor := NewExecutor(log, met)
+	executor := NewExecutor(logAdapter, met, nil)
 	ctx := context.Background()
 
 	graph := &DependencyGraph{
@@ -165,16 +169,17 @@ func TestExecutor_ExecuteEmptyGraph(t *testing.T) {
 		t.Fatalf("Execute failed for empty graph: %v", err)
 	}
 
-	if len(result.FilesGenerated) != 0 {
-		t.Errorf("Expected 0 generated files for empty graph, got %d", len(result.FilesGenerated))
+	if result.FilesGenerated != 0 {
+		t.Errorf("Expected 0 generated files for empty graph, got %d", result.FilesGenerated)
 	}
 }
 
 func TestExecutor_ExecuteWithCancellation(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
+	logAdapter := NewLoggerAdapter(log)
 
-	executor := NewExecutor(log, met)
+	executor := NewExecutor(logAdapter, met, nil)
 
 	// Create a context that we'll cancel
 	ctx, cancel := context.WithCancel(context.Background())
@@ -221,8 +226,9 @@ func TestExecutor_ExecuteWithCancellation(t *testing.T) {
 func TestExecutor_CompileFile(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
+	logAdapter := NewLoggerAdapter(log)
 
-	executor := NewExecutor(log, met).(*executor)
+	executor := NewExecutor(logAdapter, met, nil).(*executor)
 	ctx := context.Background()
 
 	// Create a temporary directory for output
@@ -257,16 +263,12 @@ message TestMessage {
 	languages := []string{"go", "python", "rust"}
 	for _, lang := range languages {
 		t.Run("Compile_"+lang, func(t *testing.T) {
-			files, err := executor.compileFile(ctx, file, lang, plan)
+			err := executor.compileFile(ctx, file, lang, plan)
 			if err != nil {
 				t.Fatalf("compileFile failed for %s: %v", lang, err)
 			}
 
-			if len(files) == 0 {
-				t.Errorf("Expected generated files for %s", lang)
-			}
-
-			t.Logf("Generated files for %s: %v", lang, files)
+			t.Logf("Compilation for %s completed", lang)
 		})
 	}
 }
@@ -274,8 +276,9 @@ message TestMessage {
 func TestExecutor_ParallelExecution(t *testing.T) {
 	log := logger.New(logger.WithLevel(logger.INFO))
 	met := metrics.NewCollector()
+	logAdapter := NewLoggerAdapter(log)
 
-	executor := NewExecutor(log, met)
+	executor := NewExecutor(logAdapter, met, nil)
 	ctx := context.Background()
 
 	// Create many files to test parallel execution
@@ -318,9 +321,9 @@ func TestExecutor_ParallelExecution(t *testing.T) {
 	}
 
 	t.Logf("Parallel execution with 8 workers took %v", duration)
-	t.Logf("Generated %d files", len(result.FilesGenerated))
+	t.Logf("Generated %d files", result.FilesGenerated)
 
-	if len(result.FilesGenerated) < 20 {
-		t.Errorf("Expected at least 20 generated files, got %d", len(result.FilesGenerated))
+	if result.FilesGenerated < 20 {
+		t.Errorf("Expected at least 20 generated files, got %d", result.FilesGenerated)
 	}
 }

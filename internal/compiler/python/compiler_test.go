@@ -205,7 +205,7 @@ func TestCompiler_BuildProtocArgs(t *testing.T) {
 	}
 
 	t.Run("python_out", func(t *testing.T) {
-		args := c.buildProtocArgs(file, opts, false)
+		args := c.buildProtocArgs(file, opts, opts.OutputDir, "/path/to", false)
 
 		// Check for import paths
 		hasImport1 := false
@@ -251,7 +251,7 @@ func TestCompiler_BuildProtocArgs(t *testing.T) {
 	})
 
 	t.Run("grpc_python_out", func(t *testing.T) {
-		args := c.buildProtocArgs(file, opts, true)
+		args := c.buildProtocArgs(file, opts, opts.OutputDir, "/path/to", true)
 
 		hasGrpcOut := false
 		for _, arg := range args {
