@@ -142,40 +142,141 @@ exporter.Export(metrics.FormatPrometheus, os.Stdout)
 
 ## 🚀 Быстрый старт
 
-### Сборка из исходников
+### Установка
+
+#### Способ 1: Автоматический скрипт (рекомендуется)
+
+**Linux/macOS:**
+```bash
+curl -sSL https://raw.githubusercontent.com/massonsky/buffalo/dev/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/massonsky/buffalo/dev/install.ps1 | iex
+```
+
+#### Способ 2: Из исходников
 
 ```bash
-# Клонирование репозитория
-git clone git@github.com:massonsky/buffalo.git
+git clone https://github.com/massonsky/buffalo.git
 cd buffalo
 
+# Linux/macOS
+./build.sh install
+
+# Windows
+.\build.ps1 -Target install
+```
+
+#### Способ 3: Docker
+
+```bash
+docker build -t buffalo:latest .
+docker run --rm -v $(pwd):/workspace buffalo:latest build
+```
+
+#### Способ 4: Через Go
+
+```bash
+go install github.com/massonsky/buffalo/cmd/buffalo@latest
+```
+
+### Сборка и разработка
+
+#### Linux/macOS
+
+```bash
+# Быстрая сборка
+./build.sh build
+
+# Все платформы
+./build.sh build-all
+
+# Тесты
+./build.sh test
+
+# С покрытием
+./build.sh test-coverage
+
+# Проверка кода (fmt, vet, lint, test)
+./build.sh check
+
+# Установка в систему
+./build.sh install
+
+# Очистка
+./build.sh clean
+
+# Справка
+./build.sh help
+```
+
+#### Windows (PowerShell)
+
+```powershell
+# Быстрая сборка
+.\build.ps1 build
+
+# Все платформы
+.\build.ps1 build-all
+
+# Тесты
+.\build.ps1 test
+
+# С покрытием
+.\build.ps1 test-coverage
+
+# Проверка кода
+.\build.ps1 check
+
+# Установка
+.\build.ps1 install
+
+# Очистка
+.\build.ps1 clean
+
+# Справка
+.\build.ps1 help
+```
+
+#### Через Make (Unix/Linux/macOS)
+
+```bash
 # Сборка
 make build
 
-# Запуск
-./bin/buffalo --version
+# Установка в систему
+sudo make install-system
 
 # Тесты
 make test
 
-# Coverage
+# Покрытие
 make coverage
+
+# Docker
+make docker-build
+
+# Релиз
+make release
+
+# Справка
+make help
 ```
 
-### Разработка
+#### Через CMake (альтернатива)
 
 ```bash
-# Линтеры
-make lint
+# Сборка
+cmake -B build
+cmake --build build --target build
 
-# Форматирование
-make fmt
+# Установка
+cmake --build build --target install
 
-# Сборка для всех платформ
-make cross-compile
-
-# Очистка
-make clean
+# Тесты
+cmake --build build --target test
 ```
 
 ---
