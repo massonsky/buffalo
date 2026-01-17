@@ -6,47 +6,81 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/massonsky/buffalo/workflows/CI/badge.svg)](https://github.com/massonsky/buffalo/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/massonsky/buffalo)](https://goreportcard.com/report/github.com/massonsky/buffalo)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/massonsky/buffalo/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/massonsky/buffalo/releases)
 
 ---
 
 ## 📊 Статус разработки
 
-**Текущая версия: v0.1.0** - Базовая инфраструктура
+**Текущая версия: v0.5.0** - Полнофункциональный CLI & Все компиляторы
 
-✅ **Завершено:**
-- **pkg/logger** - Система логирования (54.7% coverage, 16 tests)
-- **pkg/errors** - Обработка ошибок (92.2% coverage, 20 tests)  
-- **pkg/utils** - Утилиты (67.3% coverage, 46 tests)
-- **pkg/metrics** - Метрики (90.9% coverage, 20 tests)
+✅ **Завершено (v0.1.0 - v0.5.0):**
 
-🚧 **В разработке (v0.2.0):**
-- CLI интерфейс с Cobra
-- Система конфигурации с Viper
-- Базовая структура builder
+**Инфраструктура (v0.1.0):**
+- **pkg/logger** - Система логирования с цветным выводом
+- **pkg/errors** - Обработка ошибок с контекстом
+- **pkg/utils** - Файловые утилиты и валидация
+- **pkg/metrics** - Система метрик
+
+**CLI & Конфигурация (v0.2.0):**
+- **internal/cli** - CLI интерфейс с Cobra (14 команд)
+- **internal/config** - Конфигурация с Viper (YAML/TOML/JSON)
+- **internal/version** - Версионирование с git tags
+
+**Core Builder (v0.3.0):**
+- **internal/builder** - Основной билдер
+- **internal/scanner** - Сканер proto файлов
+- **internal/resolver** - Разрешение зависимостей
+- **internal/scheduler** - Планировщик сборки
+- **internal/cache** - Кэширование для инкрементальной сборки
+
+**Компиляторы (v0.4.0 - v0.5.0):**
+- **internal/compiler/python** - Python (protobuf + grpcio)
+- **internal/compiler/golang** - Go (protoc-gen-go + grpc)
+- **internal/compiler/rust** - Rust (prost + tonic)
+- **internal/compiler/cpp** - C++ (protobuf + grpc++)
+
+**CLI Команды (v0.5.0):**
+- `build` - Сборка proto файлов
+- `rebuild` - Полная пересборка с очисткой кэша
+- `watch` - Автоматическая пересборка при изменениях
+- `init` - Инициализация проекта
+- `check` - Проверка конфигурации и зависимостей
+- `list` - Список proto файлов
+- `stats` - Статистика проекта
+- `clear` - Очистка кэша и сгенерированных файлов
+- `lint` - Проверка стиля proto файлов
+- `format` - Форматирование proto файлов
+- `validate` - Валидация синтаксиса через protoc
+- `deps` - Анализ зависимостей
+- `version` - Информация о версии
+- `completion` - Автодополнение для shell
+
+🚧 **В разработке (v0.6.0):**
+- Система плагинов
+- Пользовательские шаблоны генерации
+- Расширенное кэширование
 
 📋 **Запланировано:**
-- v0.3.0: Core builder реализация
-- v0.4.0-v0.7.0: Компиляторы Python/Go/Rust/C++
-- v0.8.0: Система плагинов
-- v0.9.0-v1.0.0: Watch mode, инкрементальная сборка, кэширование
-
-См. [ROADMAP.md](ROADMAP.md) для деталей.
+- v0.7.0: CI/CD интеграция, GitHub Actions
+- v0.8.0: Расширенный watch mode с hot-reload
+- v0.9.0: Метрики и профилирование
+- v1.0.0: Стабильный релиз
 
 ---
 
 ## ✨ Особенности
 
-- 🌍 **Мультиязычность:** Python, Go, Rust, C++ (планируется)
-- ⚡ **Высокая производительность:** Параллельная компиляция, инкрементальная сборка (планируется)
-- 🔧 **Гибкая настройка:** Конфигурация через YAML/TOML/JSON (в разработке)
-- 🔌 **Расширяемость:** Система плагинов (планируется)
-- 📦 **Кроссплатформенность:** Windows, Linux, macOS
-- 🎯 **Простота использования:** Интуитивный CLI (в разработке)
-- 🚀 **Watch mode:** Автоматическая пересборка (планируется)
-- 💾 **Кэширование:** Умное кэширование (планируется)
-- 📊 **Метрики:** Система метрик реализована
-- 🐳 **Docker ready:** Docker образы (планируется)
+- 🌍 **Мультиязычность:** Python, Go, Rust, C++ ✅
+- ⚡ **Высокая производительность:** Параллельная компиляция ✅, инкрементальная сборка ✅
+- 🔧 **Гибкая настройка:** Конфигурация через YAML/TOML/JSON ✅
+- 🔌 **Расширяемость:** Система плагинов (v0.6.0)
+- 📦 **Кроссплатформенность:** Windows, Linux, macOS ✅
+- 🎯 **Простота использования:** 14 CLI команд ✅
+- 🚀 **Watch mode:** Автоматическая пересборка ✅
+- 💾 **Кэширование:** Умное кэширование ✅
+- 📊 **Метрики:** Система метрик ✅
+- 🐳 **Docker ready:** Docker + docker-compose ✅
 
 ---
 
