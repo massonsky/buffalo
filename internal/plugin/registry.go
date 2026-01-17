@@ -11,10 +11,10 @@ import (
 
 // Registry manages plugin registration, lifecycle, and execution
 type Registry struct {
-	plugins    map[string]*RegisteredPlugin
-	hooks      map[HookPoint][]*RegisteredPlugin
-	mu         sync.RWMutex
-	log        *logger.Logger
+	plugins     map[string]*RegisteredPlugin
+	hooks       map[HookPoint][]*RegisteredPlugin
+	mu          sync.RWMutex
+	log         *logger.Logger
 	initialized bool
 }
 
@@ -252,6 +252,13 @@ func (r *Registry) ExecuteHook(ctx context.Context, hookPoint HookPoint, input *
 				for _, errMsg := range output.Errors {
 					r.log.Error(errMsg, logger.String("plugin", registered.Plugin.Name()))
 				}
+			}
+
+			// Check if plugin execution was successful
+			if !output.Success {
+				registered.setStatus(StatusError)
+				return fmt.Errorf("plugin %s validation failed with %d error(s)",
+					registered.Plugin.Name(), len(output.Errors))
 			}
 
 			// Update input with generated files for next plugin

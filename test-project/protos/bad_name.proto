@@ -4,7 +4,7 @@ package test.v1;
 
 option go_package = "github.com/yourorg/yourproject/generated/go/v1/test";
 
-// Test message for validating naming conventions
+// Test message - now with proper naming!
 message TestMessage {
   string id = 1;
   string name = 2;

@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package test.v1;
+
+// This file is proper snake_case - should PASS validation
+message GoodTest {
+  string id = 1;
+  string name = 2;
+}

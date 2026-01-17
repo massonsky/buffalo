@@ -190,16 +190,16 @@ func TestIsSnakeCase(t *testing.T) {
 		{"message_types", true},
 		{"simple", true},
 		{"with_numbers_123", true},
-		{"UserService", false},       // PascalCase
-		{"user-service", false},      // kebab-case
-		{"user__service", false},     // double underscore
-		{"_user_service", false},     // leading underscore
-		{"user_service_", false},     // trailing underscore
-		{"", false},                  // empty
-		{"123_start", false},         // starts with number
-		{"user service", false},      // space
-		{"user.service", false},      // dot
-		{"User_Service", false},      // mixed case
+		{"UserService", false},   // PascalCase
+		{"user-service", false},  // kebab-case
+		{"user__service", false}, // double underscore
+		{"_user_service", false}, // leading underscore
+		{"user_service_", false}, // trailing underscore
+		{"", false},              // empty
+		{"123_start", false},     // starts with number
+		{"user service", false},  // space
+		{"user.service", false},  // dot
+		{"User_Service", false},  // mixed case
 	}
 
 	for _, tt := range tests {

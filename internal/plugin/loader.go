@@ -11,8 +11,8 @@ import (
 
 // Loader handles loading plugins from filesystem
 type Loader struct {
-	log          *logger.Logger
-	pluginDirs   []string
+	log           *logger.Logger
+	pluginDirs    []string
 	loadedPlugins map[string]*plugin.Plugin
 }
 
@@ -28,8 +28,8 @@ func NewLoader(log *logger.Logger, pluginDirs ...string) *Loader {
 	}
 
 	return &Loader{
-		log:          log,
-		pluginDirs:   pluginDirs,
+		log:           log,
+		pluginDirs:    pluginDirs,
 		loadedPlugins: make(map[string]*plugin.Plugin),
 	}
 }

@@ -1,0 +1,56 @@
+# Buffalo Test Configuration with Naming Validator Plugin
+project:
+  name: plugin-test
+  version: 0.1.0
+
+proto:
+  paths:
+    - ./protos
+  exclude: []
+  import_paths:
+    - ./third_party
+
+output:
+  base_dir: ./generated
+  directories:
+    python: python
+    go: go
+  preserve_proto_structure: false
+
+languages:
+  python:
+    enabled: true
+    package: test_gen
+    generator: grpcio-tools
+  go:
+    enabled: true
+    module: github.com/yourorg/yourproject
+    generator: protoc-gen-go
+  rust:
+    enabled: false
+  cpp:
+    enabled: false
+
+build:
+  workers: 0
+  incremental: true
+  cache:
+    enabled: false
+
+versioning:
+  enabled: false
+
+logging:
+  level: debug
+  format: colored
+  output: stdout
+
+# Plugin configuration - Enable naming validator
+plugins:
+  - name: naming-validator
+    enabled: true
+    hooks:
+      - pre-build
+    priority: 200
+    config:
+      strict_mode: true  # Enable strict mode to catch BadName.proto

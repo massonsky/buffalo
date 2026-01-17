@@ -6,6 +6,7 @@ import (
 	"github.com/massonsky/buffalo/internal/builder"
 	"github.com/massonsky/buffalo/internal/config"
 	"github.com/massonsky/buffalo/internal/dependency"
+	"github.com/massonsky/buffalo/internal/plugin"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/utils"
 	"github.com/spf13/cobra"
@@ -133,10 +134,58 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Initialize plugin registry
+	pluginRegistry := plugin.NewRegistry(log)
+
+	// Register built-in plugins
+	if len(cfg.Plugins) > 0 {
+		log.Info("Loading plugins", logger.Int("count", len(cfg.Plugins)))
+
+		for _, pluginCfg := range cfg.Plugins {
+			if !pluginCfg.Enabled {
+				log.Debug("Plugin disabled", logger.String("name", pluginCfg.Name))
+				continue
+			}
+
+			// Check for built-in plugins
+			if pluginCfg.Name == "naming-validator" {
+				namingValidator := plugin.NewSimpleNamingValidator()
+
+				// Convert config
+				hookPoints := make([]plugin.HookPoint, len(pluginCfg.HookPoints))
+				for i, hp := range pluginCfg.HookPoints {
+					hookPoints[i] = plugin.HookPoint(hp)
+				}
+
+				plgCfg := plugin.Config{
+					Name:       pluginCfg.Name,
+					Enabled:    pluginCfg.Enabled,
+					HookPoints: hookPoints,
+					Priority:   pluginCfg.Priority,
+					Options:    pluginCfg.Options,
+				}
+
+				if err := pluginRegistry.Register(namingValidator, plgCfg); err != nil {
+					log.Warn("Failed to register plugin",
+						logger.String("name", pluginCfg.Name),
+						logger.Any("error", err))
+				} else {
+					log.Info("Plugin registered", logger.String("name", pluginCfg.Name))
+				}
+			}
+		}
+
+		// Initialize all plugins
+		if err := pluginRegistry.InitAll(); err != nil {
+			return err
+		}
+	}
+
 	// Create builder
 	b, err := builder.New(
 		cfg,
 		builder.WithLogger(log),
+		builder.WithPluginRegistry(pluginRegistry),
 	)
 	if err != nil {
 		return err

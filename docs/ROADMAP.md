@@ -320,24 +320,34 @@ type CompilerInterface interface {
 - [ ] Diff режим (показ изменений)
 - [ ] Metrics и статистика сборки6.0 - v0.9.0) 🚧 В РАБОТЕ
 
-### v0.6.0 - Система плагинов 🎯 ТЕКУЩАЯ ВЕРСИЯ
-**Статус:** Планируется
-**Срок:** Q1 2026
+### v0.6.0 - Система плагинов ✅ ЗАВЕРШЕНО
+**Статус:** Завершено
+**Дата:** Январь 2025
+**Commit:** 21e744a
 
 #### Задачи:
-- [ ] Архитектура плагинов (plugin interface)
-- [ ] Plugin discovery system (загрузка из директории)
-- [ ] Plugin Registry и lifecycle management
-- [ ] Plugin API/SDK для разработчиков
-- [ ] Hot-reload плагинов
-- [ ] Примеры кастомных плагинов
+- [x] Архитектура плагинов (plugin interface) - 5 типов плагинов
+- [x] Plugin discovery system (загрузка из .so файлов)
+- [x] Plugin Registry и lifecycle management
+- [x] Plugin API/SDK для разработчиков
+- [x] Hook system (5 hook points)
+- [x] Примеры кастомных плагинов (naming validator)
+- [x] Built-in плагины (без .so файлов)
+- [x] Комплексное тестирование (26 unit + integration тестов)
+- [x] Документация (PLUGIN_GUIDE.md)
 
 #### Возможности плагинов:
-- Добавление новых языков (TypeScript, Java, Kotlin, Swift)
-- Кастомная пост-обработка сгенерированного кода
-- Линтеры и валидаторы
-- Кодогенераторы и templates
-- Хуки на различные стадии сборки
+- [x] Линтеры и валидаторы (ValidatorPlugin)
+- [x] Кастомная обработка (TransformerPlugin)
+- [x] Хуки на различные стадии сборки (PreBuild, PostParse, PostGenerate, PostBuild, OnError)
+- [x] Priority-based execution
+- [x] Конфигурация в buffalo.yaml
+
+#### Не реализовано (будущие версии):
+- [ ] Hot-reload плагинов
+- [ ] Добавление новых языков через плагины
+- [ ] CLI команды (buffalo plugin list/install/remove)
+- [ ] Plugin marketplace
 
 #### Архитектура:
 ```go
@@ -356,17 +366,19 @@ type PluginRegistry struct {
 ```
 
 #### Deliverables:
-- Рабочая система плагинов
-- SDK для разработки плагинов
-- 2-3 примера плагинов
-- Документация по разработке плагинов
-- Тесты
+- ✅ Рабочая система плагинов (Registry, Loader, 5 типов)
+- ✅ SDK для разработки плагинов (Plugin interface, Hook system)
+- ✅ 2 примера плагинов (builtin + standalone naming validator)
+- ✅ Документация по разработке плагинов (PLUGIN_GUIDE.md)
+- ✅ Тесты (26 unit + integration, все проходят)
+- ✅ Builder integration с hook execution
+- ✅ Config support (PluginConfig в buffalo.yaml)
 
 ---
 
-### v0.7.0 - CI/CD и Автоматизация
+### v0.7.0 - CI/CD и Автоматизация 🎯 ТЕКУЩАЯ ВЕРСИЯ
 **Статус:** Планируется
-**Срок:** Q1-Q2 2026
+**Срок:** Q1 2025
 
 #### Задачи:
 - [ ] Dry-run режим для build команды
