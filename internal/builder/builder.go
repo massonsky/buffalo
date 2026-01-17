@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/massonsky/buffalo/internal/config"
+	"github.com/massonsky/buffalo/internal/plugin"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/metrics"
 )
@@ -86,13 +87,14 @@ type BuildResult struct {
 
 // builder implements Builder interface
 type builder struct {
-	parser   ProtoParser
-	resolver DependencyResolver
-	cache    CacheManager
-	executor Executor
-	log      *logger.Logger
-	metrics  *metrics.Collector
-	config   *config.Config
+	parser         ProtoParser
+	resolver       DependencyResolver
+	cache          CacheManager
+	executor       Executor
+	log            *logger.Logger
+	metrics        *metrics.Collector
+	config         *config.Config
+	pluginRegistry *plugin.Registry
 }
 
 // New creates a new Builder
@@ -164,6 +166,14 @@ func WithResolver(r DependencyResolver) Option {
 	}
 }
 
+// WithPluginRegistry sets the plugin registry
+func WithPluginRegistry(registry *plugin.Registry) Option {
+	return func(b *builder) error {
+		b.pluginRegistry = registry
+		return nil
+	}
+}
+
 // WithCache sets the cache manager
 func WithCache(c CacheManager) Option {
 	return func(b *builder) error {
@@ -194,6 +204,20 @@ func (b *builder) Build(ctx context.Context, plan *BuildPlan) (*BuildResult, err
 		Success: true,
 	}
 
+	// Execute pre-build hooks
+	if b.pluginRegistry != nil {
+		b.log.Debug("Executing pre-build hooks...")
+		pluginInput := &plugin.Input{
+			ProtoFiles:  plan.ProtoFiles,
+			OutputDir:   plan.OutputDir,
+			ImportPaths: plan.ImportPaths,
+			Metadata:    make(map[string]interface{}),
+		}
+		if err := b.pluginRegistry.ExecuteHook(ctx, plugin.HookPointPreBuild, pluginInput); err != nil {
+			return nil, err
+		}
+	}
+
 	// Parse proto files
 	b.log.Debug("Parsing proto files...")
 	protoFiles, err := b.parser.ParseFiles(ctx, plan.ProtoFiles, plan.ImportPaths)
@@ -201,6 +225,22 @@ func (b *builder) Build(ctx context.Context, plan *BuildPlan) (*BuildResult, err
 		return nil, err
 	}
 	result.FilesProcessed = len(protoFiles)
+
+	// Execute post-parse hooks
+	if b.pluginRegistry != nil {
+		b.log.Debug("Executing post-parse hooks...")
+		pluginInput := &plugin.Input{
+			ProtoFiles:  plan.ProtoFiles,
+			OutputDir:   plan.OutputDir,
+			ImportPaths: plan.ImportPaths,
+			Metadata: map[string]interface{}{
+				"parsed_files": protoFiles,
+			},
+		}
+		if err := b.pluginRegistry.ExecuteHook(ctx, plugin.HookPointPostParse, pluginInput); err != nil {
+			return nil, err
+		}
+	}
 
 	// Resolve dependencies
 	b.log.Debug("Resolving dependencies...")
@@ -234,6 +274,25 @@ func (b *builder) Build(ctx context.Context, plan *BuildPlan) (*BuildResult, err
 	if execResult != nil {
 		result.FilesGenerated = execResult.FilesGenerated
 		result.Warnings = execResult.Warnings
+	}
+
+	// Execute post-build hooks
+	if b.pluginRegistry != nil {
+		b.log.Debug("Executing post-build hooks...")
+		pluginInput := &plugin.Input{
+			ProtoFiles:     plan.ProtoFiles,
+			OutputDir:      plan.OutputDir,
+			ImportPaths:    plan.ImportPaths,
+			GeneratedFiles: []string{}, // TODO: populate from execResult
+			Metadata: map[string]interface{}{
+				"files_generated": result.FilesGenerated,
+				"duration":        time.Since(startTime),
+			},
+		}
+		if err := b.pluginRegistry.ExecuteHook(ctx, plugin.HookPointPostBuild, pluginInput); err != nil {
+			b.log.Warn("Post-build hook failed", logger.Any("error", err))
+			// Don't fail the build, just log the warning
+		}
 	}
 
 	result.Duration = time.Since(startTime)

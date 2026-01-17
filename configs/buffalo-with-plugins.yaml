@@ -1,0 +1,102 @@
+# Buffalo Configuration with Plugins Example
+# This demonstrates how to configure and use plugins
+
+# Project settings
+project:
+  name: my-proto-project-with-plugins
+  version: 0.1.0
+
+# Proto files configuration
+proto:
+  paths:
+    - ./protos
+  exclude:
+    - "**/*_test.proto"
+  import_paths:
+    - ./third_party
+
+# Output configuration
+output:
+  base_dir: ./generated
+  directories:
+    python: python
+    go: go
+    rust: rust
+    cpp: cpp
+  preserve_proto_structure: false
+
+# Language-specific settings
+languages:
+  python:
+    enabled: true
+    package: proto_gen
+    generator: grpcio-tools
+  go:
+    enabled: true
+    module: github.com/yourorg/yourproject
+    generator: protoc-gen-go
+  rust:
+    enabled: false
+  cpp:
+    enabled: false
+
+# Build options
+build:
+  workers: 0
+  incremental: true
+  cache:
+    enabled: true
+    directory: .buffalo-cache
+
+# Versioning options
+versioning:
+  enabled: true
+  strategy: semantic
+  output_format: directory
+  keep_versions: 3
+
+# Logging
+logging:
+  level: info
+  format: colored
+  output: stdout
+
+# Dependencies
+dependencies:
+  - name: googleapis
+    source:
+      type: git
+      url: https://github.com/googleapis/googleapis
+      ref: master
+    version: master
+
+# Plugins configuration
+plugins:
+  # Example 1: Naming validator plugin
+  - name: naming-validator
+    enabled: true
+    hooks:
+      - pre-build
+    priority: 200  # Run before other plugins
+    config:
+      strict_mode: false
+      
+  # Example 2: Custom documentation generator
+  - name: doc-generator
+    enabled: false  # Disabled by default
+    hooks:
+      - post-build
+    priority: 50
+    config:
+      output_format: markdown
+      include_diagrams: true
+      
+  # Example 3: API linter
+  - name: api-linter
+    enabled: false
+    hooks:
+      - post-parse
+    priority: 150
+    config:
+      rules_file: ./lint-rules.yaml
+      fail_on_error: false

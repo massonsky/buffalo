@@ -19,6 +19,7 @@ type Config struct {
 	Versioning   VersioningConfig        `mapstructure:"versioning"`
 	Logging      LoggingConfig           `mapstructure:"logging"`
 	Dependencies []dependency.Dependency `mapstructure:"dependencies"`
+	Plugins      []PluginConfig          `mapstructure:"plugins"`
 }
 
 // ProjectConfig contains project-level settings
@@ -102,6 +103,15 @@ type LoggingConfig struct {
 	Format string `mapstructure:"format"`
 	Output string `mapstructure:"output"`
 	File   string `mapstructure:"file"`
+}
+
+// PluginConfig contains plugin configuration
+type PluginConfig struct {
+	Name       string                 `mapstructure:"name"`
+	Enabled    bool                   `mapstructure:"enabled"`
+	HookPoints []string               `mapstructure:"hooks"`
+	Priority   int                    `mapstructure:"priority"`
+	Options    map[string]interface{} `mapstructure:"config"`
 }
 
 // Load loads configuration from viper
