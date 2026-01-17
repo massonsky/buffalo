@@ -101,3 +101,13 @@ logging:
   output: stdout
   # Log file path (if output is file)
   file: buffalo.log
+
+# Dependencies - Proto files from external repositories
+dependencies:
+  # Google APIs - Required for google.api.http annotations
+  - name: googleapis
+    source:
+      type: git
+      url: https://github.com/googleapis/googleapis
+      ref: master
+    version: master

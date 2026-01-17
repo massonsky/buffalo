@@ -5,6 +5,7 @@ import (
 
 	"github.com/massonsky/buffalo/internal/builder"
 	"github.com/massonsky/buffalo/internal/config"
+	"github.com/massonsky/buffalo/internal/dependency"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/utils"
 	"github.com/spf13/cobra"
@@ -40,9 +41,9 @@ Examples:
 func init() {
 	rootCmd.AddCommand(buildCmd)
 
-	buildCmd.Flags().StringVarP(&buildOutputDir, "output", "o", "./generated", "output directory for generated code")
+	buildCmd.Flags().StringVarP(&buildOutputDir, "output", "o", "", "output directory for generated code")
 	buildCmd.Flags().StringSliceVarP(&buildLanguages, "lang", "l", []string{}, "target languages (python,go,rust,cpp)")
-	buildCmd.Flags().StringSliceVarP(&buildProtoPath, "proto-path", "p", []string{"."}, "paths to search for proto files")
+	buildCmd.Flags().StringSliceVarP(&buildProtoPath, "proto-path", "p", []string{}, "paths to search for proto files")
 	buildCmd.Flags().BoolVar(&buildDryRun, "dry-run", false, "show what would be built without building")
 }
 
@@ -59,8 +60,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		cfg = getDefaultConfig()
 	}
 
-	// Override config with flags
-	if buildOutputDir != "./generated" {
+	// Override config with flags (only if explicitly set)
+	if buildOutputDir != "" {
 		cfg.Output.BaseDir = buildOutputDir
 	}
 	if len(buildLanguages) > 0 {
@@ -114,6 +115,24 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	log.Info("Found proto files", logger.Int("count", len(allProtoFiles)))
 
+	// Add dependencies to import paths
+	importPaths := cfg.Proto.ImportPaths
+	if len(cfg.Dependencies) > 0 {
+		log.Info("Loading dependencies", logger.Int("count", len(cfg.Dependencies)))
+		depManager, err := dependency.NewManager(".buffalo", log)
+		if err != nil {
+			log.Warn("Failed to create dependency manager", logger.Any("error", err))
+		} else {
+			depPaths := depManager.GetProtoPaths()
+			if len(depPaths) > 0 {
+				log.Info("Adding dependency paths", logger.Int("count", len(depPaths)))
+				importPaths = append(importPaths, depPaths...)
+			} else {
+				log.Warn("⚠️  Dependencies configured but not installed. Run 'buffalo install' first.")
+			}
+		}
+	}
+
 	// Create builder
 	b, err := builder.New(
 		cfg,
@@ -126,7 +145,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// Create build plan
 	plan := &builder.BuildPlan{
 		ProtoFiles:  allProtoFiles,
-		ImportPaths: cfg.Proto.ImportPaths,
+		ImportPaths: importPaths,
 		OutputDir:   cfg.Output.BaseDir,
 		Languages:   languages,
 		Options: builder.BuildOptions{

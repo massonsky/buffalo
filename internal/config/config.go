@@ -4,19 +4,21 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/massonsky/buffalo/internal/dependency"
 	"github.com/massonsky/buffalo/pkg/errors"
 	"github.com/spf13/viper"
 )
 
 // Config represents the Buffalo configuration
 type Config struct {
-	Project    ProjectConfig    `mapstructure:"project"`
-	Proto      ProtoConfig      `mapstructure:"proto"`
-	Output     OutputConfig     `mapstructure:"output"`
-	Languages  LanguagesConfig  `mapstructure:"languages"`
-	Build      BuildConfig      `mapstructure:"build"`
-	Versioning VersioningConfig `mapstructure:"versioning"`
-	Logging    LoggingConfig    `mapstructure:"logging"`
+	Project      ProjectConfig           `mapstructure:"project"`
+	Proto        ProtoConfig             `mapstructure:"proto"`
+	Output       OutputConfig            `mapstructure:"output"`
+	Languages    LanguagesConfig         `mapstructure:"languages"`
+	Build        BuildConfig             `mapstructure:"build"`
+	Versioning   VersioningConfig        `mapstructure:"versioning"`
+	Logging      LoggingConfig           `mapstructure:"logging"`
+	Dependencies []dependency.Dependency `mapstructure:"dependencies"`
 }
 
 // ProjectConfig contains project-level settings

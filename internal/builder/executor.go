@@ -25,6 +25,9 @@ type ExecutionPlan struct {
 	// OutputDir is the output directory
 	OutputDir string
 
+	// ImportPaths are the import paths for protoc
+	ImportPaths []string
+
 	// Languages are the target languages
 	Languages []string
 
@@ -262,7 +265,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 	// Prepare compiler options
 	compilerOpts := compiler.CompileOptions{
 		OutputDir:              outputDir,
-		ImportPaths:            []string{},
+		ImportPaths:            plan.ImportPaths,
 		Verbose:                plan.Options.Verbose,
 		PreserveProtoStructure: e.config.Output.PreserveProtoStructure,
 	}

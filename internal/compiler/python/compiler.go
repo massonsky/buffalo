@@ -201,12 +201,14 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 			args = append(args, "--proto_path="+protoDir)
 		}
 
-		// Add current directory if no import paths specified
-		if len(opts.ImportPaths) == 0 && len(file.ImportPaths) == 0 {
+		// Merge and deduplicate import paths
+		importPaths := compiler.MergeImportPaths(opts, file)
+		if len(importPaths) == 0 {
 			args = append(args, "--proto_path=.")
 		}
 
-		for _, importPath := range file.ImportPaths {
+		// Add import paths
+		for _, importPath := range importPaths {
 			args = append(args, "--proto_path="+importPath)
 		}
 
@@ -290,13 +292,8 @@ func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.Compil
 		args = append(args, "--proto_path="+protoDir)
 	}
 
-	// Add import paths
-	for _, importPath := range opts.ImportPaths {
-		args = append(args, "--proto_path="+importPath)
-	}
-
-	// Add import paths from file
-	for _, importPath := range file.ImportPaths {
+	// Merge and deduplicate import paths
+	for _, importPath := range compiler.MergeImportPaths(opts, file) {
 		args = append(args, "--proto_path="+importPath)
 	}
 

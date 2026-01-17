@@ -62,3 +62,27 @@ type Compiler interface {
 	// RequiredTools returns a list of external tools required by this compiler
 	RequiredTools() []string
 }
+
+// MergeImportPaths merges import paths from options and file, removing duplicates
+func MergeImportPaths(opts CompileOptions, file ProtoFile) []string {
+	seen := make(map[string]bool)
+	var result []string
+
+	// Add paths from options first
+	for _, p := range opts.ImportPaths {
+		if !seen[p] {
+			seen[p] = true
+			result = append(result, p)
+		}
+	}
+
+	// Add paths from file (skip duplicates)
+	for _, p := range file.ImportPaths {
+		if !seen[p] {
+			seen[p] = true
+			result = append(result, p)
+		}
+	}
+
+	return result
+}

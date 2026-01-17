@@ -1,0 +1,106 @@
+# Buffalo Configuration with Dependencies Example
+version: 1.0
+
+project:
+  name: my-proto-project
+  version: 1.0.0
+
+proto:
+  paths:
+    - ./proto
+  import_paths:
+    - ./third_party
+  exclude:
+    - "**/*_test.proto"
+    - "**/internal/**"
+
+output:
+  base_dir: ./generated
+  preserve_proto_structure: true
+  directories:
+    python: python
+    go: go
+    rust: rust
+    cpp: cpp
+
+languages:
+  python:
+    enabled: true
+    package: myproject_pb
+    generator: python
+  
+  go:
+    enabled: true
+    module: github.com/myorg/myproject
+    generator: go
+  
+  rust:
+    enabled: true
+    generator: rust
+  
+  cpp:
+    enabled: true
+    namespace: myproject
+
+build:
+  workers: 4
+  incremental: true
+  cache:
+    enabled: true
+    directory: .buffalo/cache
+
+versioning:
+  enabled: true
+  strategy: git
+  output_format: directory
+  keep_versions: 3
+
+logging:
+  level: info
+  format: text
+  output: stdout
+
+# Dependencies - Proto files from external repositories
+dependencies:
+  # Google APIs - Required for many gRPC services
+  - name: googleapis
+    source:
+      type: git
+      url: https://github.com/googleapis/googleapis
+      ref: master
+    sub_path: ""
+    version: master
+  
+  # Protocol Buffer Validation (protoc-gen-validate)
+  - name: protoc-gen-validate
+    source:
+      type: git
+      url: https://github.com/bufbuild/protoc-gen-validate
+      ref: main
+    sub_path: ""
+    version: main
+  
+  # gRPC Gateway
+  - name: grpc-gateway
+    source:
+      type: git
+      url: https://github.com/grpc-ecosystem/grpc-gateway
+      ref: main
+    sub_path: ""
+    version: main
+  
+  # Example: Local dependency
+  - name: shared-protos
+    source:
+      type: local
+      path: ../shared-protos
+    sub_path: proto
+  
+  # Example: Specific version tag
+  - name: protobuf
+    source:
+      type: git
+      url: https://github.com/protocolbuffers/protobuf
+      ref: v25.0
+    sub_path: src
+    version: v25.0

@@ -220,10 +220,11 @@ func (b *builder) Build(ctx context.Context, plan *BuildPlan) (*BuildResult, err
 	// Execute build
 	b.log.Debug("Executing build...")
 	execResult, err := b.executor.Execute(ctx, &ExecutionPlan{
-		Graph:     graph,
-		OutputDir: plan.OutputDir,
-		Languages: plan.Languages,
-		Options:   plan.Options,
+		Graph:       graph,
+		OutputDir:   plan.OutputDir,
+		ImportPaths: plan.ImportPaths,
+		Languages:   plan.Languages,
+		Options:     plan.Options,
 	})
 	if err != nil {
 		result.Success = false
