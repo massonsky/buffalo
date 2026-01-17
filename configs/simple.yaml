@@ -1,0 +1,21 @@
+# Simple Buffalo Configuration
+# Minimal configuration for quick start
+
+version: 1.0
+
+global:
+  proto_path:
+    - ./proto
+  output_path: ./generated
+
+languages:
+  python:
+    enabled: true
+  
+  go:
+    enabled: true
+    go_package_prefix: github.com/example/project
+
+logging:
+  level: info
+  format: colored

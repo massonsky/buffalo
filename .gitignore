@@ -1,0 +1,70 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+coverage.xml
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Build artifacts
+/build/
+/dist/
+/bin/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Generated code
+generated/
+*.pb.go
+*_pb2.py
+*_pb2_grpc.py
+*.rs.bk
+
+# Local configuration
+*.local.yaml
+*.local.yml
+*.local.json
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Cache
+.cache/
+*.cache
+
+# Buffalo specific
+.buffalo/
