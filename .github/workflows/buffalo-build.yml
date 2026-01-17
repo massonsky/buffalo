@@ -27,7 +27,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
       
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -78,8 +78,7 @@ jobs:
       - name: Validate Generated Code (Python)
         if: hashFiles('generated/python/**/*.py') != ''
         run: |
-          cd generated/python
-          python -m py_compile **/*.py
+          python -m compileall generated/python
 
   lint:
     name: Lint Proto Files

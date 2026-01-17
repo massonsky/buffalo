@@ -25,7 +25,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
       
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -44,15 +44,20 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           pip install grpcio-tools
       
-      - name: Download Buffalo
+      - name: Build or Download Buffalo
         run: |
-          # Use released version or build from source
-          curl -L -o buffalo https://github.com/massonsky/buffalo/releases/download/${BUFFALO_VERSION}/buffalo-linux-amd64 || \
-          (cd cmd/buffalo && go build -o ../../buffalo .)
+          # Build from source for new release
+          cd cmd/buffalo
+          go build -ldflags "-s -w -X main.Version=${BUFFALO_VERSION}" -o ../../buffalo .
+          cd ../..
           chmod +x buffalo
+          sudo mv buffalo /usr/local/bin/
+      
+      - name: Verify Buffalo Installation
+        run: buffalo --version
       
       - name: Build Proto Files
-        run: ./buffalo build
+        run: buffalo build
       
       - name: Package Generated Files
         run: |
