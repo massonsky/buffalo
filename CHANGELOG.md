@@ -8,10 +8,99 @@
 ## [Unreleased]
 
 ### Планируется
-- TypeScript/JavaScript компилятор
-- Java/Kotlin компилятор
-- Remote cache поддержка
-- Web UI для конфигурации
+- CLI интерфейс с Cobra (v0.2.0)
+- Система конфигурации с Viper (v0.2.0)
+- Core builder реализация (v0.3.0)
+- Компиляторы для языков (v0.4.0-v0.7.0)
+- Система плагинов (v0.8.0)
+- Расширенные возможности (v0.9.0-v1.0.0)
+
+---
+
+## [0.1.0] - 2026-01-17
+
+### Added
+- **pkg/logger** - Полная система логирования
+  - Structured logging с Fields поддержкой
+  - 3 форматтера: JSON, Text, Colored (ANSI цвета)
+  - 2 типа вывода: Console (stdout/stderr), File (ротация по размеру/возрасту/дням)
+  - Уровни: DEBUG, INFO, WARN, ERROR, FATAL
+  - 16 тестов, 54.7% покрытие
+
+- **pkg/errors** - Расширенная обработка ошибок
+  - Error type с Code/Message/Cause/Stack/Context
+  - 26 предопределённых кодов ошибок
+  - New/Wrap/Unwrap для цепочек ошибок
+  - Совместимость с errors.Is/As
+  - 20 тестов, 92.2% покрытие
+
+- **pkg/utils** - Набор утилит
+  - file.go: FindFiles, CopyFile, EnsureDir, CleanDir, ReadFile, WriteFile
+  - path.go: NormalizePath, JoinPath, ChangeExtension, кроссплатформенность
+  - hash.go: MD5, SHA1, SHA256, SHA512 для файлов/строк/данных
+  - validation.go: ValidateProtoFile, ValidateProtoPackageName, ValidateOutputDir
+  - worker.go: WorkerPool для параллельного выполнения задач
+  - 46 тестов, 67.3% покрытие
+
+- **pkg/metrics** - Система метрик
+  - Metric types: Counter (Inc/Add), Gauge (Set/Inc/Dec/Add/Sub), Histogram (Observe с buckets)
+  - Collector: Register/Get/GetOrCreate, labels, snapshots
+  - Exporter: Text, JSON, Prometheus форматы
+  - Thread-safe с атомарными операциями
+  - Интеграция с pkg/logger
+  - 20 тестов, 90.9% покрытие
+
+### Changed
+- Обновлён cmd/buffalo/main.go для использования ColoredFormatter
+- Добавлены example_test.go для всех компонентов
+- README.md обновлён с информацией о v0.1.0
+
+### Technical Details
+- 19 исходных файлов в pkg/
+- 102 теста, все проходят успешно
+- Средний coverage: 76.3%
+- Нет внешних зависимостей (только stdlib)
+- Кроссплатформенная поддержка (Windows/Linux/macOS)
+- Atomic operations для thread-safety
+
+---
+
+## [0.0.0] - 2026-01-17
+
+### Added
+- 📋 Полная документация проекта
+  - ROADMAP.md: План развития v0.0.0 → v1.0.0
+  - ARCHITECTURE.md: Clean Architecture описание
+  - PROJECT_STRUCTURE.md: Структура директорий
+  - DEVELOPMENT.md: Руководство для разработчиков
+  - CONTRIBUTING.md: Правила контрибуции
+  - CODE_OF_CONDUCT.md: Кодекс поведения
+  - SECURITY.md: Политика безопасности
+  - TESTING.md: Стратегия тестирования
+
+- 🏗️ Базовая структура проекта
+  - Инициализация Go модуля (github.com/massonsky/buffalo)
+  - 28 директорий для всех компонентов
+  - internal/version для версионирования (Version/Commit/BuildDate/Platform)
+  - cmd/buffalo/main.go - точка входа
+
+- 🔧 Build инфраструктура
+  - Makefile с 20+ таргетами (build, test, lint, coverage, install, clean, cross-compile)
+  - .github/workflows/ci.yml - CI/CD pipeline (lint, test, build на Ubuntu/Windows/macOS)
+  - bin/ для собранных бинарников
+  - build/ для build артефактов
+
+- 📦 Git конфигурация
+  - .gitignore для Go проектов
+  - .gitattributes для line endings
+  - LICENSE (MIT)
+  - README.md с badges и описанием
+
+### Technical Details
+- Go 1.21+ требуется
+- Поддержка кросс-компиляции (GOOS/GOARCH)
+- Version info встроен в бинарник через ldflags
+- Готовность к TDD разработке
 
 ---
 

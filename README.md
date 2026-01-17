@@ -4,65 +4,186 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/yourorg/buffalo/workflows/CI/badge.svg)](https://github.com/yourorg/buffalo/actions)
-[![Coverage](https://codecov.io/gh/yourorg/buffalo/branch/main/graph/badge.svg)](https://codecov.io/gh/yourorg/buffalo)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yourorg/buffalo)](https://goreportcard.com/report/github.com/yourorg/buffalo)
+[![CI](https://github.com/massonsky/buffalo/workflows/CI/badge.svg)](https://github.com/massonsky/buffalo/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/massonsky/buffalo)](https://goreportcard.com/report/github.com/massonsky/buffalo)
+[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/massonsky/buffalo/releases)
+
+---
+
+## 📊 Статус разработки
+
+**Текущая версия: v0.1.0** - Базовая инфраструктура
+
+✅ **Завершено:**
+- **pkg/logger** - Система логирования (54.7% coverage, 16 tests)
+- **pkg/errors** - Обработка ошибок (92.2% coverage, 20 tests)  
+- **pkg/utils** - Утилиты (67.3% coverage, 46 tests)
+- **pkg/metrics** - Метрики (90.9% coverage, 20 tests)
+
+🚧 **В разработке (v0.2.0):**
+- CLI интерфейс с Cobra
+- Система конфигурации с Viper
+- Базовая структура builder
+
+📋 **Запланировано:**
+- v0.3.0: Core builder реализация
+- v0.4.0-v0.7.0: Компиляторы Python/Go/Rust/C++
+- v0.8.0: Система плагинов
+- v0.9.0-v1.0.0: Watch mode, инкрементальная сборка, кэширование
+
+См. [ROADMAP.md](ROADMAP.md) для деталей.
 
 ---
 
 ## ✨ Особенности
 
-- 🌍 **Мультиязычность:** Python, Go, Rust, C++ из коробки
-- ⚡ **Высокая производительность:** Параллельная компиляция, инкрементальная сборка
-- 🔧 **Гибкая настройка:** Конфигурация через YAML/TOML/JSON, CLI флаги, переменные окружения
-- 🔌 **Расширяемость:** Система плагинов для кастомизации
+- 🌍 **Мультиязычность:** Python, Go, Rust, C++ (планируется)
+- ⚡ **Высокая производительность:** Параллельная компиляция, инкрементальная сборка (планируется)
+- 🔧 **Гибкая настройка:** Конфигурация через YAML/TOML/JSON (в разработке)
+- 🔌 **Расширяемость:** Система плагинов (планируется)
 - 📦 **Кроссплатформенность:** Windows, Linux, macOS
-- 🎯 **Простота использования:** Интуитивный CLI интерфейс
-- 🚀 **Watch mode:** Автоматическая пересборка при изменениях
-- 💾 **Кэширование:** Умное кэширование для быстрой пересборки
-- 📊 **Метрики:** Детальная статистика сборки
-- 🐳 **Docker ready:** Готовые Docker образы
+- 🎯 **Простота использования:** Интуитивный CLI (в разработке)
+- 🚀 **Watch mode:** Автоматическая пересборка (планируется)
+- 💾 **Кэширование:** Умное кэширование (планируется)
+- 📊 **Метрики:** Система метрик реализована
+- 🐳 **Docker ready:** Docker образы (планируется)
+
+---
+
+## 🏗️ Текущая архитектура (v0.1.0)
+
+### Реализованные компоненты
+
+#### pkg/logger
+Полнофункциональная система логирования:
+```go
+// Создание logger с цветным форматированием
+log := logger.New(
+    logger.WithFormatter(logger.NewColoredFormatter()),
+    logger.WithLevel(logger.DEBUG),
+)
+
+// Structured logging
+log.WithFields(logger.Fields{
+    "user": "john",
+    "action": "login",
+}).Info("User logged in")
+```
+
+**Возможности:**
+- 3 форматтера: JSON, Text, Colored (ANSI цвета)
+- 2 типа вывода: Console (stdout/stderr), File (с ротацией)
+- Уровни: DEBUG, INFO, WARN, ERROR, FATAL
+- Поддержка Fields для structured logging
+
+#### pkg/errors
+Расширенная обработка ошибок:
+```go
+// Создание ошибки с кодом
+err := errors.New(errors.ErrInvalidInput, "неверный формат файла")
+
+// Wrap существующей ошибки
+wrapped := errors.Wrap(err, errors.ErrIO, "не удалось прочитать файл")
+
+// Добавление контекста
+wrapped.WithContext("file", "example.proto")
+
+// 26 предопределённых кодов ошибок
+```
+
+#### pkg/utils
+Набор утилит для работы с файлами, путями, хешированием:
+```go
+// Поиск proto файлов
+files, _ := utils.FindFiles("./protos", "*.proto", true)
+
+// Валидация proto файла
+result := utils.ValidateProtoFile("example.proto")
+
+// Хеширование
+hash, _ := utils.HashFile("example.proto") // SHA256 по умолчанию
+
+// Параллельное выполнение
+pool := utils.NewWorkerPool(4)
+pool.Execute(tasks)
+```
+
+#### pkg/metrics
+Система сбора метрик:
+```go
+// Создание collector
+collector := metrics.NewCollector()
+
+// Counter для подсчёта
+counter := collector.Counter("builds_total")
+counter.Inc()
+
+// Gauge для текущего значения
+gauge := collector.Gauge("active_workers")
+gauge.Set(10)
+
+// Histogram для распределения значений
+hist := collector.Histogram("build_duration_ms", nil)
+hist.Observe(245.5)
+
+// Экспорт в Prometheus
+exporter := metrics.NewExporter(collector)
+exporter.Export(metrics.FormatPrometheus, os.Stdout)
+```
+
+**Возможности:**
+- 3 типа метрик: Counter, Gauge, Histogram
+- Thread-safe с атомарными операциями
+- Экспорт: Text, JSON, Prometheus
+- Глобальные labels
+- Snapshots для точки во времени
 
 ---
 
 ## 🚀 Быстрый старт
 
-### Установка
+### Сборка из исходников
 
-#### Homebrew (macOS/Linux)
 ```bash
-brew install buffalo
+# Клонирование репозитория
+git clone git@github.com:massonsky/buffalo.git
+cd buffalo
+
+# Сборка
+make build
+
+# Запуск
+./bin/buffalo --version
+
+# Тесты
+make test
+
+# Coverage
+make coverage
 ```
 
-#### Scoop (Windows)
-```bash
-scoop install buffalo
-```
-
-#### Go install
-```bash
-go install github.com/yourorg/buffalo/cmd/buffalo@latest
-```
-
-#### Binary releases
-Скачать с [GitHub Releases](https://github.com/yourorg/buffalo/releases)
-
-### Первая сборка
+### Разработка
 
 ```bash
-# Инициализация проекта
-buffalo init
+# Линтеры
+make lint
 
-# Создать buffalo.yaml конфиг (или редактировать существующий)
-# Запустить сборку
-buffalo build
+# Форматирование
+make fmt
 
-# Готово! Сгенерированный код в ./generated
+# Сборка для всех платформ
+make cross-compile
+
+# Очистка
+make clean
 ```
 
 ---
 
-## 📖 Использование
+## 📖 Использование (планируется v0.2.0+)
+
+> **Примечание:** CLI команды ниже будут доступны в v0.2.0. 
+> Сейчас (v0.1.0) доступна только базовая инфраструктура.
 
 ### Базовая команда
 
