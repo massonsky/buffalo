@@ -480,8 +480,10 @@ func (c *Compiler) fixImports(opts compiler.CompileOptions, generatedFiles []str
 
 	c.log.Debug("Fixing Python imports",
 		logger.String("outputDir", outputDir),
+		logger.String("osWorkDir", workDir),
+		logger.String("relOutputDir", relOutputDir),
 		logger.String("modulePrefix", modulePrefix),
-		logger.String("workDir", c.options.WorkDir),
+		logger.String("configWorkDir", c.options.WorkDir),
 		logger.Bool("preserveProtoStructure", opts.PreserveProtoStructure))
 
 	// Walk through all Python files in output directory
@@ -510,6 +512,13 @@ func (c *Compiler) fixImports(opts compiler.CompileOptions, generatedFiles []str
 			subModulePath = strings.ReplaceAll(fileDir, string(filepath.Separator), ".")
 			subModulePath = strings.ReplaceAll(subModulePath, "/", ".")
 		}
+
+		c.log.Debug("Processing Python file for import fixing",
+			logger.String("file", path),
+			logger.String("relFilePath", relFilePath),
+			logger.String("fileDir", fileDir),
+			logger.String("subModulePath", subModulePath),
+			logger.String("modulePrefix", modulePrefix))
 
 		// Fix imports in this file
 		if err := c.fixFileImports(path, modulePrefix, subModulePath, opts.PreserveProtoStructure); err != nil {
@@ -567,6 +576,13 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModul
 			modulePath := matches[3]        // "module1.v1"
 			importPart := matches[4]        // " import something_pb2"
 
+			c.log.Debug("Matched 'from X import' pattern",
+				logger.String("file", filePath),
+				logger.String("line", line),
+				logger.String("modulePath", modulePath),
+				logger.String("modulePrefix", modulePrefix),
+				logger.Bool("preserveStructure", preserveStructure))
+
 			// Skip external dependencies
 			if c.isExternalModule(modulePath, externalPrefixes) {
 				c.log.Debug("Skipping external dependency import",
@@ -604,7 +620,7 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModul
 		if matches := directImportPattern.FindStringSubmatch(line); matches != nil {
 			leadingWhitespace := matches[1] // indentation
 			importKeyword := matches[2]     // "import "
-			modulePath := matches[3]        // "module1.v1"
+			modulePath := matches[3]        // "module1.v1" or just "ais"
 			pb2Suffix := matches[4]         // "_pb2" or "_pb2_grpc"
 
 			// Skip external dependencies
@@ -620,10 +636,16 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModul
 				var newModulePath string
 				if preserveStructure {
 					// When structure is preserved, add full prefix
+					// Example: "import module1.v1_pb2" -> "import generated.python.module1.v1_pb2"
 					newModulePath = modulePrefix + "." + modulePath
 				} else {
-					// When structure is NOT preserved, use just the prefix
-					newModulePath = modulePrefix
+					// When structure is NOT preserved (flat), keep the file name only
+					// Extract just the last part (actual file name)
+					// Example: "import ais_pb2" (modulePath="ais") -> "import generated.python.ais_pb2"
+					// Example: "import module1.v1_pb2" (modulePath="module1.v1") -> "import generated.python.v1_pb2"
+					parts := strings.Split(modulePath, ".")
+					fileName := parts[len(parts)-1]
+					newModulePath = modulePrefix + "." + fileName
 				}
 				newLine := leadingWhitespace + importKeyword + newModulePath + pb2Suffix
 				lines[i] = newLine
