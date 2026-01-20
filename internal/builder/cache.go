@@ -104,6 +104,14 @@ func (c *cacheManager) Get(ctx context.Context, file *ProtoFile) (*CacheEntry, e
 		return nil, nil
 	}
 
+	// Verify that generated files still exist
+	for _, genFile := range entry.GeneratedFiles {
+		if !utils.FileExists(genFile) {
+			c.log.Debug("Cache miss: generated file missing", "file", file.Path, "missing", genFile)
+			return nil, nil
+		}
+	}
+
 	c.log.Debug("Cache hit", "file", file.Path)
 	return &entry, nil
 }

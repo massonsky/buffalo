@@ -299,7 +299,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 	// Save version state if versioning is enabled
 	if e.versionManager.IsEnabled() {
 		version, _ := e.versionManager.GenerateVersion(file.Path)
-		if verErr := e.versionManager.SaveVersion(file.Path, version); verErr != nil {
+		if verErr := e.versionManager.SaveVersion(file.Path, version, outputDir); verErr != nil {
 			e.log.Warn("Failed to save version state",
 				"file", file.Path,
 				"error", verErr,

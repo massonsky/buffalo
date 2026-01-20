@@ -3,8 +3,8 @@
 # This file is auto-generated from buffalo.yaml
 
 version: "1"
-generated_at: 2026-01-20T11:58:19.186197Z
-config_hash: 8a485f5527b9e93b0566d5a1264439e380009182f7949a0494dcbe8e588e1172
+generated_at: 2026-01-20T12:13:16.8829746Z
+config_hash: 3911371c7ed3c3d93322eb13aa13f048237814eeb9043a4c4041f64973e29c43
 project:
     name: my-proto-project
     version: 0.1.0
@@ -21,9 +21,9 @@ proto:
             modified_at: 2026-01-19T05:36:58.8939229Z
             package: example
         protos\good_name.proto:
-            hash: d059d1655675e1bc847fd64c1c30c8a1cd0e86a3567f4e38db29ecc95eec07af
-            size: 154
-            modified_at: 2026-01-19T05:36:58.8939229Z
+            hash: 121785495ecbbefb802c25f0915fab120811500e434103af88805f8f448452dc
+            size: 230
+            modified_at: 2026-01-20T12:03:35.9301382Z
             package: test.v1
         protos\user\v1\user.proto:
             hash: d9a1a170067079995a90e59b1cf9313ef3d9e63e6d45b6324537f3d5b5c2fd60

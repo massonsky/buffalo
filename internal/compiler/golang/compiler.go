@@ -329,12 +329,12 @@ require (
 func (c *Compiler) analyzeGoImports(outputDir string) map[string]string {
 	// Known protobuf/grpc package versions (latest stable)
 	knownPackages := map[string]string{
-		"google.golang.org/protobuf":                      "v1.36.2",
-		"google.golang.org/grpc":                          "v1.69.4",
-		"google.golang.org/genproto/googleapis/api":       "v0.0.0-20241015192408-796eee8c2d53",
-		"google.golang.org/genproto/googleapis/rpc":       "v0.0.0-20241015192408-796eee8c2d53",
-		"github.com/grpc-ecosystem/grpc-gateway/v2":       "v2.24.0",
-		"github.com/envoyproxy/protoc-gen-validate":       "v1.1.0",
+		"google.golang.org/protobuf":                "v1.36.2",
+		"google.golang.org/grpc":                    "v1.69.4",
+		"google.golang.org/genproto/googleapis/api": "v0.0.0-20241015192408-796eee8c2d53",
+		"google.golang.org/genproto/googleapis/rpc": "v0.0.0-20241015192408-796eee8c2d53",
+		"github.com/grpc-ecosystem/grpc-gateway/v2": "v2.24.0",
+		"github.com/envoyproxy/protoc-gen-validate": "v1.1.0",
 	}
 
 	requiredDeps := make(map[string]string)

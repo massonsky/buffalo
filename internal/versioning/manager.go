@@ -109,18 +109,23 @@ func (m *Manager) GetCurrentVersion(protoPath string) (*FileVersion, error) {
 		return nil, errors.Wrap(err, errors.ErrIO, "failed to read state file: %s", stateFile)
 	}
 
-	// Parse state (simple format: hash|version|timestamp)
+	// Parse state (format: hash|version|timestamp|outputPath)
 	parts := strings.Split(string(data), "|")
 	if len(parts) < 3 {
 		return nil, nil // Invalid state
 	}
 
 	timestamp, _ := time.Parse(time.RFC3339, parts[2])
+	outputPath := ""
+	if len(parts) >= 4 {
+		outputPath = parts[3]
+	}
 	return &FileVersion{
-		ProtoPath: protoPath,
-		Hash:      parts[0],
-		Version:   parts[1],
-		Timestamp: timestamp,
+		ProtoPath:  protoPath,
+		Hash:       parts[0],
+		Version:    parts[1],
+		Timestamp:  timestamp,
+		OutputPath: outputPath,
 	}, nil
 }
 
@@ -145,7 +150,19 @@ func (m *Manager) ShouldGenerateNewVersion(protoPath string) (bool, error) {
 	}
 
 	// Check if content changed
-	return currentHash != prevVersion.Hash, nil
+	if currentHash != prevVersion.Hash {
+		return true, nil
+	}
+
+	// Even if hash matches, check if the output directory still exists
+	// This handles the case where generated files were deleted but cache/state remains
+	if prevVersion.OutputPath != "" {
+		if _, err := os.Stat(prevVersion.OutputPath); os.IsNotExist(err) {
+			return true, nil // Output was deleted, need to regenerate
+		}
+	}
+
+	return false, nil
 }
 
 // GenerateVersion generates a new version identifier
@@ -208,7 +225,7 @@ func (m *Manager) GetVersionedOutputPath(baseOutputPath, version string) string 
 }
 
 // SaveVersion saves the version state
-func (m *Manager) SaveVersion(protoPath, version string) error {
+func (m *Manager) SaveVersion(protoPath, version, outputPath string) error {
 	if !m.enabled {
 		return nil
 	}
@@ -223,8 +240,8 @@ func (m *Manager) SaveVersion(protoPath, version string) error {
 		return errors.Wrap(err, errors.ErrIO, "failed to create state directory")
 	}
 
-	// Write state (hash|version|timestamp)
-	state := fmt.Sprintf("%s|%s|%s", hash, version, time.Now().Format(time.RFC3339))
+	// Write state (hash|version|timestamp|outputPath)
+	state := fmt.Sprintf("%s|%s|%s|%s", hash, version, time.Now().Format(time.RFC3339), outputPath)
 	if err := os.WriteFile(stateFile, []byte(state), 0644); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to write state file: %s", stateFile)
 	}
