@@ -116,6 +116,13 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 		result.GeneratedFiles = append(result.GeneratedFiles, generatedFiles...)
 	}
 
+	// Generate go.mod file if GoModule is specified
+	if c.options.GoModule != "" {
+		if err := c.generateGoMod(opts.OutputDir); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to generate go.mod: %v", err))
+		}
+	}
+
 	result.Success = true
 	return result, nil
 }
@@ -259,6 +266,125 @@ func (c *Compiler) GetOutputPath(file compiler.ProtoFile, opts compiler.CompileO
 func (c *Compiler) getOutputPathWithDir(file compiler.ProtoFile, opts compiler.CompileOptions) string {
 	baseName := strings.TrimSuffix(filepath.Base(file.Path), ".proto")
 	return filepath.Join(opts.OutputDir, baseName+".pb.go")
+}
+
+// generateGoMod creates a go.mod file in the output directory and runs go mod tidy
+// It analyzes generated .go files to determine required dependencies
+func (c *Compiler) generateGoMod(outputDir string) error {
+	goModPath := filepath.Join(outputDir, "go.mod")
+
+	// Check if go.mod already exists
+	if _, err := os.Stat(goModPath); err == nil {
+		c.log.Debug("go.mod already exists, skipping generation",
+			logger.String("path", goModPath))
+		return nil
+	}
+
+	// Analyze generated Go files to detect required imports
+	requiredDeps := c.analyzeGoImports(outputDir)
+
+	// Build require block
+	var requireBlock strings.Builder
+	for pkg, version := range requiredDeps {
+		requireBlock.WriteString(fmt.Sprintf("\t%s %s\n", pkg, version))
+	}
+
+	// Create go.mod content based on analysis
+	goModContent := fmt.Sprintf(`module %s
+
+go 1.23
+
+require (
+%s)
+`, c.options.GoModule, requireBlock.String())
+
+	// Write go.mod file
+	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
+		return fmt.Errorf("failed to write go.mod: %v", err)
+	}
+
+	c.log.Info("Generated go.mod",
+		logger.String("path", goModPath),
+		logger.String("module", c.options.GoModule),
+		logger.Int("dependencies", len(requiredDeps)))
+
+	// Run go mod tidy to resolve transitive dependencies
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = outputDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		c.log.Warn("go mod tidy failed, go.mod may have incomplete dependencies",
+			logger.String("error", err.Error()),
+			logger.String("output", string(output)))
+		// Don't return error - go.mod is still usable, just might need manual tidy
+	} else {
+		c.log.Info("Ran go mod tidy successfully",
+			logger.String("path", outputDir))
+	}
+
+	return nil
+}
+
+// analyzeGoImports scans generated .go files and returns a map of required external packages
+func (c *Compiler) analyzeGoImports(outputDir string) map[string]string {
+	// Known protobuf/grpc package versions (latest stable)
+	knownPackages := map[string]string{
+		"google.golang.org/protobuf":                      "v1.36.2",
+		"google.golang.org/grpc":                          "v1.69.4",
+		"google.golang.org/genproto/googleapis/api":       "v0.0.0-20241015192408-796eee8c2d53",
+		"google.golang.org/genproto/googleapis/rpc":       "v0.0.0-20241015192408-796eee8c2d53",
+		"github.com/grpc-ecosystem/grpc-gateway/v2":       "v2.24.0",
+		"github.com/envoyproxy/protoc-gen-validate":       "v1.1.0",
+	}
+
+	requiredDeps := make(map[string]string)
+
+	// Walk through all .go files
+	filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+
+		fileContent := string(content)
+
+		// Check for common protobuf imports
+		for pkg, version := range knownPackages {
+			// Check if this package is imported (simple string match)
+			importPath := `"` + pkg
+			if strings.Contains(fileContent, importPath) {
+				requiredDeps[pkg] = version
+				c.log.Debug("Found import",
+					logger.String("file", path),
+					logger.String("package", pkg))
+			}
+		}
+
+		// Always include protobuf as base dependency for generated code
+		if strings.Contains(fileContent, "google.golang.org/protobuf") ||
+			strings.Contains(fileContent, "proto.Message") ||
+			strings.Contains(fileContent, "protoreflect") {
+			requiredDeps["google.golang.org/protobuf"] = knownPackages["google.golang.org/protobuf"]
+		}
+
+		// Check for grpc imports
+		if strings.Contains(fileContent, "google.golang.org/grpc") {
+			requiredDeps["google.golang.org/grpc"] = knownPackages["google.golang.org/grpc"]
+		}
+
+		return nil
+	})
+
+	// Ensure at least protobuf is present (all generated code needs it)
+	if len(requiredDeps) == 0 {
+		requiredDeps["google.golang.org/protobuf"] = knownPackages["google.golang.org/protobuf"]
+	}
+
+	return requiredDeps
 }
 
 // RequiredTools returns the list of required external tools
