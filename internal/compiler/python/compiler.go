@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/massonsky/buffalo/internal/compiler"
@@ -158,6 +159,11 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 		if err := c.generateInitFiles(opts.OutputDir); err != nil {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to generate __init__.py: %v", err))
 		}
+	}
+
+	// Fix imports in generated Python files to use full paths from working directory
+	if err := c.fixImports(opts.OutputDir, result.GeneratedFiles); err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to fix imports: %v", err))
 	}
 
 	result.Success = true
@@ -366,4 +372,149 @@ func (c *Compiler) generateInitFiles(outputDir string) error {
 
 		return nil
 	})
+}
+
+// fixImports rewrites imports in generated Python files to use full paths from working directory.
+// This fixes the issue where protoc generates relative imports like "from module1.v1 import service_pb2"
+// instead of full paths like "from api.generated.python.module1.v1 import service_pb2"
+func (c *Compiler) fixImports(outputDir string, generatedFiles []string) error {
+	// Get the working directory to calculate the full module path
+	workDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %v", err)
+	}
+
+	// Calculate the Python module prefix from the output directory relative to working directory
+	// e.g., outputDir = "api/generated/python" -> modulePrefix = "api.generated.python"
+	relOutputDir, err := filepath.Rel(workDir, outputDir)
+	if err != nil {
+		// If we can't get relative path, try using outputDir as-is
+		relOutputDir = outputDir
+	}
+
+	// Clean the path and convert to module format
+	relOutputDir = filepath.Clean(relOutputDir)
+	// Convert path separators to dots for Python module path
+	modulePrefix := strings.ReplaceAll(relOutputDir, string(filepath.Separator), ".")
+	// Also handle forward slashes (in case of mixed paths)
+	modulePrefix = strings.ReplaceAll(modulePrefix, "/", ".")
+	// Remove leading dots if any
+	modulePrefix = strings.TrimPrefix(modulePrefix, ".")
+
+	c.log.Debug("Fixing Python imports",
+		logger.String("outputDir", outputDir),
+		logger.String("modulePrefix", modulePrefix))
+
+	// Walk through all Python files in output directory
+	return filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories and non-Python files
+		if info.IsDir() || !strings.HasSuffix(path, ".py") {
+			return nil
+		}
+
+		// Skip __init__.py files
+		if info.Name() == "__init__.py" {
+			return nil
+		}
+
+		// Fix imports in this file
+		if err := c.fixFileImports(path, modulePrefix); err != nil {
+			c.log.Warn("Failed to fix imports in file",
+				logger.String("file", path),
+				logger.String("error", err.Error()))
+		}
+
+		return nil
+	})
+}
+
+// fixFileImports rewrites imports in a single Python file
+func (c *Compiler) fixFileImports(filePath string, modulePrefix string) error {
+	// Read the file
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %v", err)
+	}
+
+	originalContent := string(content)
+	modifiedContent := originalContent
+
+	// Pattern to match import statements for pb2 modules
+	// Matches: from X import Y_pb2 or from X.Y import Z_pb2 (with optional leading whitespace)
+	// Also matches: import X_pb2 or import X.Y_pb2
+	fromImportPattern := regexp.MustCompile(`^(\s*)(from\s+)([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s+import\s+.+_pb2.*)$`)
+	directImportPattern := regexp.MustCompile(`^(\s*)(import\s+)([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(_pb2.*)$`)
+
+	// Process line by line
+	lines := strings.Split(modifiedContent, "\n")
+	modified := false
+
+	for i, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+
+		// Skip empty lines and comments
+		if trimmedLine == "" || strings.HasPrefix(trimmedLine, "#") {
+			continue
+		}
+
+		// Check for "from X import Y_pb2" pattern
+		if matches := fromImportPattern.FindStringSubmatch(line); matches != nil {
+			leadingWhitespace := matches[1] // indentation
+			fromPart := matches[2]          // "from "
+			modulePath := matches[3]        // "module1.v1"
+			importPart := matches[4]        // " import something_pb2"
+
+			// Check if this import already has the full prefix
+			if !strings.HasPrefix(modulePath, modulePrefix) {
+				// Build the new full module path
+				newModulePath := modulePrefix + "." + modulePath
+				newLine := leadingWhitespace + fromPart + newModulePath + importPart
+				lines[i] = newLine
+				modified = true
+
+				c.log.Debug("Fixed import",
+					logger.String("file", filePath),
+					logger.String("old", line),
+					logger.String("new", lines[i]))
+			}
+			continue
+		}
+
+		// Check for "import X_pb2" pattern
+		if matches := directImportPattern.FindStringSubmatch(line); matches != nil {
+			leadingWhitespace := matches[1] // indentation
+			importKeyword := matches[2]     // "import "
+			modulePath := matches[3]        // "module1.v1"
+			pb2Suffix := matches[4]         // "_pb2" or "_pb2_grpc"
+
+			// Check if this import already has the full prefix
+			if !strings.HasPrefix(modulePath, modulePrefix) {
+				// Build the new full module path
+				newModulePath := modulePrefix + "." + modulePath
+				newLine := leadingWhitespace + importKeyword + newModulePath + pb2Suffix
+				lines[i] = newLine
+				modified = true
+
+				c.log.Debug("Fixed import",
+					logger.String("file", filePath),
+					logger.String("old", line),
+					logger.String("new", lines[i]))
+			}
+		}
+	}
+
+	// Write back if modified
+	if modified {
+		modifiedContent = strings.Join(lines, "\n")
+		if err := os.WriteFile(filePath, []byte(modifiedContent), 0644); err != nil {
+			return fmt.Errorf("failed to write file: %v", err)
+		}
+		c.log.Info("Fixed imports in file", logger.String("file", filePath))
+	}
+
+	return nil
 }

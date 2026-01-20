@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/massonsky/buffalo/internal/system"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/utils"
 	"github.com/spf13/cobra"
@@ -133,75 +134,85 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 5. Check protoc
-	log.Info("\n🔧 Dependencies")
-	if _, err := utils.FindExecutable("protoc"); err != nil {
-		log.Error("  ❌ protoc not found in PATH")
-		log.Info("  💡 Tip: Install Protocol Buffers compiler")
-		log.Info("     • Linux: apt-get install protobuf-compiler")
-		log.Info("     • macOS: brew install protobuf")
-		log.Info("     • Windows: choco install protoc")
+	// 5. Check system readiness for enabled languages
+	log.Info("\n🔧 System Readiness Check")
+	systemChecker := system.NewSystemChecker(cfg)
+	sysResults, err := systemChecker.CheckReadiness()
+	if err != nil {
+		log.Error(fmt.Sprintf("  ❌ Ошибка проверки системы: %v", err))
 		issues++
 	} else {
-		log.Info("  ✅ protoc found")
-		if checkVerbose {
+		criticalMissing := []system.CheckResult{}
+		warningMissing := []system.CheckResult{}
+		passed := 0
+
+		for _, result := range sysResults {
+			if result.Installed {
+				passed++
+				if checkVerbose {
+					log.Info(fmt.Sprintf("  ✅ %s: %s", result.Requirement.Name, result.Version))
+				}
+			} else {
+				if result.Requirement.Critical {
+					criticalMissing = append(criticalMissing, result)
+				} else {
+					warningMissing = append(warningMissing, result)
+				}
+			}
+		}
+
+		log.Info(fmt.Sprintf("  ✅ %d из %d требований установлено", passed, len(sysResults)))
+
+		// Выводим критичные отсутствующие зависимости
+		if len(criticalMissing) > 0 {
+			log.Error(fmt.Sprintf("\n  ❌ Критичные требования не установлены:"))
+			for _, result := range criticalMissing {
+				log.Error(fmt.Sprintf("     • %s", result.Requirement.Name))
+				if result.Error != nil {
+					log.Error(fmt.Sprintf("       Причина: %v", result.Error))
+				}
+				if result.InstallCommand != "" {
+					log.Info(fmt.Sprintf("       💡 Установка: %s", result.InstallCommand))
+				}
+				if checkVerbose && result.InstallGuide != "" {
+					log.Info(fmt.Sprintf("       📖 Инструкция: %s", result.InstallGuide))
+				}
+			}
+			issues += len(criticalMissing)
+		}
+
+		// Выводим предупреждения о некритичных зависимостях
+		if len(warningMissing) > 0 && checkVerbose {
+			log.Warn(fmt.Sprintf("\n  ⚠️  Опциональные компоненты не установлены:"))
+			for _, result := range warningMissing {
+				log.Warn(fmt.Sprintf("     • %s", result.Requirement.Name))
+				if result.InstallCommand != "" {
+					log.Info(fmt.Sprintf("       💡 Установка: %s", result.InstallCommand))
+				}
+			}
+			warnings += len(warningMissing)
+		}
+	}
+
+	// 6. Check protoc (legacy check - для обратной совместимости)
+	// 6. Check protoc (legacy check - для обратной совместимости)
+	if checkVerbose {
+		log.Info("\n🔧 Legacy Dependencies Check (verbose)")
+		if _, err := utils.FindExecutable("protoc"); err != nil {
+			log.Error("  ❌ protoc not found in PATH")
+			log.Info("  💡 Tip: Install Protocol Buffers compiler")
+			log.Info("     • Linux: apt-get install protobuf-compiler")
+			log.Info("     • macOS: brew install protobuf")
+			log.Info("     • Windows: choco install protoc")
+		} else {
+			log.Info("  ✅ protoc found")
 			if output, err := utils.ExecCommand("protoc", "--version"); err == nil {
 				log.Info(fmt.Sprintf("     Version: %s", output))
 			}
 		}
 	}
 
-	// Check language-specific tools
-	for _, lang := range enabledLangs {
-		switch lang {
-		case "python":
-			if _, err := utils.FindExecutable("python"); err != nil {
-				if _, err := utils.FindExecutable("python3"); err != nil {
-					log.Warn(fmt.Sprintf("  ⚠️  Python not found for %s", lang))
-					warnings++
-				} else {
-					log.Info(fmt.Sprintf("  ✅ python3 found for %s", lang))
-				}
-			} else {
-				log.Info(fmt.Sprintf("  ✅ python found for %s", lang))
-			}
-
-		case "go":
-			if _, err := utils.FindExecutable("protoc-gen-go"); err != nil {
-				log.Warn(fmt.Sprintf("  ⚠️  protoc-gen-go not found for %s", lang))
-				log.Info("  💡 Tip: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest")
-				warnings++
-			} else {
-				log.Info(fmt.Sprintf("  ✅ protoc-gen-go found for %s", lang))
-			}
-			if _, err := utils.FindExecutable("protoc-gen-go-grpc"); err != nil {
-				log.Warn(fmt.Sprintf("  ⚠️  protoc-gen-go-grpc not found for %s", lang))
-				log.Info("  💡 Tip: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest")
-				warnings++
-			} else {
-				log.Info(fmt.Sprintf("  ✅ protoc-gen-go-grpc found for %s", lang))
-			}
-
-		case "rust":
-			if _, err := utils.FindExecutable("cargo"); err != nil {
-				log.Warn(fmt.Sprintf("  ⚠️  cargo not found for %s", lang))
-				log.Info("  💡 Tip: Install Rust from https://rustup.rs/")
-				warnings++
-			} else {
-				log.Info(fmt.Sprintf("  ✅ cargo found for %s", lang))
-			}
-
-		case "cpp":
-			if _, err := utils.FindExecutable("protoc"); err != nil {
-				log.Warn(fmt.Sprintf("  ⚠️  protoc with C++ support needed for %s", lang))
-				warnings++
-			} else {
-				log.Info(fmt.Sprintf("  ✅ protoc with C++ support for %s", lang))
-			}
-		}
-	}
-
-	// 6. Check cache configuration
+	// 7. Check cache configuration
 	if cfg.Build.Cache.Enabled {
 		log.Info("\n💾 Cache")
 		cacheDir := cfg.Build.Cache.Directory

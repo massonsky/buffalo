@@ -8,13 +8,17 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/massonsky/buffalo/internal/config"
+	"github.com/massonsky/buffalo/internal/system"
 	"github.com/massonsky/buffalo/internal/version"
+	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/spf13/cobra"
 )
 
 var (
-	doctorVerbose bool
-	doctorCmd     = &cobra.Command{
+	doctorVerbose    bool
+	doctorConfigOnly bool
+	doctorCmd        = &cobra.Command{
 		Use:   "doctor",
 		Short: "Check Buffalo environment and dependencies",
 		Long: `Check your Buffalo environment for common issues.
@@ -26,6 +30,9 @@ This command verifies:
   - Config file validity
   - Dependency installations
 
+By default, checks ALL supported languages. Use --config-only flag to check 
+only languages enabled in your buffalo.yaml configuration.
+
 Returns exit code 0 if all checks pass, 1 if any critical checks fail.`,
 		RunE: runDoctor,
 	}
@@ -34,6 +41,7 @@ Returns exit code 0 if all checks pass, 1 if any critical checks fail.`,
 func init() {
 	rootCmd.AddCommand(doctorCmd)
 	doctorCmd.Flags().BoolVarP(&doctorVerbose, "verbose", "v", false, "show detailed diagnostic information")
+	doctorCmd.Flags().BoolVarP(&doctorConfigOnly, "config-only", "c", false, "check only languages enabled in buffalo.yaml")
 }
 
 // CheckResult represents the result of a diagnostic check
@@ -59,6 +67,26 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	// Check 2: Operating System
 	results = append(results, checkOS())
 
+	// Если используется флаг --config-only, проверяем только включенные языки
+	if doctorConfigOnly {
+		cfg, err := loadConfigForDoctor()
+		if err != nil {
+			log.Warn(fmt.Sprintf("⚠️  Не удалось загрузить конфигурацию: %v", err))
+			log.Info("Выполняется проверка всех языков...")
+		} else {
+			log.Info(fmt.Sprintf("📋 Проверка готовности для языков из конфигурации..."))
+			results = append(results, runSystemCheck(cfg)...)
+
+			// Проверка конфига и зависимостей
+			results = append(results, checkConfig())
+			results = append(results, checkDependencies())
+
+			// Выводим результаты и завершаем
+			return printDoctorResults(results, log)
+		}
+	}
+
+	// Стандартная проверка всех языков
 	// Check 3: protoc compiler
 	results = append(results, checkProtoc())
 
@@ -80,10 +108,79 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	// Check 9: Dependencies
 	results = append(results, checkDependencies())
 
-	// Print results
-	log.Info("")
-	log.Info("📋 Diagnostic Results")
-	log.Info("═══════════════════════════════════════════════════")
+	return printDoctorResults(results, log)
+}
+
+// loadConfigForDoctor загружает конфигурацию для команды doctor
+func loadConfigForDoctor() (*config.Config, error) {
+	cfg, err := loadConfig(GetLogger())
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// runSystemCheck выполняет проверку системы с помощью system.SystemChecker
+func runSystemCheck(cfg *config.Config) []CheckResult {
+	checker := system.NewSystemChecker(cfg)
+	sysResults, err := checker.CheckReadiness()
+
+	results := []CheckResult{}
+
+	if err != nil {
+		results = append(results, CheckResult{
+			Name:     "System Check",
+			Status:   "fail",
+			Message:  fmt.Sprintf("Ошибка проверки системы: %v", err),
+			Critical: true,
+		})
+		return results
+	}
+
+	// Преобразуем system.CheckResult в cli.CheckResult
+	for _, sysResult := range sysResults {
+		status := "pass"
+		message := sysResult.Version
+
+		if !sysResult.Installed {
+			if sysResult.Requirement.Critical {
+				status = "fail"
+			} else {
+				status = "warn"
+			}
+
+			if sysResult.Error != nil {
+				message = sysResult.Error.Error()
+			} else {
+				message = "Не установлено"
+			}
+		}
+
+		details := ""
+		if !sysResult.Installed && sysResult.InstallCommand != "" {
+			details = fmt.Sprintf("Установка: %s", sysResult.InstallCommand)
+			if doctorVerbose && sysResult.InstallGuide != "" {
+				details += fmt.Sprintf("\nИнструкция: %s", sysResult.InstallGuide)
+			}
+		}
+
+		results = append(results, CheckResult{
+			Name:     sysResult.Requirement.Name,
+			Status:   status,
+			Message:  message,
+			Details:  details,
+			Critical: sysResult.Requirement.Critical,
+		})
+	}
+
+	return results
+}
+
+// printDoctorResults выводит результаты проверки
+func printDoctorResults(results []CheckResult, loggerInstance *logger.Logger) error {
+	loggerInstance.Info("")
+	loggerInstance.Info("📋 Diagnostic Results")
+	loggerInstance.Info("═══════════════════════════════════════════════════")
 
 	passCount := 0
 	warnCount := 0
@@ -112,24 +209,24 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	// Summary
-	log.Info("")
-	log.Info("═══════════════════════════════════════════════════")
+	loggerInstance.Info("")
+	loggerInstance.Info("═══════════════════════════════════════════════════")
 	fmt.Printf("✅ Passed: %d  ⚠️  Warnings: %d  ❌ Failed: %d\n", passCount, warnCount, failCount)
 
 	if criticalFail {
-		log.Info("")
-		log.Error("❌ Critical checks failed. Buffalo may not work correctly.")
+		loggerInstance.Info("")
+		loggerInstance.Error("❌ Critical checks failed. Buffalo may not work correctly.")
 		return fmt.Errorf("critical environment checks failed")
 	}
 
 	if warnCount > 0 {
-		log.Info("")
-		log.Warn("⚠️  Some checks have warnings. Some features may be limited.")
+		loggerInstance.Info("")
+		loggerInstance.Warn("⚠️  Some checks have warnings. Some features may be limited.")
 	}
 
 	if failCount == 0 && warnCount == 0 {
-		log.Info("")
-		log.Info("🎉 All checks passed! Your Buffalo environment is ready.")
+		loggerInstance.Info("")
+		loggerInstance.Info("🎉 All checks passed! Your Buffalo environment is ready.")
 	}
 
 	return nil

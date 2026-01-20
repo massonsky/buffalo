@@ -276,8 +276,11 @@ buffalo rebuild                  # Полная пересборка (очист
 ```bash
 buffalo watch                    # Автоматическая пересборка при изменениях
 buffalo watch --lang go          # Watch для конкретного языка
-buffalo check                    # Проверка конфигурации и .proto файлов
+buffalo check                    # Проверка готовности проекта к сборке
+buffalo check -v                 # Детальная проверка с выводом всех компонентов
 buffalo validate                 # Валидация proto файлов
+buffalo doctor                   # Диагностика окружения (все языки)
+buffalo doctor --config-only     # Проверка только включенных языков
 ```
 
 ### Управление проектом
