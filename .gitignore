@@ -68,3 +68,6 @@ logs/
 
 # Buffalo specific
 .buffalo/
+
+
+.github/instructions

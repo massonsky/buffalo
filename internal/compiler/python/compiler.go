@@ -43,6 +43,10 @@ type Options struct {
 
 	// WorkDir is the working directory prefix for imports (e.g., "myapp" -> "from myapp.generated.python import ...")
 	WorkDir string
+
+	// ExcludeImports is a list of module prefixes to exclude from import path fixing
+	// These are typically external dependencies like google.protobuf, grpc, etc.
+	ExcludeImports []string
 }
 
 // New creates a new Python compiler
@@ -71,6 +75,21 @@ func New(log *logger.Logger, opts *Options) *Compiler {
 	}
 }
 
+// DefaultExcludeImports returns the default list of module prefixes to exclude from import fixing
+// These are well-known protobuf/grpc packages that come from external sources
+func DefaultExcludeImports() []string {
+	return []string{
+		"google.",       // google.protobuf, google.api, google.rpc, etc.
+		"grpc",          // grpc module itself
+		"protobuf",      // protobuf module
+		"googleapis",    // googleapis packages
+		"opentelemetry", // OpenTelemetry protos
+		"envoy.",        // Envoy proxy protos
+		"validate",      // protoc-gen-validate
+		"buf.",          // Buf ecosystem
+	}
+}
+
 // DefaultOptions returns default options for Python compiler
 func DefaultOptions() *Options {
 	return &Options{
@@ -81,6 +100,7 @@ func DefaultOptions() *Options {
 		GenerateInit:         true,
 		PythonPackagePrefix:  "",
 		WorkDir:              "",
+		ExcludeImports:       DefaultExcludeImports(),
 	}
 }
 
@@ -522,6 +542,12 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModul
 	fromImportPattern := regexp.MustCompile(`^(\s*)(from\s+)([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s+import\s+.+_pb2.*)$`)
 	directImportPattern := regexp.MustCompile(`^(\s*)(import\s+)([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(_pb2.*)$`)
 
+	// Use configured exclude imports or default if not set
+	externalPrefixes := c.options.ExcludeImports
+	if len(externalPrefixes) == 0 {
+		externalPrefixes = DefaultExcludeImports()
+	}
+
 	// Process line by line
 	lines := strings.Split(modifiedContent, "\n")
 	modified := false
@@ -540,6 +566,14 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModul
 			fromPart := matches[2]          // "from "
 			modulePath := matches[3]        // "module1.v1"
 			importPart := matches[4]        // " import something_pb2"
+
+			// Skip external dependencies
+			if c.isExternalModule(modulePath, externalPrefixes) {
+				c.log.Debug("Skipping external dependency import",
+					logger.String("file", filePath),
+					logger.String("module", modulePath))
+				continue
+			}
 
 			// Check if this import already has the full prefix
 			if !strings.HasPrefix(modulePath, modulePrefix) {
@@ -573,6 +607,14 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModul
 			modulePath := matches[3]        // "module1.v1"
 			pb2Suffix := matches[4]         // "_pb2" or "_pb2_grpc"
 
+			// Skip external dependencies
+			if c.isExternalModule(modulePath, externalPrefixes) {
+				c.log.Debug("Skipping external dependency import",
+					logger.String("file", filePath),
+					logger.String("module", modulePath))
+				continue
+			}
+
 			// Check if this import already has the full prefix
 			if !strings.HasPrefix(modulePath, modulePrefix) {
 				var newModulePath string
@@ -605,4 +647,14 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModul
 	}
 
 	return nil
+}
+
+// isExternalModule checks if the module path is an external dependency that should not be modified
+func (c *Compiler) isExternalModule(modulePath string, externalPrefixes []string) bool {
+	for _, prefix := range externalPrefixes {
+		if strings.HasPrefix(modulePath, prefix) || modulePath == strings.TrimSuffix(prefix, ".") {
+			return true
+		}
+	}
+	return false
 }

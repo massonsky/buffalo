@@ -90,6 +90,10 @@ func NewExecutor(log Logger, m *metrics.Collector, cfg *config.Config) Executor 
 	if cfg.Languages.Python.Enabled {
 		pythonOpts := python.DefaultOptions()
 		pythonOpts.WorkDir = cfg.Languages.Python.WorkDir
+		// Use custom exclude imports if configured, otherwise keep defaults
+		if len(cfg.Languages.Python.ExcludeImports) > 0 {
+			pythonOpts.ExcludeImports = cfg.Languages.Python.ExcludeImports
+		}
 		compilers["python"] = python.New(compilerLog, pythonOpts)
 	}
 

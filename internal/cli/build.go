@@ -20,6 +20,8 @@ var (
 	buildProtoPath       []string
 	buildDryRun          bool
 	buildSkipSystemCheck bool
+	buildSkipLock        bool
+	buildForceLock       bool
 
 	buildCmd = &cobra.Command{
 		Use:   "build",
@@ -40,7 +42,13 @@ Examples:
   buffalo build --dry-run
   
   # Skip system readiness check
-  buffalo build --skip-system-check`,
+  buffalo build --skip-system-check
+  
+  # Force regenerate lock file
+  buffalo build --force-lock
+  
+  # Skip lock file (build directly from config)
+  buffalo build --skip-lock`,
 		RunE: runBuild,
 	}
 )
@@ -53,6 +61,8 @@ func init() {
 	buildCmd.Flags().StringSliceVarP(&buildProtoPath, "proto-path", "p", []string{}, "paths to search for proto files")
 	buildCmd.Flags().BoolVar(&buildDryRun, "dry-run", false, "show what would be built without building")
 	buildCmd.Flags().BoolVar(&buildSkipSystemCheck, "skip-system-check", false, "skip system readiness check before build")
+	buildCmd.Flags().BoolVar(&buildSkipLock, "skip-lock", false, "skip lock file and build directly from config")
+	buildCmd.Flags().BoolVar(&buildForceLock, "force-lock", false, "force regenerate lock file")
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
@@ -62,10 +72,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	log.Info("🔨 Starting build process")
 
 	// Load configuration
-	cfg, err := loadConfig(log)
+	cfg, configPath, err := loadConfigWithPath(log)
 	if err != nil {
 		log.Warn("Failed to load config, using defaults", logger.Any("error", err))
 		cfg = getDefaultConfig()
+		configPath = "buffalo.yaml"
 	}
 
 	// Override config with flags (only if explicitly set)
@@ -168,6 +179,56 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info("Found proto files", logger.Int("count", len(allProtoFiles)))
+
+	// Handle lock file
+	var lockFile *config.LockFile
+	if !buildSkipLock {
+		lockManager := config.NewLockFileManager(configPath)
+
+		needsRegen, reason, err := lockManager.NeedsRegeneration()
+		if err != nil {
+			log.Warn("Failed to check lock file", logger.Any("error", err))
+			needsRegen = true
+			reason = "check failed"
+		}
+
+		if buildForceLock || needsRegen {
+			if buildForceLock {
+				log.Info("🔒 Regenerating lock file (forced)")
+			} else {
+				log.Info("🔒 Regenerating lock file", logger.String("reason", reason))
+			}
+
+			lockFile, err = lockManager.Generate(cfg, allProtoFiles)
+			if err != nil {
+				log.Warn("Failed to generate lock file", logger.Any("error", err))
+			} else {
+				if err := lockManager.Save(lockFile); err != nil {
+					log.Warn("Failed to save lock file", logger.Any("error", err))
+				} else {
+					log.Info("🔒 Lock file saved", logger.String("path", lockManager.GetLockPath()))
+				}
+			}
+		} else {
+			log.Debug("Lock file is up to date")
+			lockFile, err = lockManager.Load()
+			if err != nil {
+				log.Warn("Failed to load lock file, regenerating", logger.Any("error", err))
+				lockFile, _ = lockManager.Generate(cfg, allProtoFiles)
+				lockManager.Save(lockFile)
+			}
+		}
+
+		// Apply resolved settings from lock file to config
+		if lockFile != nil && lockFile.Languages.Python != nil {
+			// Use resolved exclude imports from lock file
+			if len(lockFile.Languages.Python.ExcludeImports) > 0 {
+				cfg.Languages.Python.ExcludeImports = lockFile.Languages.Python.ExcludeImports
+				log.Debug("Applied exclude imports from lock file",
+					logger.Int("count", len(cfg.Languages.Python.ExcludeImports)))
+			}
+		}
+	}
 
 	// Add dependencies to import paths
 	importPaths := cfg.Proto.ImportPaths
@@ -307,6 +368,31 @@ func loadConfig(log *logger.Logger) (*config.Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// loadConfigWithPath loads configuration and returns the config file path
+func loadConfigWithPath(log *logger.Logger) (*config.Config, string, error) {
+	// Try to find config file in current directory
+	configPaths := []string{
+		"buffalo.yaml",
+		"buffalo.yml",
+		".buffalo.yaml",
+		".buffalo.yml",
+	}
+
+	for _, path := range configPaths {
+		cfg, err := config.LoadFromFile(path)
+		if err == nil {
+			return cfg, path, nil
+		}
+	}
+
+	// Fall back to viper config
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, "buffalo.yaml", nil
 }
 
 // getDefaultConfig returns default configuration

@@ -53,10 +53,11 @@ type LanguagesConfig struct {
 
 // PythonConfig contains Python-specific settings
 type PythonConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Package   string `mapstructure:"package"`
-	Generator string `mapstructure:"generator"`
-	WorkDir   string `mapstructure:"workdir"`
+	Enabled        bool     `mapstructure:"enabled"`
+	Package        string   `mapstructure:"package"`
+	Generator      string   `mapstructure:"generator"`
+	WorkDir        string   `mapstructure:"workdir"`
+	ExcludeImports []string `mapstructure:"exclude_imports"`
 }
 
 // GoConfig contains Go-specific settings
