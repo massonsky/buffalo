@@ -56,6 +56,7 @@ type PythonConfig struct {
 	Enabled   bool   `mapstructure:"enabled"`
 	Package   string `mapstructure:"package"`
 	Generator string `mapstructure:"generator"`
+	WorkDir   string `mapstructure:"workdir"`
 }
 
 // GoConfig contains Go-specific settings

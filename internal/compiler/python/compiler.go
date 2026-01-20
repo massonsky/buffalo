@@ -40,6 +40,9 @@ type Options struct {
 
 	// PythonPackagePrefix is the Python package prefix for imports
 	PythonPackagePrefix string
+
+	// WorkDir is the working directory prefix for imports (e.g., "myapp" -> "from myapp.generated.python import ...")
+	WorkDir string
 }
 
 // New creates a new Python compiler
@@ -77,7 +80,37 @@ func DefaultOptions() *Options {
 		GenerateTyping:       false,
 		GenerateInit:         true,
 		PythonPackagePrefix:  "",
+		WorkDir:              "",
 	}
+}
+
+// ValidateWorkDir validates that the workdir is a valid Python module path.
+// A valid Python module path consists of dot-separated identifiers,
+// where each identifier starts with a letter or underscore and contains
+// only letters, digits, and underscores.
+// Empty string is valid (no workdir prefix).
+// Examples: "myapp", "my_project.api", "app123.module_name"
+func ValidateWorkDir(workDir string) error {
+	if workDir == "" {
+		return nil
+	}
+
+	// Pattern for valid Python identifier
+	// Identifier: letter or underscore, followed by letters, digits, or underscores
+	identifierPattern := regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+	// Split by dots and validate each part
+	parts := strings.Split(workDir, ".")
+	for _, part := range parts {
+		if part == "" {
+			return fmt.Errorf("invalid workdir '%s': empty module name (check for double dots or leading/trailing dots)", workDir)
+		}
+		if !identifierPattern.MatchString(part) {
+			return fmt.Errorf("invalid workdir '%s': '%s' is not a valid Python identifier (must start with letter/underscore, contain only letters/digits/underscores)", workDir, part)
+		}
+	}
+
+	return nil
 }
 
 // Name returns the compiler name
@@ -99,6 +132,13 @@ func (c *Compiler) Validate() error {
 		if _, err := exec.LookPath(c.options.GrpcPythonPluginPath); err != nil {
 			c.log.Warn("grpc_python_plugin not found, gRPC generation may fail",
 				logger.String("plugin", c.options.GrpcPythonPluginPath))
+		}
+	}
+
+	// Validate workdir if specified
+	if c.options.WorkDir != "" {
+		if err := ValidateWorkDir(c.options.WorkDir); err != nil {
+			return errors.Wrap(err, errors.ErrInvalidInput, "invalid python workdir configuration")
 		}
 	}
 
@@ -162,7 +202,7 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 	}
 
 	// Fix imports in generated Python files to use full paths from working directory
-	if err := c.fixImports(opts.OutputDir, result.GeneratedFiles); err != nil {
+	if err := c.fixImports(opts, result.GeneratedFiles); err != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("failed to fix imports: %v", err))
 	}
 
@@ -377,7 +417,17 @@ func (c *Compiler) generateInitFiles(outputDir string) error {
 // fixImports rewrites imports in generated Python files to use full paths from working directory.
 // This fixes the issue where protoc generates relative imports like "from module1.v1 import service_pb2"
 // instead of full paths like "from api.generated.python.module1.v1 import service_pb2"
-func (c *Compiler) fixImports(outputDir string, generatedFiles []string) error {
+//
+// When PreserveProtoStructure is false, files are generated flat in output directory,
+// so imports should be like "from generated.python import service_pb2".
+// When PreserveProtoStructure is true, directory structure is preserved,
+// so imports should include the full path like "from generated.python.module1.v1 import service_pb2".
+//
+// If WorkDir option is set, it will be prepended to the module prefix:
+// e.g., workdir = "myapp", outputDir = "generated/python" -> "from myapp.generated.python import ..."
+func (c *Compiler) fixImports(opts compiler.CompileOptions, generatedFiles []string) error {
+	outputDir := opts.OutputDir
+
 	// Get the working directory to calculate the full module path
 	workDir, err := os.Getwd()
 	if err != nil {
@@ -401,9 +451,18 @@ func (c *Compiler) fixImports(outputDir string, generatedFiles []string) error {
 	// Remove leading dots if any
 	modulePrefix = strings.TrimPrefix(modulePrefix, ".")
 
+	// Prepend WorkDir if configured
+	// e.g., if workdir = "myapp" and modulePrefix = "generated.python"
+	// result should be "myapp.generated.python"
+	if c.options.WorkDir != "" {
+		modulePrefix = c.options.WorkDir + "." + modulePrefix
+	}
+
 	c.log.Debug("Fixing Python imports",
 		logger.String("outputDir", outputDir),
-		logger.String("modulePrefix", modulePrefix))
+		logger.String("modulePrefix", modulePrefix),
+		logger.String("workDir", c.options.WorkDir),
+		logger.Bool("preserveProtoStructure", opts.PreserveProtoStructure))
 
 	// Walk through all Python files in output directory
 	return filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
@@ -421,8 +480,19 @@ func (c *Compiler) fixImports(outputDir string, generatedFiles []string) error {
 			return nil
 		}
 
+		// Calculate the relative path of this file from output directory
+		// This helps determine the submodule path when PreserveProtoStructure is true
+		relFilePath, _ := filepath.Rel(outputDir, path)
+		fileDir := filepath.Dir(relFilePath)
+		subModulePath := ""
+		if fileDir != "." && opts.PreserveProtoStructure {
+			// Convert directory path to module path
+			subModulePath = strings.ReplaceAll(fileDir, string(filepath.Separator), ".")
+			subModulePath = strings.ReplaceAll(subModulePath, "/", ".")
+		}
+
 		// Fix imports in this file
-		if err := c.fixFileImports(path, modulePrefix); err != nil {
+		if err := c.fixFileImports(path, modulePrefix, subModulePath, opts.PreserveProtoStructure); err != nil {
 			c.log.Warn("Failed to fix imports in file",
 				logger.String("file", path),
 				logger.String("error", err.Error()))
@@ -433,7 +503,10 @@ func (c *Compiler) fixImports(outputDir string, generatedFiles []string) error {
 }
 
 // fixFileImports rewrites imports in a single Python file
-func (c *Compiler) fixFileImports(filePath string, modulePrefix string) error {
+// modulePrefix: the full module path prefix (e.g., "generated.python")
+// subModulePath: the subdirectory module path for this file (e.g., "module1.v1") when PreserveProtoStructure is true
+// preserveStructure: whether the proto directory structure is preserved
+func (c *Compiler) fixFileImports(filePath string, modulePrefix string, subModulePath string, preserveStructure bool) error {
 	// Read the file
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -470,8 +543,17 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string) error {
 
 			// Check if this import already has the full prefix
 			if !strings.HasPrefix(modulePath, modulePrefix) {
-				// Build the new full module path
-				newModulePath := modulePrefix + "." + modulePath
+				var newModulePath string
+				if preserveStructure {
+					// When structure is preserved, add full prefix + original module path
+					newModulePath = modulePrefix + "." + modulePath
+				} else {
+					// When structure is NOT preserved (flat), imports should be from the output dir directly
+					// The modulePath from protoc might include the original proto directory structure,
+					// but since files are flat, we need to use just the module prefix
+					// Example: "from module1.v1 import service_pb2" -> "from generated.python import service_pb2"
+					newModulePath = modulePrefix
+				}
 				newLine := leadingWhitespace + fromPart + newModulePath + importPart
 				lines[i] = newLine
 				modified = true
@@ -493,8 +575,14 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string) error {
 
 			// Check if this import already has the full prefix
 			if !strings.HasPrefix(modulePath, modulePrefix) {
-				// Build the new full module path
-				newModulePath := modulePrefix + "." + modulePath
+				var newModulePath string
+				if preserveStructure {
+					// When structure is preserved, add full prefix
+					newModulePath = modulePrefix + "." + modulePath
+				} else {
+					// When structure is NOT preserved, use just the prefix
+					newModulePath = modulePrefix
+				}
 				newLine := leadingWhitespace + importKeyword + newModulePath + pb2Suffix
 				lines[i] = newLine
 				modified = true

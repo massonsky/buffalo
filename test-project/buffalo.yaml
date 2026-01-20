@@ -20,6 +20,7 @@ languages:
         enabled: true
         package: proto_gen
         generator: grpcio-tools
+        workdir: ""
     go:
         enabled: true
         module: github.com/yourorg/yourproject

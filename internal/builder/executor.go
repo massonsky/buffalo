@@ -89,6 +89,7 @@ func NewExecutor(log Logger, m *metrics.Collector, cfg *config.Config) Executor 
 	// Python compiler
 	if cfg.Languages.Python.Enabled {
 		pythonOpts := python.DefaultOptions()
+		pythonOpts.WorkDir = cfg.Languages.Python.WorkDir
 		compilers["python"] = python.New(compilerLog, pythonOpts)
 	}
 
