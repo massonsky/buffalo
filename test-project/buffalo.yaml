@@ -17,17 +17,17 @@ output:
     preserve_proto_structure: true
 languages:
     python:
-        enabled: true
+        enabled: false
         package: proto_gen
         generator: grpcio-tools
         workdir: ""
     go:
-        enabled: true
+        enabled: false
         module: github.com/yourorg/yourproject
         generator: protoc-gen-go
     rust:
-        enabled: false
-        generator: prost
+        enabled: true
+        generator: rust-protobuf
     cpp:
         enabled: false
         namespace: myproject

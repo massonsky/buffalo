@@ -3,6 +3,7 @@ package rust
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -68,8 +69,8 @@ func (c *Compiler) Validate() error {
 		// We'll generate code via protoc with prost plugin
 		return nil
 	case "rust-protobuf":
-		if err := c.checkTool("protoc-gen-rust", "--version"); err != nil {
-			return errors.Wrap(err, errors.ErrConfig, "protoc-gen-rust not found, install: cargo install protobuf-codegen")
+		if err := c.checkTool("protoc-gen-rs", "--version"); err != nil {
+			return errors.Wrap(err, errors.ErrConfig, "protoc-gen-rs not found, install: cargo install protobuf-codegen")
 		}
 	default:
 		return errors.New(errors.ErrConfig, "unknown Rust generator: %s (use 'prost' or 'rust-protobuf')", c.options.Generator)
@@ -122,6 +123,11 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 
 	switch c.options.Generator {
 	case "rust-protobuf":
+		// Create output directory if it doesn't exist
+		if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create output directory: %v", err)
+		}
+
 		// Use protoc with rust plugin
 		args := c.buildProtocArgs(file, opts)
 
@@ -157,19 +163,21 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.CompileOptions) []string {
 	args := []string{}
 
+	// Always add current directory as proto path
+	args = append(args, "--proto_path=.")
+
 	// Merge and deduplicate import paths
 	importPaths := compiler.MergeImportPaths(opts, file)
-	if len(importPaths) == 0 {
-		args = append(args, "--proto_path=.")
-	}
 
 	// Add import paths
 	for _, importPath := range importPaths {
-		args = append(args, "--proto_path="+importPath)
+		if importPath != "." {
+			args = append(args, "--proto_path="+importPath)
+		}
 	}
 
 	// Add output directory
-	args = append(args, "--rust_out="+opts.OutputDir)
+	args = append(args, "--rs_out="+opts.OutputDir)
 
 	// Add the proto file
 	args = append(args, file.Path)
@@ -198,7 +206,7 @@ func (c *Compiler) GetOutputPath(file compiler.ProtoFile, opts compiler.CompileO
 func (c *Compiler) RequiredTools() []string {
 	tools := []string{"protoc"}
 	if c.options.Generator == "rust-protobuf" {
-		tools = append(tools, "protoc-gen-rust")
+		tools = append(tools, "protoc-gen-rs")
 	}
 	return tools
 }
