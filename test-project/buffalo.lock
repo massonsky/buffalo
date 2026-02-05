@@ -3,8 +3,8 @@
 # This file is auto-generated from buffalo.yaml
 
 version: "1"
-generated_at: 2026-02-03T12:30:05.84624077Z
-config_hash: ece472f3745704afb463ddb66e1f94d2a97fc1e90281ab8f046efa0564549624
+generated_at: 2026-02-05T21:52:11.852424997Z
+config_hash: d51e19c3cb97eff9fb68d62aa28d029dc832f4ca506d33cbfe1215af465f2c64
 project:
     name: my-proto-project
     version: 0.1.0
@@ -33,10 +33,10 @@ proto:
     import_paths: []
     total_files: 4
 languages:
-    rust:
+    cpp:
         enabled: true
-        generator: rust-protobuf
-        output_dir: generated/rust
+        namespace: myproject
+        output_dir: generated/cpp
 dependencies:
     - name: googleapis
       type: git
