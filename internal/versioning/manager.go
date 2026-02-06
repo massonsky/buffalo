@@ -92,13 +92,27 @@ func (m *Manager) ComputeHash(filePath string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// GetCurrentVersion gets the current version for a proto file
-func (m *Manager) GetCurrentVersion(protoPath string) (*FileVersion, error) {
+// computeHashWithLanguage computes a hash including the language to have separate versions per language
+func (m *Manager) computeHashWithLanguage(protoPath, language string) (string, error) {
+	// First compute the proto file hash
+	protoHash, err := m.ComputeHash(protoPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Combine proto hash with language
+	combined := protoHash + "::" + language
+	hash := sha256.Sum256([]byte(combined))
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// GetCurrentVersion gets the current version for a proto file and language
+func (m *Manager) GetCurrentVersion(protoPath, language string) (*FileVersion, error) {
 	if !m.enabled {
 		return nil, nil
 	}
 
-	stateFile := m.getStateFile(protoPath)
+	stateFile := m.getStateFile(protoPath, language)
 	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
 		return nil, nil // No previous version
 	}
@@ -129,18 +143,18 @@ func (m *Manager) GetCurrentVersion(protoPath string) (*FileVersion, error) {
 	}, nil
 }
 
-// ShouldGenerateNewVersion checks if a new version should be generated
-func (m *Manager) ShouldGenerateNewVersion(protoPath string) (bool, error) {
+// ShouldGenerateNewVersion checks if a new version should be generated for a proto file and language
+func (m *Manager) ShouldGenerateNewVersion(protoPath, language string) (bool, error) {
 	if !m.enabled {
 		return true, nil // Always generate if versioning is disabled
 	}
 
-	currentHash, err := m.ComputeHash(protoPath)
+	currentHash, err := m.computeHashWithLanguage(protoPath, language)
 	if err != nil {
 		return false, err
 	}
 
-	prevVersion, err := m.GetCurrentVersion(protoPath)
+	prevVersion, err := m.GetCurrentVersion(protoPath, language)
 	if err != nil {
 		return false, err
 	}
@@ -154,11 +168,20 @@ func (m *Manager) ShouldGenerateNewVersion(protoPath string) (bool, error) {
 		return true, nil
 	}
 
-	// Even if hash matches, check if the output directory still exists
+	// Even if hash matches, check if the output directory still exists and has files
 	// This handles the case where generated files were deleted but cache/state remains
 	if prevVersion.OutputPath != "" {
 		if _, err := os.Stat(prevVersion.OutputPath); os.IsNotExist(err) {
 			return true, nil // Output was deleted, need to regenerate
+		}
+
+		// Check if the directory has any files (not just an empty directory)
+		entries, err := os.ReadDir(prevVersion.OutputPath)
+		if err != nil {
+			return true, nil // Can't read directory, regenerate to be safe
+		}
+		if len(entries) == 0 {
+			return true, nil // Directory is empty, need to regenerate
 		}
 	}
 
@@ -179,7 +202,9 @@ func (m *Manager) GenerateVersion(protoPath string) (string, error) {
 		return time.Now().Format("20060102150405"), nil
 
 	case StrategySemantic:
-		prevVersion, err := m.GetCurrentVersion(protoPath)
+		// For semantic versioning, we use a language-independent state
+		// because version numbers should be consistent across languages
+		prevVersion, err := m.getSemanticVersion(protoPath)
 		if err != nil {
 			return "", err
 		}
@@ -224,18 +249,18 @@ func (m *Manager) GetVersionedOutputPath(baseOutputPath, version string) string 
 	}
 }
 
-// SaveVersion saves the version state
-func (m *Manager) SaveVersion(protoPath, version, outputPath string) error {
+// SaveVersion saves version information for a proto file and language
+func (m *Manager) SaveVersion(protoPath, language, version string, outputPath string) error {
 	if !m.enabled {
 		return nil
 	}
 
-	hash, err := m.ComputeHash(protoPath)
+	hash, err := m.computeHashWithLanguage(protoPath, language)
 	if err != nil {
 		return err
 	}
 
-	stateFile := m.getStateFile(protoPath)
+	stateFile := m.getStateFile(protoPath, language)
 	if err := os.MkdirAll(filepath.Dir(stateFile), 0755); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to create state directory")
 	}
@@ -244,6 +269,13 @@ func (m *Manager) SaveVersion(protoPath, version, outputPath string) error {
 	state := fmt.Sprintf("%s|%s|%s|%s", hash, version, time.Now().Format(time.RFC3339), outputPath)
 	if err := os.WriteFile(stateFile, []byte(state), 0644); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to write state file: %s", stateFile)
+	}
+
+	// Also save semantic version if using semantic strategy
+	if m.strategy == StrategySemantic {
+		if err := m.saveSemanticVersion(protoPath, version, outputPath); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -290,10 +322,72 @@ func (m *Manager) CleanupOldVersions(outputDir string) error {
 	return nil
 }
 
-// getStateFile returns the path to the state file for a proto file
-func (m *Manager) getStateFile(protoPath string) string {
-	// Use proto file path as base for state file name
-	hash := sha256.Sum256([]byte(protoPath))
+// getStateFile returns the path to the state file for a proto file and language
+func (m *Manager) getStateFile(protoPath, language string) string {
+	// Use proto file path + language as base for state file name
+	hashInput := protoPath + "::" + language
+	hash := sha256.Sum256([]byte(hashInput))
 	stateFileName := hex.EncodeToString(hash[:])[:16] + ".state"
 	return filepath.Join(m.stateDir, stateFileName)
+}
+
+// getSemanticVersion gets the semantic version for a proto file (language-independent)
+func (m *Manager) getSemanticVersion(protoPath string) (*FileVersion, error) {
+	// For semantic versioning, use a language-independent state file
+	hash := sha256.Sum256([]byte(protoPath))
+	stateFileName := hex.EncodeToString(hash[:])[:16] + ".semantic"
+	stateFile := filepath.Join(m.stateDir, stateFileName)
+
+	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
+		return nil, nil // No previous version
+	}
+
+	// Read state file
+	data, err := os.ReadFile(stateFile)
+	if err != nil {
+		return nil, errors.Wrap(err, errors.ErrIO, "failed to read semantic state file")
+	}
+
+	// Parse state (format: hash|version|timestamp|outputPath)
+	parts := strings.Split(strings.TrimSpace(string(data)), "|")
+	if len(parts) < 3 {
+		return nil, nil // Invalid state
+	}
+
+	timestamp, _ := time.Parse(time.RFC3339, parts[2])
+	outputPath := ""
+	if len(parts) >= 4 {
+		outputPath = parts[3]
+	}
+	return &FileVersion{
+		ProtoPath:  protoPath,
+		Hash:       parts[0],
+		Version:    parts[1],
+		Timestamp:  timestamp,
+		OutputPath: outputPath,
+	}, nil
+}
+
+// saveSemanticVersion saves the semantic version for a proto file (language-independent)
+func (m *Manager) saveSemanticVersion(protoPath, version, outputPath string) error {
+	hash, err := m.ComputeHash(protoPath)
+	if err != nil {
+		return err
+	}
+
+	hashSum := sha256.Sum256([]byte(protoPath))
+	stateFileName := hex.EncodeToString(hashSum[:])[:16] + ".semantic"
+	stateFile := filepath.Join(m.stateDir, stateFileName)
+
+	if err := os.MkdirAll(filepath.Dir(stateFile), 0755); err != nil {
+		return errors.Wrap(err, errors.ErrIO, "failed to create state directory")
+	}
+
+	// Write state (hash|version|timestamp|outputPath)
+	state := fmt.Sprintf("%s|%s|%s|%s", hash, version, time.Now().Format(time.RFC3339), outputPath)
+	if err := os.WriteFile(stateFile, []byte(state), 0644); err != nil {
+		return errors.Wrap(err, errors.ErrIO, "failed to write semantic state file")
+	}
+
+	return nil
 }

@@ -3,6 +3,7 @@ package cpp
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -109,6 +110,11 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opts compiler.CompileOptions) ([]string, error) {
 	var generatedFiles []string
 
+	// Ensure output directory exists
+	if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
+	}
+
 	// Build protoc command for C++
 	args := c.buildProtocArgs(file, opts, false)
 
@@ -122,9 +128,14 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 		return nil, fmt.Errorf("protoc failed: %v\nOutput: %s", err, string(output))
 	}
 
+	// Determine the relative path for output files
+	// Use the path relative to import paths, not the full file.Path
+	importPaths := compiler.MergeImportPaths(opts, file)
+	relativeProtoPath := c.makeRelativeToImportPath(file.Path, importPaths)
+
 	// Add generated .pb.h and .pb.cc files
-	baseName := strings.TrimSuffix(filepath.Base(file.Path), ".proto")
-	relPath := filepath.Dir(file.Path)
+	baseName := strings.TrimSuffix(filepath.Base(relativeProtoPath), ".proto")
+	relPath := filepath.Dir(relativeProtoPath)
 	if relPath == "." {
 		relPath = ""
 	}
@@ -162,13 +173,15 @@ func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.Compil
 
 	// Merge and deduplicate import paths
 	importPaths := compiler.MergeImportPaths(opts, file)
-	if len(importPaths) == 0 {
-		args = append(args, "--proto_path=.")
-	}
 
-	// Add import paths
+	// Add import paths (includes proto.paths from config via ImportPaths)
 	for _, importPath := range importPaths {
 		args = append(args, "--proto_path="+importPath)
+	}
+
+	// If no import paths specified, default to current directory
+	if len(importPaths) == 0 {
+		args = append(args, "--proto_path=.")
 	}
 
 	if grpc {
@@ -184,10 +197,33 @@ func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.Compil
 		args = append(args, "--cpp_out="+opts.OutputDir)
 	}
 
-	// Add the proto file
-	args = append(args, file.Path)
+	// Add the proto file - make it relative to proto_path if possible
+	protoFilePath := c.makeRelativeToImportPath(file.Path, importPaths)
+	args = append(args, protoFilePath)
 
 	return args
+}
+
+// makeRelativeToImportPath converts absolute/relative proto file path to be relative to import paths
+func (c *Compiler) makeRelativeToImportPath(filePath string, importPaths []string) string {
+	// Try to find which import path contains this file
+	for _, importPath := range importPaths {
+		// Normalize paths
+		cleanImportPath := filepath.Clean(importPath)
+		cleanFilePath := filepath.Clean(filePath)
+
+		// Check if file starts with this import path
+		if strings.HasPrefix(cleanFilePath, cleanImportPath+string(filepath.Separator)) {
+			// Remove the import path prefix
+			relPath, err := filepath.Rel(cleanImportPath, cleanFilePath)
+			if err == nil {
+				return relPath
+			}
+		}
+	}
+
+	// If not found in any import path, return as-is
+	return filePath
 }
 
 // GetOutputPath returns the output path for a proto file

@@ -232,6 +232,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Add dependencies to import paths
 	importPaths := cfg.Proto.ImportPaths
+
+	// Add proto.paths to import paths so protoc can find project files
+	// Using proto.paths directly allows proper structure: protos/file.proto with --proto_path=protos → file.pb.h
+	if len(cfg.Proto.Paths) > 0 {
+		importPaths = append(importPaths, cfg.Proto.Paths...)
+	}
+
 	if len(cfg.Dependencies) > 0 {
 		log.Info("Loading dependencies", logger.Int("count", len(cfg.Dependencies)))
 		depManager, err := dependency.NewManager(".buffalo", log)

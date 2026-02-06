@@ -14,7 +14,7 @@ output:
         go: go
         python: python
         rust: rust
-    preserve_proto_structure: true
+    preserve_proto_structure: false
 languages:
     python:
         enabled: false

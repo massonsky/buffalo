@@ -3,8 +3,8 @@
 # This file is auto-generated from buffalo.yaml
 
 version: "1"
-generated_at: 2026-02-05T21:52:11.852424997Z
-config_hash: d51e19c3cb97eff9fb68d62aa28d029dc832f4ca506d33cbfe1215af465f2c64
+generated_at: 2026-02-06T14:21:17.798518558Z
+config_hash: 068abaaf23e8deaca0a7fb050685dce6ef4efcd2bf14f913fed82bf271544892
 project:
     name: my-proto-project
     version: 0.1.0

@@ -217,10 +217,11 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 	outputDir := filepath.Join(baseOutputDir, language)
 
 	if e.versionManager.IsEnabled() {
-		shouldGenerate, err := e.versionManager.ShouldGenerateNewVersion(file.Path)
+		shouldGenerate, err := e.versionManager.ShouldGenerateNewVersion(file.Path, language)
 		if err != nil {
 			e.log.Warn("Versioning check failed, proceeding with compilation",
 				"file", file.Path,
+				"language", language,
 				"error", err,
 			)
 		} else if !shouldGenerate {
@@ -299,9 +300,10 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 	// Save version state if versioning is enabled
 	if e.versionManager.IsEnabled() {
 		version, _ := e.versionManager.GenerateVersion(file.Path)
-		if verErr := e.versionManager.SaveVersion(file.Path, version, outputDir); verErr != nil {
+		if verErr := e.versionManager.SaveVersion(file.Path, language, version, outputDir); verErr != nil {
 			e.log.Warn("Failed to save version state",
 				"file", file.Path,
+				"language", language,
 				"error", verErr,
 			)
 		}
