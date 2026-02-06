@@ -1,0 +1,214 @@
+// Copyright 2026 Massonsky. All rights reserved.
+// Use of this source code is governed by the MIT license
+// that can be found in the LICENSE file.
+
+// Buffalo Validate — field validation rules for protobuf messages.
+//
+// Usage:
+//   import "buffalo/validate/validate.proto";
+//
+//   message Location {
+//     double lat = 1 [(buffalo.validate.rules).double = {gte: -90,  lte: 90}];
+//     double lng = 2 [(buffalo.validate.rules).double = {gte: -180, lte: 180}];
+//   }
+//
+//   message User {
+//     string email = 1 [(buffalo.validate.rules).string = {email: true, min_len: 5}];
+//     string name  = 2 [(buffalo.validate.rules).string = {min_len: 1, max_len: 128}];
+//     int32  age   = 3 [(buffalo.validate.rules).int32  = {gt: 0, lte: 150}];
+//   }
+
+syntax = "proto3";
+
+package buffalo.validate;
+
+option go_package = "github.com/massonsky/buffalo/proto/buffalo/validate";
+
+import "google/protobuf/descriptor.proto";
+
+// ──────────────────────────────────────────────────────────────────
+// Extension: field-level validation rules
+// ──────────────────────────────────────────────────────────────────
+
+extend google.protobuf.FieldOptions {
+  optional FieldRules rules = 51000;
+}
+
+extend google.protobuf.MessageOptions {
+  optional MessageOptions_ message_opts = 51001;
+}
+
+// MessageOptions_ controls message-level behaviour.
+message MessageOptions_ {
+  // disabled — skip validation entirely for this message.
+  bool disabled = 1;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// FieldRules — top-level container for all per-field rules.
+// ──────────────────────────────────────────────────────────────────
+
+message FieldRules {
+  // required — field must be set to a non-zero value.
+  optional bool required = 1;
+
+  // message — custom error message override.
+  optional string message = 2;
+
+  // Type-specific rules (only one should be set).
+  oneof type {
+    StringRules    string    = 10;
+    DoubleRules    double    = 11;
+    FloatRules     float     = 12;
+    Int32Rules     int32     = 13;
+    Int64Rules     int64     = 14;
+    Uint32Rules    uint32    = 15;
+    Uint64Rules    uint64    = 16;
+    BoolRules      bool      = 17;
+    BytesRules     bytes     = 18;
+    EnumRules      enum      = 19;
+    RepeatedRules  repeated  = 20;
+    MapRules       map       = 21;
+    TimestampRules timestamp = 22;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// String rules
+// ──────────────────────────────────────────────────────────────────
+
+message StringRules {
+  optional uint64 min_len   = 1;
+  optional uint64 max_len   = 2;
+  optional string pattern   = 3;  // PCRE / RE2 regex
+  optional string prefix    = 4;
+  optional string suffix    = 5;
+  optional string contains  = 6;
+  optional bool   email     = 7;
+  optional bool   uri       = 8;
+  optional bool   uuid      = 9;
+  repeated string in        = 10;
+  repeated string not_in    = 11;
+  optional bool   not_empty = 12;
+  optional bool   ip        = 13;
+  optional bool   ipv4      = 14;
+  optional bool   ipv6      = 15;
+  optional bool   hostname  = 16;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Numeric rules (one message per proto scalar type)
+// ──────────────────────────────────────────────────────────────────
+
+message DoubleRules {
+  optional double gt     = 1;
+  optional double gte    = 2;
+  optional double lt     = 3;
+  optional double lte    = 4;
+  repeated double in     = 5;
+  repeated double not_in = 6;
+  optional double const  = 7;
+}
+
+message FloatRules {
+  optional float gt     = 1;
+  optional float gte    = 2;
+  optional float lt     = 3;
+  optional float lte    = 4;
+  repeated float in     = 5;
+  repeated float not_in = 6;
+  optional float const  = 7;
+}
+
+message Int32Rules {
+  optional int32 gt     = 1;
+  optional int32 gte    = 2;
+  optional int32 lt     = 3;
+  optional int32 lte    = 4;
+  repeated int32 in     = 5;
+  repeated int32 not_in = 6;
+  optional int32 const  = 7;
+}
+
+message Int64Rules {
+  optional int64 gt     = 1;
+  optional int64 gte    = 2;
+  optional int64 lt     = 3;
+  optional int64 lte    = 4;
+  repeated int64 in     = 5;
+  repeated int64 not_in = 6;
+  optional int64 const  = 7;
+}
+
+message Uint32Rules {
+  optional uint32 gt     = 1;
+  optional uint32 gte    = 2;
+  optional uint32 lt     = 3;
+  optional uint32 lte    = 4;
+  repeated uint32 in     = 5;
+  repeated uint32 not_in = 6;
+  optional uint32 const  = 7;
+}
+
+message Uint64Rules {
+  optional uint64 gt     = 1;
+  optional uint64 gte    = 2;
+  optional uint64 lt     = 3;
+  optional uint64 lte    = 4;
+  repeated uint64 in     = 5;
+  repeated uint64 not_in = 6;
+  optional uint64 const  = 7;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Bool rules
+// ──────────────────────────────────────────────────────────────────
+
+message BoolRules {
+  optional bool const = 1;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Bytes rules
+// ──────────────────────────────────────────────────────────────────
+
+message BytesRules {
+  optional uint64 min_len = 1;
+  optional uint64 max_len = 2;
+  optional string pattern = 3;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Enum rules
+// ──────────────────────────────────────────────────────────────────
+
+message EnumRules {
+  optional bool    defined_only = 1;
+  repeated int32   in           = 2;
+  repeated int32   not_in       = 3;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Collection rules
+// ──────────────────────────────────────────────────────────────────
+
+message RepeatedRules {
+  optional uint64 min_items = 1;
+  optional uint64 max_items = 2;
+  optional bool   unique    = 3;
+}
+
+message MapRules {
+  optional uint64 min_pairs = 1;
+  optional uint64 max_pairs = 2;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Timestamp rules
+// ──────────────────────────────────────────────────────────────────
+
+message TimestampRules {
+  optional bool  gt_now         = 1;
+  optional bool  lt_now         = 2;
+  optional int64 within_seconds = 3;
+}

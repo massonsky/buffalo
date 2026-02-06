@@ -4,31 +4,40 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/massonsky/buffalo/internal/embedded"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
 var (
-	validatePaths  []string
-	validateStrict bool
+	validatePaths     []string
+	validateStrict    bool
+	validateWorkspace string
 
 	validateCmd = &cobra.Command{
 		Use:   "validate",
-		Short: "Validate proto files for syntax errors",
-		Long: `Validate proto files using protoc to check for syntax and semantic errors.
+		Short: "Validate proto files and manage validation rules",
+		Long: `Validate proto files and manage Buffalo's built-in validation system.
 
-This command runs protoc in validation mode to ensure all proto files
-are syntactically correct and can be compiled. It checks for:
-- Syntax errors
-- Type mismatches
-- Missing imports
-- Duplicate definitions
-- Invalid field numbers
+Without a subcommand, runs protoc in validation mode to check for
+syntax and semantic errors.
+
+Subcommands allow extracting the embedded validate.proto file and
+managing validation rules.
 
 Examples:
   # Validate all proto files
   buffalo validate
+
+  # Extract validate.proto into your project
+  buffalo validate init
+
+  # List all embedded proto files
+  buffalo validate list
+
+  # Show available validation rules
+  buffalo validate rules
 
   # Validate specific paths
   buffalo validate --proto-path ./protos
@@ -37,6 +46,40 @@ Examples:
   buffalo validate --strict`,
 		RunE: runValidate,
 	}
+
+	validateInitCmd = &cobra.Command{
+		Use:   "init",
+		Short: "Extract buffalo/validate/validate.proto into your project",
+		Long: `Extract the embedded validate.proto file into your project workspace.
+
+This creates:
+  .buffalo/proto/buffalo/validate/validate.proto
+
+The path .buffalo/proto is automatically added to proto import paths
+during 'buffalo build', so you can immediately use:
+
+  import "buffalo/validate/validate.proto";
+
+  message User {
+    string email = 1 [(buffalo.validate.rules).string = {email: true}];
+  }
+
+This command is idempotent — running it again overwrites the file to
+match the current Buffalo version.`,
+		RunE: runValidateInit,
+	}
+
+	validateListCmd = &cobra.Command{
+		Use:   "list-protos",
+		Short: "List all embedded validation proto files",
+		RunE:  runValidateList,
+	}
+
+	validateRulesCmd = &cobra.Command{
+		Use:   "rules",
+		Short: "Show all supported validation rules",
+		Run:   runValidateRules,
+	}
 )
 
 func init() {
@@ -44,6 +87,14 @@ func init() {
 
 	validateCmd.Flags().StringSliceVarP(&validatePaths, "proto-path", "p", []string{"."}, "paths to validate")
 	validateCmd.Flags().BoolVar(&validateStrict, "strict", false, "treat warnings as errors")
+
+	// Subcommands
+	validateCmd.AddCommand(validateInitCmd)
+	validateCmd.AddCommand(validateListCmd)
+	validateCmd.AddCommand(validateRulesCmd)
+
+	validateInitCmd.Flags().StringVar(&validateWorkspace, "workspace", ".buffalo",
+		"Buffalo workspace directory where proto files are extracted")
 }
 
 func runValidate(cmd *cobra.Command, args []string) error {
@@ -160,4 +211,91 @@ func runValidate(cmd *cobra.Command, args []string) error {
 
 	log.Info("✅ All files are valid!")
 	return nil
+}
+
+// ── validate init ────────────────────────────────────────────────
+
+func runValidateInit(cmd *cobra.Command, args []string) error {
+	log := GetLogger()
+
+	log.Info("📦 Extracting embedded validate proto files...",
+		logger.String("workspace", validateWorkspace))
+
+	protoPath, err := embedded.ExtractValidateProto(validateWorkspace)
+	if err != nil {
+		return fmt.Errorf("failed to extract proto files: %w", err)
+	}
+
+	log.Info("✅ Proto files extracted successfully",
+		logger.String("proto_path", protoPath))
+
+	fmt.Println()
+	fmt.Println("Extracted:")
+	fmt.Printf("  %s/buffalo/validate/validate.proto\n\n", protoPath)
+	fmt.Println("Usage in your .proto files:")
+	fmt.Println()
+	fmt.Println(`  import "buffalo/validate/validate.proto";`)
+	fmt.Println()
+	fmt.Println("  message User {")
+	fmt.Println(`    string email = 1 [(buffalo.validate.rules).string = {email: true}];`)
+	fmt.Println(`    int32  age   = 2 [(buffalo.validate.rules).int32  = {gt: 0, lte: 150}];`)
+	fmt.Println("  }")
+	fmt.Println()
+	fmt.Println("The import path is automatically resolved during 'buffalo build'.")
+
+	return nil
+}
+
+// ── validate list-protos ─────────────────────────────────────────
+
+func runValidateList(cmd *cobra.Command, args []string) error {
+	files, err := embedded.ListEmbeddedProtos()
+	if err != nil {
+		return fmt.Errorf("failed to list embedded protos: %w", err)
+	}
+
+	fmt.Println("Embedded validation proto files:")
+	for _, f := range files {
+		fmt.Printf("  %s\n", f)
+	}
+	return nil
+}
+
+// ── validate rules ───────────────────────────────────────────────
+
+func runValidateRules(cmd *cobra.Command, args []string) {
+	fmt.Println("Supported buffalo.validate rules:")
+	fmt.Println()
+	fmt.Println("  ── Numeric (double, float, int32, int64, uint32, uint64) ──")
+	fmt.Println("    gt, gte, lt, lte, const, in, not_in")
+	fmt.Println()
+	fmt.Println("  ── String ──")
+	fmt.Println("    min_len, max_len, pattern, prefix, suffix, contains")
+	fmt.Println("    email, uri, uuid, ip, ipv4, ipv6, hostname")
+	fmt.Println("    not_empty, in, not_in")
+	fmt.Println()
+	fmt.Println("  ── Bool ──")
+	fmt.Println("    const")
+	fmt.Println()
+	fmt.Println("  ── Bytes ──")
+	fmt.Println("    min_len, max_len, pattern")
+	fmt.Println()
+	fmt.Println("  ── Enum ──")
+	fmt.Println("    defined_only, in, not_in")
+	fmt.Println()
+	fmt.Println("  ── Repeated ──")
+	fmt.Println("    min_items, max_items, unique")
+	fmt.Println()
+	fmt.Println("  ── Map ──")
+	fmt.Println("    min_pairs, max_pairs")
+	fmt.Println()
+	fmt.Println("  ── Timestamp ──")
+	fmt.Println("    gt_now, lt_now, within_seconds")
+	fmt.Println()
+	fmt.Println("  ── Field-level ──")
+	fmt.Println("    required")
+	fmt.Println()
+	fmt.Println("  Example:")
+	fmt.Println(`    double lat = 1 [(buffalo.validate.rules).double = {gte: -90, lte: 90}];`)
+	fmt.Println(`    string email = 2 [(buffalo.validate.rules).string = {email: true, min_len: 5}];`)
 }

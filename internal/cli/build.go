@@ -7,6 +7,7 @@ import (
 	"github.com/massonsky/buffalo/internal/builder"
 	"github.com/massonsky/buffalo/internal/config"
 	"github.com/massonsky/buffalo/internal/dependency"
+	"github.com/massonsky/buffalo/internal/embedded"
 	"github.com/massonsky/buffalo/internal/plugin"
 	"github.com/massonsky/buffalo/internal/system"
 	"github.com/massonsky/buffalo/pkg/logger"
@@ -253,6 +254,17 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				log.Warn("⚠️  Dependencies configured but not installed. Run 'buffalo install' first.")
 			}
 		}
+	}
+
+	// Auto-extract and add buffalo/validate proto import path.
+	// This ensures `import "buffalo/validate/validate.proto"` resolves
+	// even after `go install` when proto files are embedded in the binary.
+	validateProtoPath, err := embedded.ValidateProtoImportPath(".buffalo")
+	if err != nil {
+		log.Warn("Failed to resolve validate proto path", logger.Any("error", err))
+	} else {
+		importPaths = append(importPaths, validateProtoPath)
+		log.Debug("Added validate proto path", logger.String("path", validateProtoPath))
 	}
 
 	// Initialize plugin registry

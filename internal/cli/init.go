@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/massonsky/buffalo/internal/embedded"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/utils"
 	"github.com/spf13/cobra"
@@ -169,6 +170,15 @@ message ExampleResponse {
 		} else {
 			log.Info("📝 Created example proto file", logger.String("file", exampleProto))
 		}
+	}
+
+	// Extract built-in validate.proto so users can use buffalo.validate annotations
+	protoPath, err := embedded.ExtractValidateProto(".buffalo")
+	if err != nil {
+		log.Warn("Failed to extract validate.proto", logger.Any("error", err))
+	} else {
+		log.Info("📦 Extracted validate.proto",
+			logger.String("path", protoPath+"/buffalo/validate/validate.proto"))
 	}
 
 	fmt.Println()
