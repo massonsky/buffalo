@@ -26,10 +26,10 @@ languages:
         module: github.com/yourorg/yourproject
         generator: protoc-gen-go
     rust:
-        enabled: false
+        enabled: true
         generator: rust-protobuf
     cpp:
-        enabled: true
+        enabled: false
         namespace: myproject
 build:
     workers: 0

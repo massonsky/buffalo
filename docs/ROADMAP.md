@@ -1,6 +1,5 @@
-# 🦬 Buffalo Roadmap — Идеи для развития
+# 🦬 Buffalo Roadmap
 
-> Этот документ содержит идеи и планы по развитию функциональности Buffalo.
 > Статус: 📋 Планируется | 🔧 В разработке | ✅ Готово
 
 ---
@@ -14,457 +13,413 @@
 - Embedded proto через `go:embed`
 - CLI: `buffalo validate init | rules | list-protos`
 
+### Core функциональность
+- Полный цикл сборки proto → Go, Python, C++, Rust
+- Инкрементальная сборка с кэшированием
+- Watch mode с debounce
+- Diff сгенерированных файлов (unified, side-by-side, summary)
+- Линтер proto файлов с авто-фиксом
+- Диагностика окружения (doctor)
+- Система плагинов (compiler, validator, transformer, hook, generator)
+- Управление зависимостями (git, url, local) с lock-файлом
+- Версионирование (hash, timestamp, semantic, git)
+- Метрики сборки
+- Пользовательские шаблоны кодогенерации
+
 ---
 
-## 🎯 Приоритет 1 — Ядро системы
+## 🎯 Buffalo 5.0.0 — План реализации
 
-### 1. buffalo.mock — Генерация моков для тестирования
-**Статус:** 📋 Планируется
+> 6 ключевых фич для превращения Buffalo в полноценную платформу proto-first разработки.
 
-Автоматическая генерация мок-серверов и клиентов из proto-определений сервисов.
+---
 
-```protobuf
-service UserService {
-  rpc GetUser(GetUserRequest) returns (User)
-    [(buffalo.mock) = {scenarios: ["success", "not_found", "error"]}];
-}
-```
+### 1. buffalo graph — Граф зависимостей и диаграммы
+**Статус:** 📋 Планируется  
+**Проект:** buffalo (core)
 
-**Возможности:**
-- Мок-серверы для gRPC с настраиваемыми сценариями
-- Генерация фикстур и тестовых данных
-- Интеграция с популярными фреймворками (testify, pytest, googletest)
-- Поддержка streaming RPC моков
-- Запись и воспроизведение реальных запросов (record/replay)
+Визуализация структуры proto-проекта: зависимости между файлами, связи между messages/services, метрики coupling.
 
 **CLI:**
 ```bash
-buffalo mock generate --service UserService --lang go
-buffalo mock server --port 50051 --scenario happy-path
-buffalo mock record --target localhost:50051 --output fixtures/
+# Форматы вывода
+buffalo graph                              # terminal (tree)
+buffalo graph --format dot --output deps.dot
+buffalo graph --format mermaid --output deps.md
+buffalo graph --format json --output deps.json
+buffalo graph --format svg --output deps.svg
+buffalo graph --format html --output graph.html  # интерактивный D3.js
+
+# Скоупы
+buffalo graph --scope file                 # зависимости между файлами
+buffalo graph --scope package              # между пакетами
+buffalo graph --scope message              # связи message → message
+buffalo graph --scope service              # service → request/response
+
+# Анализ
+buffalo graph --file protos/user.proto     # что импортирует / кто импортирует
+buffalo graph analyze --cycles             # циклические зависимости
+buffalo graph analyze --orphans            # неиспользуемые файлы
+buffalo graph analyze --coupling           # метрики связанности
+buffalo graph stats                        # nodes, edges, depth
+```
+
+**Форматы:**
+
+| Формат | Применение |
+|--------|------------|
+| `tree` | Быстрый обзор в терминале |
+| `dot` | Graphviz → SVG/PNG/PDF |
+| `mermaid` | README, PR, Wiki |
+| `json` | CI/CD, автоматизация |
+| `html` | Интерактивная визуализация |
+| `plantuml` | Enterprise документация |
+
+**Пример (mermaid):**
+```mermaid
+graph TD
+    user.proto --> common/types.proto
+    user.proto --> google/protobuf/timestamp.proto
+    order.proto --> user.proto
+    order.proto --> payment.proto
 ```
 
 ---
 
-### 2. buffalo migrate — Версионирование и миграции proto
-**Статус:** 📋 Планируется
+### 2. buffalo-lsp — Language Server Protocol
+**Статус:** 📋 Планируется  
+**Проект:** отдельный репозиторий `buffalo-lsp`
 
-Отслеживание изменений в proto файлах, обнаружение breaking changes, автогенерация changelog.
+LSP-сервер для proto с глубокой интеграцией buffalo-аннотаций.
 
 ```bash
-buffalo migrate create add_user_age_field
-buffalo migrate check           # проверка на breaking changes
-buffalo migrate changelog       # генерация CHANGELOG
-buffalo migrate rollback        # откат к предыдущей версии
+buffalo-lsp --stdio              # для VS Code, Neovim
+buffalo-lsp --tcp --port 2089    # для отладки
 ```
 
 **Возможности:**
-- Семантический diff proto файлов (не текстовый)
-- Детекция breaking changes по правилам buf/protolock
-- Автогенерация CHANGELOG.md из истории изменений
-- Lock-файл с хешами proto для CI/CD
-- Политики совместимости (WIRE, SOURCE, FULL)
 
-**Правила breaking changes:**
-- Удаление/переименование полей, сообщений, сервисов
-- Изменение типов полей
-- Изменение номеров полей
-- Удаление значений enum
-- Изменение `oneof` структуры
+| Capability | Описание |
+|-----------|----------|
+| `completion` | Типы, поля, buffalo-аннотации, import paths |
+| `hover` | Документация, правила валидации |
+| `definition` | Переход к message, enum, import |
+| `references` | Где используется символ |
+| `diagnostic` | Ошибки парсинга, lint, validate |
+| `formatting` | Форматирование proto |
+| `rename` | Rename с обновлением ссылок |
+| `codeAction` | Добавить валидацию, fix lint |
 
----
-
-### 3. buffalo diff — Визуализация изменений proto
-**Статус:** 📋 Планируется
-
-```bash
-buffalo diff                           # текущие изменения
-buffalo diff v1.0.0..v2.0.0           # между версиями
-buffalo diff --format html --output report.html
-buffalo diff --ci --fail-on breaking   # для CI/CD
+**Автодополнение аннотаций:**
+```protobuf
+string email = 2 [(buffalo.validate.rules).string = {
+  # Ctrl+Space →
+  #   not_empty, min_len, max_len, pattern,
+  #   email, uuid, uri, ip, hostname...
+}];
 ```
 
-**Возможности:**
-- Семантический diff (поля, типы, сервисы)
-- Классификация: breaking / non-breaking / deprecation
-- Вывод: terminal (colored), HTML, Markdown, JSON
-- Интеграция с GitHub PR comments
-- Git-aware (diff между коммитами/тегами/ветками)
-
----
-
-### 4. buffalo security — Анализ безопасности
-**Статус:** 📋 Планируется
-
-```bash
-buffalo security scan
-buffalo security audit --fix
-buffalo security report --format sarif
+**Code Actions:**
+```
+💡 Add validation: required
+💡 Add validation: email format
+💡 Fix: field should be snake_case
 ```
 
-**Возможности:**
-- Обнаружение чувствительных данных в proto (PII, credentials)
-- Проверка: поля `password`, `token`, `secret` без шифрования
-- CVE scanning зависимостей (googleapis, grpc)
-- Проверка TLS/mTLS конфигураций
-- SARIF-формат для GitHub Security tab
-- Авто-добавление `[(buffalo.validate.rules).string = {not_empty: true}]` для required полей
+---
+
+### 3. buffalo upgrade — Автоматическая миграция
+**Статус:** 📋 Планируется  
+**Проект:** buffalo (core)
+
+Обновление Buffalo и миграция конфигов/аннотаций между версиями.
+
+```bash
+buffalo upgrade                  # до latest
+buffalo upgrade --to 5.0.0       # до конкретной версии
+buffalo upgrade --check          # показать доступные обновления
+buffalo upgrade --dry-run        # что изменится
+buffalo upgrade --rollback       # откатить последний upgrade
+buffalo upgrade --changelog      # changelog между версиями
+```
+
+**Что мигрируется:**
+
+| Компонент | Пример |
+|-----------|--------|
+| `buffalo.yaml` | Новые поля, renamed секции |
+| Proto аннотации | Изменённые опции |
+| Плагины | Обновление до совместимых версий |
+| Lock-файл | Пересоздание `buffalo.lock` |
+
+**Пример `--check`:**
+```
+🦬 Buffalo Upgrade Check
+
+Current: 2.0.0 → Latest: 5.0.0
+
+Migration steps:
+  1. buffalo.yaml: add 'workspace' section
+  2. 'versioning.strategy' → 'versioning.mode'
+  3. Plugins: naming-validator 1.0 → 2.0
+
+Run 'buffalo upgrade --to 5.0.0' to proceed.
+```
 
 ---
 
-## 🎯 Приоритет 2 — Экосистема
+### 4. buffalo workspace — Мультипроектные монорепо
+**Статус:** 📋 Планируется  
+**Проект:** buffalo (core)
 
-### 5. buffalo.openapi — Генерация OpenAPI/Swagger
-**Статус:** 📋 Планируется
+Управление несколькими proto-проектами в одном репозитории.
 
+**Конфигурация:**
 ```yaml
-plugins:
-  - name: openapi
-    options:
-      version: "3.1.0"
-      servers: ["https://api.example.com"]
-      auth: ["bearer", "apikey"]
-      gateway: grpc-gateway
+# buffalo-workspace.yaml
+workspace:
+  name: platform
+
+projects:
+  - name: user-service
+    path: ./services/user-service
+    tags: [backend, core]
+    
+  - name: order-service
+    path: ./services/order-service
+    depends_on: [user-service, common-protos]
+
+  - name: common-protos
+    path: ./shared/common-protos
+    tags: [shared]
+
+policies:
+  consistent_versions: true
+  shared_dependencies: true
+  no_circular_deps: true
 ```
-
-**Возможности:**
-- Proto + HTTP аннотации → OpenAPI 3.1 спецификация
-- Swagger UI / Redoc генерация
-- gRPC-Gateway интеграция
-- Автодокументация из proto comments
-- Postman/Insomnia коллекции
-
----
-
-### 6. buffalo.db — ORM аннотации и генерация моделей БД
-**Статус:** 📋 Планируется
-
-```protobuf
-message User {
-  string id = 1 [(buffalo.db) = {primary_key: true, type: "uuid", auto: true}];
-  string email = 2 [(buffalo.db) = {unique: true, index: true, not_null: true}];
-  string name = 3 [(buffalo.db) = {max_length: 256}];
-  int32 age = 4 [(buffalo.db) = {nullable: true, default: 0}];
-  google.protobuf.Timestamp created_at = 5 [(buffalo.db) = {auto_now_add: true}];
-  google.protobuf.Timestamp updated_at = 6 [(buffalo.db) = {auto_now: true}];
-}
-```
-
-**Возможности:**
-- SQL DDL генерация (PostgreSQL, MySQL, SQLite, CockroachDB)
-- ORM модели: GORM (Go), SQLAlchemy (Python), Diesel (Rust), TypeORM (TS)
-- Миграции БД из изменений proto
-- Связи: one-to-many, many-to-many через proto options
-- Seed data генерация
 
 **CLI:**
 ```bash
-buffalo db generate --dialect postgres --output migrations/
-buffalo db migrate up
-buffalo db seed --count 100
+buffalo workspace init
+buffalo workspace build                        # все проекты
+buffalo workspace build --project user-service
+buffalo workspace build --tag backend
+buffalo workspace build --affected             # затронутые изменениями
+buffalo workspace build --affected --since main
+
+buffalo workspace graph                        # граф между проектами
+buffalo workspace affected --since HEAD~1      # какие проекты затронуты
+buffalo workspace list
+buffalo workspace validate
+```
+
+**Пример `affected`:**
+```
+🦬 Affected Projects (since HEAD~1)
+
+Changed: services/user-service/protos/user.proto
+
+Directly affected:
+  📦 user-service
+
+Transitively affected:
+  📦 order-service (depends on user-service)
+  📦 api-gateway (depends on user-service)
+
+Recommended: buffalo workspace build --project user-service,order-service,api-gateway
 ```
 
 ---
 
-### 7. buffalo.graphql — Генерация GraphQL схем
-**Статус:** 📋 Планируется
+### 5. buffalo.permissions — RBAC/ABAC аннотации
+**Статус:** 📋 Планируется  
+**Проект:** buffalo (core)
 
+Декларативный контроль доступа с кодогенерацией middleware.
+
+**Proto аннотации:**
 ```protobuf
-message User {
-  string id = 1 [(buffalo.graphql.field) = {type: "ID!"}];
-  string email = 2;
-  repeated Post posts = 3 [(buffalo.graphql) = {resolver: "UserPosts", dataloader: true}];
-}
+import "buffalo/permissions/permissions.proto";
 
 service UserService {
+  option (buffalo.permissions.resource) = "users";
+
   rpc GetUser(GetUserRequest) returns (User)
-    [(buffalo.graphql) = {query: "user", auth: true}];
+    [(buffalo.permissions) = {
+      action: "read",
+      allow_self: true
+    }];
+
   rpc CreateUser(CreateUserRequest) returns (User)
-    [(buffalo.graphql) = {mutation: "createUser"}];
-  rpc UserUpdates(UserFilter) returns (stream User)
-    [(buffalo.graphql) = {subscription: "userUpdates"}];
+    [(buffalo.permissions) = {
+      action: "create",
+      roles: ["admin", "user_manager"],
+      scopes: ["users:write"]
+    }];
+
+  rpc UpdateUser(UpdateUserRequest) returns (User)
+    [(buffalo.permissions) = {
+      action: "update",
+      conditions: [
+        {field: "user_id", operator: "eq", source: "token.sub"}
+      ],
+      audit_log: true
+    }];
+
+  rpc DeleteUser(DeleteUserRequest) returns (Empty)
+    [(buffalo.permissions) = {
+      action: "delete",
+      roles: ["admin"],
+      require_mfa: true,
+      rate_limit: {requests: 10, window: "1h"}
+    }];
 }
 ```
 
-**Возможности:**
-- Proto → GraphQL SDL
-- Query/Mutation/Subscription маппинг из RPC
-- DataLoader генерация для N+1 проблемы
-- Federation v2 поддержка
-- Резолверы на основе gRPC клиентов
+**CLI:**
+```bash
+buffalo permissions generate --lang go
+buffalo permissions generate --framework casbin
+buffalo permissions generate --framework opa
 
----
-
-### 8. buffalo.events — Event-driven архитектура
-**Статус:** 📋 Планируется
-
-```protobuf
-message UserCreated {
-  option (buffalo.event) = {
-    topic: "users.created"
-    schema_registry: true
-    partitioning: "user_id"
-    retention: "7d"
-  };
-  string user_id = 1;
-  string email = 2;
-  google.protobuf.Timestamp created_at = 3;
-}
+buffalo permissions matrix                     # таблица ролей × методов
+buffalo permissions matrix --format html
+buffalo permissions audit                      # обнаружение проблем
+buffalo permissions diff v1..v2                # изменения прав между версиями
 ```
 
-**Возможности:**
-- Kafka/RabbitMQ/NATS схемы из proto
-- Avro/Protobuf Schema Registry интеграция
-- Producer/Consumer кодогенерация
-- Event sourcing паттерны
-- Dead letter queue конфигурация
-- CloudEvents совместимость
+**Пример matrix:**
+```
+🔐 Permissions Matrix — UserService
+
+Method       │ admin │ user_manager │ user │ Conditions
+─────────────┼───────┼──────────────┼──────┼───────────────
+GetUser      │  ✅   │     ✅       │  ✅  │ allow_self
+CreateUser   │  ✅   │     ✅       │  ❌  │ scope: users:write
+UpdateUser   │  ✅   │     ✅       │  ⚠️  │ ABAC: user_id=token.sub
+DeleteUser   │  ✅   │     ❌       │  ❌  │ MFA required
+```
 
 ---
 
-## 🎯 Приоритет 3 — DevOps & Cloud
+### 6. buffalo-tui — Watch с TUI diff-визуализацией
+**Статус:** 📋 Планируется  
+**Проект:** отдельный репозиторий `buffalo-tui`
 
-### 9. buffalo benchmark — Нагрузочное тестирование gRPC
-**Статус:** 📋 Планируется
+Терминальный UI (Bubble Tea) для Buffalo: live watch, diff, навигация, логи.
 
 ```bash
-buffalo benchmark \
-  --service UserService.GetUser \
-  --target localhost:50051 \
-  --requests 10000 \
-  --concurrency 100 \
-  --duration 60s \
-  --report html
+buffalo-tui
+buffalo-tui --config ./buffalo.yaml
+buffalo-tui --theme dark
+```
+
+**Интерфейс:**
+```
+┌─ 🦬 Buffalo TUI ─────────────────────────────────────────────────┐
+│ ┌─ Files ────────┐ ┌─ Diff: user.proto ────────────────────────┐ │
+│ │ 📁 protos/     │ │  type User struct {                       │ │
+│ │  ├─ ✅ user    │ │      Id    string                         │ │
+│ │  ├─ ✅ order   │ │ +    Age   int32                          │ │
+│ │  └─ ❌ bad     │ │ +    Phone string                         │ │
+│ │                │ │  }                                        │ │
+│ ├─ Stats ────────┤ │                                           │ │
+│ │ Files: 4/4     │ │                                           │ │
+│ │ Build: 1.2s    │ │                                           │ │
+│ │ Cache: 75%     │ │                                           │ │
+│ └────────────────┘ └───────────────────────────────────────────┘ │
+│ ┌─ Log ────────────────────────────────────────────────────────┐ │
+│ │ 14:32:05 👀 Change: protos/user.proto                        │ │
+│ │ 14:32:06 ✅ Go: 2 files (0.8s)                               │ │
+│ │ 14:32:06 ❌ bad.proto:15: syntax error                       │ │
+│ └──────────────────────────────────────────────────────────────┘ │
+│ [Tab] Panel  [d] Diff mode  [b] Build  [g] Graph  [q] Quit      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 **Возможности:**
-- Встроенный load testing для gRPC сервисов
-- Метрики: latency (p50/p95/p99), throughput, error rate
-- Сравнение производительности между версиями
-- Прогрев (warmup) и ramp-up
-- HTML/JSON отчёты с графиками
-- CI/CD интеграция (fail on regression)
+- Live watch с debounce
+- Side-by-side / unified diff
+- File tree со статусами (✅ ⚠️ ❌)
+- Error panel с навигацией
+- Build log, stats, cache hit rate
+- ASCII-граф зависимостей
+- Vim-like навигация
 
 ---
 
-### 10. buffalo cloud deploy — Деплой в облако
-**Статус:** 📋 Планируется
+## 📊 Матрица — Buffalo 5.0.0
 
-```bash
-buffalo deploy --provider gcp --region us-central1
-buffalo deploy --provider aws --service ecs
-buffalo deploy --provider k8s --namespace production
+| # | Функция | Тип | Сложность | Ценность |
+|---|---------|-----|-----------|----------|
+| 1 | buffalo graph | core | Средняя | Высокая |
+| 2 | buffalo-lsp | отд. проект | Высокая | Высокая |
+| 3 | buffalo upgrade | core | Средняя | Средняя |
+| 4 | buffalo workspace | core | Высокая | Высокая |
+| 5 | buffalo.permissions | core | Средняя | Средняя |
+| 6 | buffalo-tui | отд. проект | Средняя | Высокая |
+
+### Порядок реализации
+
 ```
-
-**Возможности:**
-- Генерация Kubernetes манифестов (Deployment, Service, Ingress)
-- Terraform/Pulumi модули
-- Cloud Run, Lambda, ECS шаблоны
-- Helm chart генерация
-- CI/CD пайплайны (GitHub Actions, GitLab CI, Jenkins)
-- Service mesh конфигурация (Istio, Linkerd)
-
----
-
-### 11. buffalo.observability — Телеметрия из коробки
-**Статус:** 📋 Планируется
-
-```protobuf
-service UserService {
-  option (buffalo.observability) = {
-    tracing: true
-    metrics: true
-    logging: "structured"
-  };
-
-  rpc GetUser(GetUserRequest) returns (User)
-    [(buffalo.observability.span) = {name: "get_user", attributes: ["user_id"]}];
-}
-```
-
-**Возможности:**
-- OpenTelemetry interceptors генерация
-- Prometheus метрики из коробки
-- Structured logging middleware
-- Distributed tracing
-- Health check endpoints
-- Grafana dashboard шаблоны
-
----
-
-## 🎯 Приоритет 4 — DX (Developer Experience)
-
-### 12. buffalo repl — Интерактивная gRPC консоль
-**Статус:** 📋 Планируется
-
-```bash
-buffalo repl --target localhost:50051
-> call UserService.GetUser {"user_id": "123"}
-> stream OrderService.WatchOrders {"customer_id": "456"}
-> describe UserService
-> history
-```
-
-**Возможности:**
-- Интерактивный gRPC клиент с автодополнением
-- Server reflection поддержка
-- Сохранение истории запросов
-- Переменные и скриптинг
-- Streaming поддержка (server/client/bidi)
-- Экспорт в curl/grpcurl команды
-
----
-
-### 13. buffalo convert — Конвертация форматов
-**Статус:** 📋 Планируется
-
-```bash
-buffalo convert proto2-to-proto3 --input old/ --output new/
-buffalo convert json-to-proto --input schema.json --output generated.proto
-buffalo convert openapi-to-proto --input swagger.yaml --output protos/
-buffalo convert graphql-to-proto --input schema.graphql --output protos/
-buffalo convert avro-to-proto --input schema.avsc --output protos/
-```
-
-**Возможности:**
-- proto2 ↔ proto3 миграция
-- JSON Schema → proto
-- OpenAPI/Swagger → proto
-- GraphQL SDL → proto
-- Avro → proto
-- TypeScript interfaces → proto
-- SQL DDL → proto
-
----
-
-### 14. buffalo docs — Автодокументация
-**Статус:** 📋 Планируется
-
-```bash
-buffalo docs generate --format html --output docs/api/
-buffalo docs serve --port 8080
-buffalo docs publish --provider github-pages
-```
-
-**Возможности:**
-- HTML/Markdown документация из proto comments
-- Интерактивная навигация по сервисам и сообщениям
-- Диаграммы зависимостей (Mermaid)
-- Примеры запросов/ответов
-- Версионированная документация
-- Поиск по API
-
----
-
-### 15. buffalo playground — Онлайн-песочница
-**Статус:** 📋 Планируется
-
-```bash
-buffalo playground --port 3000
-```
-
-**Возможности:**
-- Web UI для редактирования proto файлов
-- Мгновенный предпросмотр сгенерированного кода
-- Валидация в реальном времени
-- Шаблоны и примеры
-- Совместное редактирование
-
----
-
-## 💡 Дополнительные идеи
-
-### 16. buffalo.rate_limit — Rate limiting аннотации
-```protobuf
-rpc GetUser(GetUserRequest) returns (User)
-  [(buffalo.rate_limit) = {requests: 100, window: "1m", by: "ip"}];
-```
-
-### 17. buffalo.cache — Кэширование ответов
-```protobuf
-rpc GetUser(GetUserRequest) returns (User)
-  [(buffalo.cache) = {ttl: "5m", key: "user:{user_id}", invalidate_on: "UpdateUser"}];
-```
-
-### 18. buffalo.retry — Политики повторных попыток
-```protobuf
-rpc GetUser(GetUserRequest) returns (User)
-  [(buffalo.retry) = {max_attempts: 3, backoff: "exponential", codes: [UNAVAILABLE, DEADLINE_EXCEEDED]}];
-```
-
-### 19. buffalo.auth — Авторизация на уровне методов
-```protobuf
-rpc DeleteUser(DeleteUserRequest) returns (Empty)
-  [(buffalo.auth) = {roles: ["admin"], scopes: ["users:delete"]}];
-```
-
-### 20. buffalo.deprecation — Управление устареванием
-```protobuf
-message OldUser {
-  option (buffalo.deprecation) = {
-    since: "2.0.0"
-    removal: "3.0.0"
-    migration: "Use User instead"
-    replacement: "User"
-  };
-}
-```
-
-### 21. buffalo.feature_flags — Feature flags
-```protobuf
-rpc GetUserV2(GetUserRequest) returns (UserV2)
-  [(buffalo.feature) = {flag: "new_user_api", default: false, rollout: 10}];
-```
-
-### 22. buffalo.transform — Трансформация данных
-```protobuf
-message UserDTO {
-  string full_name = 1 [(buffalo.transform) = {from: "User", map: "first_name + ' ' + last_name"}];
-  string masked_email = 2 [(buffalo.transform) = {from: "User.email", mask: "***@{domain}"}];
-}
-```
-
-### 23. buffalo.i18n — Интернационализация ошибок
-```protobuf
-message ValidationError {
-  string code = 1 [(buffalo.i18n) = {key: "error.validation", locales: ["en", "ru", "zh"]}];
-}
-```
-
-### 24. buffalo.circuit_breaker — Circuit breaker
-```protobuf
-rpc ExternalCall(Request) returns (Response)
-  [(buffalo.circuit_breaker) = {threshold: 5, timeout: "30s", half_open_requests: 3}];
-```
-
-### 25. buffalo.changelog — Автоматический CHANGELOG
-```bash
-buffalo changelog generate --from v1.0.0 --to v2.0.0
-buffalo changelog ci --format github-release
+Фаза 1 (фундамент):
+  ┌─────────────────┐     ┌─────────────────┐
+  │  buffalo graph  │     │ buffalo upgrade │
+  └───────┬─────────┘     └─────────────────┘
+          │
+Фаза 2 (надстройка):
+          ├────────────────────┐
+          ▼                    ▼
+  ┌─────────────────┐  ┌──────────────────┐
+  │buffalo workspace│  │buffalo.permissions│
+  └───────┬─────────┘  └──────────────────┘
+          │
+Фаза 3 (DX):
+          ├────────────────────┐
+          ▼                    ▼
+  ┌─────────────────┐  ┌─────────────────┐
+  │   buffalo-lsp   │  │   buffalo-tui   │
+  └─────────────────┘  └─────────────────┘
 ```
 
 ---
 
-## 📊 Матрица приоритетов
+## 💡 Backlog (будущие версии)
 
-| Функция | Сложность | Ценность | Приоритет |
-|---------|-----------|----------|-----------|
-| buffalo.mock | Средняя | Высокая | 🔴 P1 |
-| buffalo migrate | Средняя | Высокая | 🔴 P1 |
-| buffalo diff | Низкая | Высокая | 🔴 P1 |
-| buffalo security | Средняя | Высокая | 🔴 P1 |
-| buffalo.openapi | Средняя | Высокая | 🟡 P2 |
-| buffalo.db | Высокая | Высокая | 🟡 P2 |
-| buffalo.graphql | Высокая | Средняя | 🟡 P2 |
-| buffalo.events | Высокая | Средняя | 🟡 P2 |
-| buffalo benchmark | Средняя | Средняя | 🟢 P3 |
-| buffalo cloud | Высокая | Средняя | 🟢 P3 |
-| buffalo.observability | Средняя | Средняя | 🟢 P3 |
-| buffalo repl | Низкая | Средняя | 🔵 P4 |
-| buffalo convert | Средняя | Средняя | 🔵 P4 |
-| buffalo docs | Средняя | Средняя | 🔵 P4 |
-| buffalo playground | Высокая | Низкая | 🔵 P4 |
+### Тестирование и качество
+- **buffalo.mock** — Генерация моков, фикстур, record/replay
+- **buffalo migrate** — Версионирование proto, breaking changes detection
+- **buffalo security** — PII detection, CVE scanning, SARIF
+
+### Экосистема и интеграции
+- **buffalo.openapi** — Proto → OpenAPI 3.1, Swagger UI
+- **buffalo.db** — ORM аннотации, SQL DDL, миграции БД
+- **buffalo.graphql** — Proto → GraphQL SDL, DataLoader
+- **buffalo.events** — Kafka/RabbitMQ/NATS, Schema Registry
+
+### DevOps и Cloud
+- **buffalo benchmark** — gRPC load testing, latency percentiles
+- **buffalo cloud** — K8s manifests, Terraform, Helm charts
+- **buffalo.observability** — OpenTelemetry, Prometheus, tracing
+
+### DX
+- **buffalo repl** — Интерактивный gRPC клиент
+- **buffalo convert** — proto2↔proto3, JSON Schema, OpenAPI, Avro
+- **buffalo docs** — HTML/Markdown документация
+- **buffalo sdk** — Готовые SDK-пакеты с README, тестами
+- **buffalo registry** — Приватный реестр proto-пакетов
+
+### Дополнительные аннотации
+- `buffalo.rate_limit` — Rate limiting
+- `buffalo.cache` — Кэширование ответов
+- `buffalo.retry` — Политики повторов
+- `buffalo.deprecation` — Управление устареванием
+- `buffalo.feature_flags` — Feature flags
+- `buffalo.circuit_breaker` — Circuit breaker
+- `buffalo.i18n` — Интернационализация
 
 ---
 
-*Последнее обновление: Февраль 2026*
+*Последнее обновление: Февраль 2026*  
+*Целевой релиз Buffalo 5.0.0: TBD*
