@@ -384,7 +384,8 @@ func (a *ProtoAnalyzer) analyzeBuffaloAnnotations(doc *Document) []Diagnostic {
 			hasImport := false
 			for _, l := range doc.Lines {
 				if strings.Contains(l, `"buffalo/validate/validate.proto"`) ||
-					strings.Contains(l, `"buffalo/validate.proto"`) {
+					strings.Contains(l, `"buffalo/validate.proto"`) ||
+					strings.Contains(l, `"buffalo/validate/`) {
 					hasImport = true
 					break
 				}
@@ -485,7 +486,8 @@ func (a *ProtoAnalyzer) analyzePermissions(doc *Document) []Diagnostic {
 
 	for _, line := range doc.Lines {
 		if strings.Contains(line, `"buffalo/permissions"`) ||
-			strings.Contains(line, `"buffalo/permissions.proto"`) {
+			strings.Contains(line, `"buffalo/permissions.proto"`) ||
+			strings.Contains(line, `"buffalo/permissions/`) {
 			hasPermissionImport = true
 			break
 		}

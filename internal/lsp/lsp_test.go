@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/massonsky/buffalo/pkg/logger"
@@ -504,5 +505,77 @@ func TestKeywordDoc(t *testing.T) {
 		if doc == "" {
 			t.Errorf("getKeywordDoc(%q) returned empty string", kw)
 		}
+	}
+}
+
+func TestAnalyze_PermissionImportVariants(t *testing.T) {
+	log := logger.New()
+	analyzer := NewProtoAnalyzer(log)
+
+	tests := []struct {
+		name       string
+		importLine string
+		wantWarn   bool // expect "without import" warning
+	}{
+		{
+			name:       "buffalo/permissions/permissions.proto",
+			importLine: `import "buffalo/permissions/permissions.proto";`,
+			wantWarn:   false,
+		},
+		{
+			name:       "buffalo/permissions.proto",
+			importLine: `import "buffalo/permissions.proto";`,
+			wantWarn:   false,
+		},
+		{
+			name:       "no import",
+			importLine: ``,
+			wantWarn:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := `syntax = "proto3";
+package test;
+` + tt.importLine + `
+
+service UserService {
+  option (buffalo.permissions.resource) = "users";
+  rpc GetUser(GetUserRequest) returns (User) {
+    option (buffalo.permissions.action) = "read";
+  }
+}
+
+message GetUserRequest { string id = 1; }
+message User { string id = 1; }
+`
+			doc := NewDocument("file:///test.proto", content)
+			diagnostics := analyzer.Analyze(doc)
+
+			hasImportWarn := false
+			for _, d := range diagnostics {
+				if d.Severity == SeverityWarning &&
+					(strings.Contains(d.Message, "without import") || strings.Contains(d.Message, "not imported")) {
+					hasImportWarn = true
+					break
+				}
+			}
+
+			if tt.wantWarn && !hasImportWarn {
+				t.Errorf("expected 'without import' warning, but none found")
+				for _, d := range diagnostics {
+					t.Logf("  %d: %s", d.Severity, d.Message)
+				}
+			}
+			if !tt.wantWarn && hasImportWarn {
+				t.Errorf("did NOT expect 'without import' warning, but found one")
+				for _, d := range diagnostics {
+					if strings.Contains(d.Message, "without import") || strings.Contains(d.Message, "not imported") {
+						t.Logf("  %d: %s", d.Severity, d.Message)
+					}
+				}
+			}
+		})
 	}
 }
