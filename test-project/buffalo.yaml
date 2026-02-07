@@ -22,7 +22,7 @@ languages:
         generator: grpcio-tools
         workdir: ""
     go:
-        enabled: false
+        enabled: true
         module: github.com/yourorg/yourproject
         generator: protoc-gen-go
     rust:

@@ -94,6 +94,7 @@ message StringRules {
   optional bool   ipv4      = 14;
   optional bool   ipv6      = 15;
   optional bool   hostname  = 16;
+  optional uint64 len       = 17;  // exact length
 }
 
 // ──────────────────────────────────────────────────────────────────

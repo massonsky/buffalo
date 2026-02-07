@@ -658,8 +658,10 @@ service UserService {
   option (buffalo.permissions.resource) = "users";
 
   rpc GetUser(GetUserRequest) returns (User) {
-    option (buffalo.permissions.action) = "read";
-    option (buffalo.permissions.roles) = ["admin", "user"];
+    option (buffalo.permissions.method_perms) = {
+      action: "read"
+      roles: ["admin", "user"]
+    };
   }
 }`
 

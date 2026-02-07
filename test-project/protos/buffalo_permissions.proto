@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package buffalo.test.permissions;
 
-option go_package = "github.com/massonsky/buffalo/test-project/gen/permissions";
+option go_package = "github.com/yourorg/yourproject/gen/permissions";
 
 // Import Buffalo permissions
 import "buffalo/permissions/permissions.proto";
@@ -10,52 +10,65 @@ import "buffalo/permissions/permissions.proto";
 // ============================================================================
 // User Management Service with RBAC/ABAC permissions
 // ============================================================================
-
 service UserService {
   // Service-level resource declaration
   option (buffalo.permissions.resource) = "users";
 
   // Public endpoint - no authentication required
   rpc GetPublicProfile(GetPublicProfileRequest) returns (PublicProfile) {
-    option (buffalo.permissions.public) = true;
+    option (buffalo.permissions.method_perms) = {
+      public: true
+    };
   }
 
   // Read user - requires 'users:read' permission
   rpc GetUser(GetUserRequest) returns (User) {
-    option (buffalo.permissions.action) = "read";
-    option (buffalo.permissions.roles) = ["admin", "user", "viewer"];
+    option (buffalo.permissions.method_perms) = {
+      action: "read"
+      roles: ["admin", "user", "viewer"]
+    };
   }
 
   // List users - requires 'users:list' permission
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
-    option (buffalo.permissions.action) = "list";
-    option (buffalo.permissions.roles) = ["admin", "moderator"];
+    option (buffalo.permissions.method_perms) = {
+      action: "list"
+      roles: ["admin", "moderator"]
+    };
   }
 
   // Create user - requires 'users:create' permission
   rpc CreateUser(CreateUserRequest) returns (User) {
-    option (buffalo.permissions.action) = "create";
-    option (buffalo.permissions.roles) = ["admin"];
+    option (buffalo.permissions.method_perms) = {
+      action: "create"
+      roles: ["admin"]
+    };
   }
 
   // Update user - requires 'users:update' permission with owner check
   rpc UpdateUser(UpdateUserRequest) returns (User) {
-    option (buffalo.permissions.action) = "update";
-    option (buffalo.permissions.roles) = ["admin", "user"];
-    option (buffalo.permissions.owner_field) = "user_id";
+    option (buffalo.permissions.method_perms) = {
+      action: "update"
+      roles: ["admin", "user"]
+      owner_field: "user_id"
+    };
   }
 
   // Delete user - admin only
   rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse) {
-    option (buffalo.permissions.action) = "delete";
-    option (buffalo.permissions.roles) = ["admin", "superadmin"];
+    option (buffalo.permissions.method_perms) = {
+      action: "delete"
+      roles: ["admin", "superadmin"]
+    };
   }
 
   // Bulk operations - superadmin only
   rpc BulkDeleteUsers(BulkDeleteRequest) returns (BulkDeleteResponse) {
-    option (buffalo.permissions.action) = "bulk_delete";
-    option (buffalo.permissions.roles) = ["superadmin"];
-    option (buffalo.permissions.audit) = true;
+    option (buffalo.permissions.method_perms) = {
+      action: "bulk_delete"
+      roles: ["superadmin"]
+      audit_log: true
+    };
   }
 }
 
@@ -69,22 +82,28 @@ service AdminService {
 
   // Get system stats
   rpc GetSystemStats(GetStatsRequest) returns (SystemStats) {
-    option (buffalo.permissions.action) = "read";
-    option (buffalo.permissions.roles) = ["admin", "superadmin"];
+    option (buffalo.permissions.method_perms) = {
+      action: "read"
+      roles: ["admin", "superadmin"]
+    };
   }
 
   // Manage roles
   rpc AssignRole(AssignRoleRequest) returns (AssignRoleResponse) {
-    option (buffalo.permissions.action) = "manage_roles";
-    option (buffalo.permissions.roles) = ["superadmin"];
-    option (buffalo.permissions.audit) = true;
+    option (buffalo.permissions.method_perms) = {
+      action: "manage_roles"
+      roles: ["superadmin"]
+      audit_log: true
+    };
   }
 
   // System configuration
   rpc UpdateConfig(UpdateConfigRequest) returns (ConfigResponse) {
-    option (buffalo.permissions.action) = "configure";
-    option (buffalo.permissions.roles) = ["superadmin"];
-    option (buffalo.permissions.require_approval) = true;
+    option (buffalo.permissions.method_perms) = {
+      action: "configure"
+      roles: ["superadmin"]
+      require_approval: true
+    };
   }
 }
 
@@ -97,31 +116,37 @@ service BillingService {
 
   // Get invoice - rate limited
   rpc GetInvoice(GetInvoiceRequest) returns (Invoice) {
-    option (buffalo.permissions.action) = "read";
-    option (buffalo.permissions.roles) = ["admin", "billing_admin", "user"];
-    option (buffalo.permissions.rate_limit) = {
-      requests_per_minute: 60,
-      requests_per_hour: 1000
+    option (buffalo.permissions.method_perms) = {
+      action: "read"
+      roles: ["admin", "billing_admin", "user"]
+      rate_limit: {
+        requests_per_minute: 60
+        requests_per_hour: 1000
+      }
     };
   }
 
   // Process payment - strict rate limit
   rpc ProcessPayment(PaymentRequest) returns (PaymentResponse) {
-    option (buffalo.permissions.action) = "process";
-    option (buffalo.permissions.roles) = ["billing_admin"];
-    option (buffalo.permissions.rate_limit) = {
-      requests_per_minute: 10,
-      requests_per_hour: 100
+    option (buffalo.permissions.method_perms) = {
+      action: "process"
+      roles: ["billing_admin"]
+      rate_limit: {
+        requests_per_minute: 10
+        requests_per_hour: 100
+      }
+      audit_log: true
     };
-    option (buffalo.permissions.audit) = true;
   }
 
   // Refund - requires approval
   rpc ProcessRefund(RefundRequest) returns (RefundResponse) {
-    option (buffalo.permissions.action) = "refund";
-    option (buffalo.permissions.roles) = ["billing_admin", "superadmin"];
-    option (buffalo.permissions.require_approval) = true;
-    option (buffalo.permissions.audit) = true;
+    option (buffalo.permissions.method_perms) = {
+      action: "refund"
+      roles: ["billing_admin", "superadmin"]
+      require_approval: true
+      audit_log: true
+    };
   }
 }
 
@@ -134,32 +159,40 @@ service ContentService {
 
   // Get article - public with optional auth for premium
   rpc GetArticle(GetArticleRequest) returns (Article) {
-    option (buffalo.permissions.action) = "read";
-    option (buffalo.permissions.public) = true;
-    option (buffalo.permissions.field_permissions) = {
-      field: "premium_content",
-      roles: ["premium_user", "admin"]
+    option (buffalo.permissions.method_perms) = {
+      action: "read"
+      public: true
+      field_permissions: {
+        field: "premium_content"
+        roles: ["premium_user", "admin"]
+      }
     };
   }
 
   // Create article - requires author role
   rpc CreateArticle(CreateArticleRequest) returns (Article) {
-    option (buffalo.permissions.action) = "create";
-    option (buffalo.permissions.roles) = ["author", "editor", "admin"];
+    option (buffalo.permissions.method_perms) = {
+      action: "create"
+      roles: ["author", "editor", "admin"]
+    };
   }
 
   // Publish article - editor approval required
   rpc PublishArticle(PublishArticleRequest) returns (Article) {
-    option (buffalo.permissions.action) = "publish";
-    option (buffalo.permissions.roles) = ["editor", "admin"];
-    option (buffalo.permissions.condition) = "article.status == 'draft'";
+    option (buffalo.permissions.method_perms) = {
+      action: "publish"
+      roles: ["editor", "admin"]
+      condition: "article.status == 'draft'"
+    };
   }
 
   // Delete article - admin or owner
   rpc DeleteArticle(DeleteArticleRequest) returns (DeleteArticleResponse) {
-    option (buffalo.permissions.action) = "delete";
-    option (buffalo.permissions.roles) = ["admin"];
-    option (buffalo.permissions.owner_field) = "author_id";
+    option (buffalo.permissions.method_perms) = {
+      action: "delete"
+      roles: ["admin"]
+      owner_field: "author_id"
+    };
   }
 }
 

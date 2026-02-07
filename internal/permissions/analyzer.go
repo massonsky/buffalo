@@ -363,7 +363,8 @@ func (a *Analyzer) Diff(ctx context.Context, old, new []*ServicePermissions) []P
 func permissionsEqual(a, b *Permission) bool {
 	if a.Action != b.Action || a.Public != b.Public ||
 		a.AllowSelf != b.AllowSelf || a.RequireMFA != b.RequireMFA ||
-		a.AuditLog != b.AuditLog {
+		a.AuditLog != b.AuditLog || a.OwnerField != b.OwnerField ||
+		a.RequireApproval != b.RequireApproval || a.Condition != b.Condition {
 		return false
 	}
 

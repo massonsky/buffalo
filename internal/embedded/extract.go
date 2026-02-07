@@ -59,16 +59,22 @@ func ExtractAllProtos(workspaceDir string) (protoPath string, err error) {
 
 // ValidateProtoImportPath returns the proto_path that should be added to
 // protoc / Buffalo import paths so that `import "buffalo/validate/validate.proto";`
-// resolves correctly. If the files haven't been extracted yet, it extracts them.
+// and `import "buffalo/permissions/permissions.proto";` resolve correctly.
+// If any embedded files haven't been extracted yet, it re-extracts them all.
 //
 // workspaceDir is typically ".buffalo".
 func ValidateProtoImportPath(workspaceDir string) (string, error) {
-	protoDir := filepath.Join(workspaceDir, "proto", "buffalo", "validate")
-	target := filepath.Join(protoDir, "validate.proto")
+	// Check all known embedded proto files, not just validate.
+	requiredFiles := []string{
+		filepath.Join(workspaceDir, "proto", "buffalo", "validate", "validate.proto"),
+		filepath.Join(workspaceDir, "proto", "buffalo", "permissions", "permissions.proto"),
+	}
 
-	if _, err := os.Stat(target); os.IsNotExist(err) {
-		// Auto-extract
-		return ExtractAllProtos(workspaceDir)
+	for _, target := range requiredFiles {
+		if _, err := os.Stat(target); os.IsNotExist(err) {
+			// At least one file is missing — re-extract everything.
+			return ExtractAllProtos(workspaceDir)
+		}
 	}
 
 	return filepath.Join(workspaceDir, "proto"), nil

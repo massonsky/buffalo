@@ -1,0 +1,155 @@
+// Copyright 2026 Massonsky. All rights reserved.
+// Use of this source code is governed by the MIT license
+// that can be found in the LICENSE file.
+
+// Buffalo Permissions — RBAC/ABAC permission annotations for protobuf services.
+//
+// Usage:
+//   import "buffalo/permissions/permissions.proto";
+//
+//   service UserService {
+//     option (buffalo.permissions.resource) = "users";
+//
+//     rpc GetUser(GetUserRequest) returns (User) {
+//       option (buffalo.permissions.method_perms) = {
+//         action: "read"
+//         roles: ["admin", "user"]
+//       };
+//     }
+//   }
+
+syntax = "proto3";
+
+package buffalo.permissions;
+
+option go_package = "github.com/massonsky/buffalo/proto/buffalo/permissions";
+
+import "google/protobuf/descriptor.proto";
+
+// ──────────────────────────────────────────────────────────────────
+// Service-level extensions
+// ──────────────────────────────────────────────────────────────────
+
+extend google.protobuf.ServiceOptions {
+  // resource — declares the resource name for the service.
+  optional string resource = 52000;
+
+  // require_mfa — require multi-factor authentication for all RPCs.
+  optional bool require_mfa = 52001;
+
+  // default_roles — default roles applied to all RPCs in the service.
+  optional RolesList default_roles = 52002;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Method-level extensions
+// ──────────────────────────────────────────────────────────────────
+
+extend google.protobuf.MethodOptions {
+  // method_perms — comprehensive permission configuration for an RPC.
+  optional MethodPermissions method_perms = 52100;
+
+  // action — the permission action (e.g. "read", "create", "delete").
+  optional string action = 52101;
+
+  // public — marks the RPC as publicly accessible (no auth required).
+  optional bool public = 52102;
+
+  // owner_field — field name used for owner-based access checks.
+  optional string owner_field = 52103;
+
+  // require_approval — require manual approval for this action.
+  optional bool require_approval = 52105;
+
+  // condition — CEL expression for conditional access.
+  optional string condition = 52106;
+
+  // rate_limit — rate limiting configuration for this RPC.
+  optional RateLimit rate_limit = 52107;
+
+  // field_permissions — field-level permission restrictions.
+  optional FieldPermission field_permissions = 52108;
+
+  // roles — list of roles allowed to call this RPC.
+  optional RolesList roles = 52109;
+
+  // required — a specific permission name required (e.g. "users.delete").
+  optional string required = 52110;
+
+  // any — any of these permissions is sufficient.
+  optional PermissionList any = 52111;
+
+  // all — all of these permissions are required.
+  optional PermissionList all = 52112;
+
+  // allow_self — allow users to access their own resources.
+  optional bool allow_self = 52113;
+
+  // audit_log — enable audit logging for this method.
+  optional bool audit_log = 52114;
+
+  // scopes — required OAuth scopes.
+  optional ScopesList scopes = 52115;
+
+  // require_mfa — require MFA for this specific method.
+  optional bool method_require_mfa = 52116;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Supporting messages
+// ──────────────────────────────────────────────────────────────────
+
+// MethodPermissions — all-in-one permission config for a method.
+message MethodPermissions {
+  string action = 1;
+  repeated string roles = 2;
+  bool public = 3;
+  string owner_field = 4;
+  bool require_approval = 5;
+  string condition = 6;
+  RateLimit rate_limit = 7;
+  FieldPermission field_permissions = 8;
+  bool allow_self = 9;
+  bool require_mfa = 10;
+  bool audit_log = 11;
+  repeated string scopes = 12;
+  repeated Condition conditions = 13;
+}
+
+// RolesList — wrapper for a list of role names.
+message RolesList {
+  repeated string role = 1;
+}
+
+// PermissionList — wrapper for a list of permission names.
+message PermissionList {
+  repeated string permission = 1;
+}
+
+// ScopesList — wrapper for a list of OAuth scope names.
+message ScopesList {
+  repeated string scope = 1;
+}
+
+// RateLimit — rate limiting configuration.
+message RateLimit {
+  int32 requests_per_minute = 1;
+  int32 requests_per_hour = 2;
+  int32 requests = 3;
+  string window = 4;
+  bool per_user = 5;
+}
+
+// FieldPermission — restrict access to specific message fields.
+message FieldPermission {
+  string field = 1;
+  repeated string roles = 2;
+}
+
+// Condition — ABAC condition for fine-grained access control.
+message Condition {
+  string field = 1;
+  string operator = 2;    // eq, neq, in, not_in, contains, gt, lt, exists
+  string source = 3;
+  string value = 4;
+}

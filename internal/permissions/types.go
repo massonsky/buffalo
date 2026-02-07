@@ -21,6 +21,22 @@ type Permission struct {
 	RateLimit *RateLimit `json:"rate_limit,omitempty" yaml:"rate_limit,omitempty"`
 	// Public makes this endpoint public (no auth required).
 	Public bool `json:"public,omitempty" yaml:"public,omitempty"`
+	// OwnerField is the field name used for owner-based access checks.
+	OwnerField string `json:"owner_field,omitempty" yaml:"owner_field,omitempty"`
+	// RequireApproval requires manual approval for this action.
+	RequireApproval bool `json:"require_approval,omitempty" yaml:"require_approval,omitempty"`
+	// Condition is a CEL expression for conditional access.
+	Condition string `json:"condition,omitempty" yaml:"condition,omitempty"`
+	// FieldPermissions restricts access to specific message fields.
+	FieldPermissions *FieldPermission `json:"field_permissions,omitempty" yaml:"field_permissions,omitempty"`
+}
+
+// FieldPermission restricts access to specific message fields by role.
+type FieldPermission struct {
+	// Field is the field name to restrict.
+	Field string `json:"field" yaml:"field"`
+	// Roles lists roles that can access this field.
+	Roles []string `json:"roles" yaml:"roles"`
 }
 
 // Condition represents an ABAC condition.

@@ -3,8 +3,8 @@
 # This file is auto-generated from buffalo.yaml
 
 version: "1"
-generated_at: 2026-02-06T23:09:26.753645465Z
-config_hash: ece472f3745704afb463ddb66e1f94d2a97fc1e90281ab8f046efa0564549624
+generated_at: 2026-02-07T13:34:23.687887829Z
+config_hash: 4d413275c4fd7d465a6a11361264422a26fe3a983523fe58ea61b2c608a11458
 project:
     name: my-proto-project
     version: 0.1.0
@@ -15,6 +15,26 @@ proto:
             size: 216
             modified_at: 2026-02-03T12:21:13.538014826Z
             package: test.v1
+        protos/buffalo_errors.proto:
+            hash: d127e458e98a9ac05b24fdb874a12eedef8943688c6ff04016213bf34b5ae57f
+            size: 6285
+            modified_at: 2026-02-07T02:50:41.263173558Z
+            package: buffalo.test.errors
+        protos/buffalo_full_example.proto:
+            hash: 02bcb7fbfa10399ffc3300b25d216bbc76c2a02506480a7d9cfa23d8a56a8d57
+            size: 11531
+            modified_at: 2026-02-07T02:50:41.264187185Z
+            package: buffalo.test.full
+        protos/buffalo_permissions.proto:
+            hash: 237222b6662d8388414e9f406a9fb33cea8d1aca9628a2a97f40b7391ca1d0bd
+            size: 8986
+            modified_at: 2026-02-07T02:50:41.263173558Z
+            package: buffalo.test.permissions
+        protos/buffalo_validation.proto:
+            hash: aca304d45488d0cd2f5eb1eb3a21ccfae414e54beb684faab9e7c7948eb566e8
+            size: 4575
+            modified_at: 2026-02-07T01:26:35.693381473Z
+            package: buffalo.test.validation
         protos/example.proto:
             hash: 2d9879f5346cb470bb94c224545219b1692c6897d8db6c8c05ac1888a9db683b
             size: 511
@@ -31,8 +51,12 @@ proto:
             modified_at: 2026-02-03T12:21:13.539030688Z
             package: user.v1
     import_paths: []
-    total_files: 4
+    total_files: 8
 languages:
+    go:
+        enabled: true
+        module: github.com/yourorg/yourproject
+        output_dir: generated/go
     rust:
         enabled: true
         generator: rust-protobuf

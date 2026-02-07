@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package buffalo.test.validation;
 
-option go_package = "github.com/massonsky/buffalo/test-project/gen/validation";
+option go_package = "github.com/yourorg/yourproject/gen/validation";
 
 // Import Buffalo validation rules
 import "buffalo/validate/validate.proto";

@@ -352,25 +352,25 @@ func buffaloAnnotationCompletions() []CompletionItem {
 		},
 		// Extended permission annotations
 		{
-			Label:            "(buffalo.permissions)",
+			Label:            "(buffalo.permissions.method_perms)",
 			Kind:             CompletionItemKindProperty,
 			Detail:           "Full permission block",
-			InsertText:       "(buffalo.permissions) = {\n  action: \"${1:read}\"\n  roles: [\"${2:admin}\"]\n  ${3:audit_log: true}\n}",
+			InsertText:       "(buffalo.permissions.method_perms) = {\n  action: \"${1:read}\"\n  roles: [\"${2:admin}\"]\n  ${3:audit_log: true}\n}",
 			InsertTextFormat: InsertTextFormatSnippet,
 			Documentation: MarkupContent{
 				Kind:  MarkupKindMarkdown,
-				Value: "Define full permission configuration for an RPC method.\n\n```protobuf\nrpc GetUser(GetUserRequest) returns (User) {\n  option (buffalo.permissions) = {\n    action: \"read\"\n    roles: [\"admin\", \"user\"]\n    audit_log: true\n  };\n}\n```",
+				Value: "Define full permission configuration for an RPC method.\n\n```protobuf\nrpc GetUser(GetUserRequest) returns (User) {\n  option (buffalo.permissions.method_perms) = {\n    action: \"read\"\n    roles: [\"admin\", \"user\"]\n    audit_log: true\n  };\n}\n```",
 			},
 		},
 		{
 			Label:            "buffalo.permissions.public",
 			Kind:             CompletionItemKindProperty,
 			Detail:           "Public endpoint (no auth)",
-			InsertText:       "(buffalo.permissions) = {\n  public: true\n}",
+			InsertText:       "(buffalo.permissions.method_perms) = {\n  public: true\n}",
 			InsertTextFormat: InsertTextFormatSnippet,
 			Documentation: MarkupContent{
 				Kind:  MarkupKindMarkdown,
-				Value: "Mark an RPC method as public (no authentication required).\n\n```protobuf\nrpc HealthCheck(Empty) returns (HealthResponse) {\n  option (buffalo.permissions) = { public: true };\n}\n```",
+				Value: "Mark an RPC method as public (no authentication required).\n\n```protobuf\nrpc HealthCheck(Empty) returns (HealthResponse) {\n  option (buffalo.permissions.method_perms) = { public: true };\n}\n```",
 			},
 		},
 		{
@@ -392,7 +392,7 @@ func buffaloAnnotationCompletions() []CompletionItem {
 			InsertTextFormat: InsertTextFormatPlainText,
 			Documentation: MarkupContent{
 				Kind:  MarkupKindMarkdown,
-				Value: "Allow users to access their own resources.\n\n```protobuf\noption (buffalo.permissions) = {\n  action: \"read\"\n  allow_self: true\n};\n```",
+				Value: "Allow users to access their own resources.\n\n```protobuf\noption (buffalo.permissions.method_perms) = {\n  action: \"read\"\n  allow_self: true\n};\n```",
 			},
 		},
 		{
@@ -425,7 +425,7 @@ func buffaloAnnotationCompletions() []CompletionItem {
 			InsertTextFormat: InsertTextFormatSnippet,
 			Documentation: MarkupContent{
 				Kind:  MarkupKindMarkdown,
-				Value: "Required OAuth scopes for this method.\n\n```protobuf\noption (buffalo.permissions) = {\n  scopes: [\"read:users\", \"write:users\"]\n};\n```",
+				Value: "Required OAuth scopes for this method.\n\n```protobuf\noption (buffalo.permissions.method_perms) = {\n  scopes: [\"read:users\", \"write:users\"]\n};\n```",
 			},
 		},
 		{
@@ -436,7 +436,7 @@ func buffaloAnnotationCompletions() []CompletionItem {
 			InsertTextFormat: InsertTextFormatSnippet,
 			Documentation: MarkupContent{
 				Kind:  MarkupKindMarkdown,
-				Value: "Configure rate limiting for this method.\n\n```protobuf\noption (buffalo.permissions) = {\n  rate_limit: {\n    requests: 100\n    window: \"1m\"\n    per_user: true\n  }\n};\n```",
+				Value: "Configure rate limiting for this method.\n\n```protobuf\noption (buffalo.permissions.method_perms) = {\n  rate_limit: {\n    requests: 100\n    window: \"1m\"\n    per_user: true\n  }\n};\n```",
 			},
 		},
 		// Extended validation annotations
@@ -595,13 +595,13 @@ func commonImportCompletions() []CompletionItem {
 			InsertText: "buffalo/validate.proto",
 		},
 		{
-			Label:      "buffalo/permissions.proto",
+			Label:      "buffalo/permissions/permissions.proto",
 			Kind:       CompletionItemKindFile,
 			Detail:     "Buffalo permissions",
-			InsertText: "buffalo/permissions.proto",
+			InsertText: "buffalo/permissions/permissions.proto",
 			Documentation: MarkupContent{
 				Kind:  MarkupKindMarkdown,
-				Value: "**Buffalo Permissions**\n\nRBAC/ABAC permission annotations for gRPC services.\n\n```protobuf\nimport \"buffalo/permissions.proto\";\n\nservice UserService {\n  option (buffalo.permissions.resource) = \"users\";\n  \n  rpc DeleteUser(DeleteUserRequest) returns (Empty) {\n    option (buffalo.permissions) = {\n      action: \"delete\"\n      roles: [\"admin\"]\n      audit_log: true\n    };\n  };\n}\n```",
+				Value: "**Buffalo Permissions**\n\nRBAC/ABAC permission annotations for gRPC services.\n\n```protobuf\nimport \"buffalo/permissions/permissions.proto\";\n\nservice UserService {\n  option (buffalo.permissions.resource) = \"users\";\n  \n  rpc DeleteUser(DeleteUserRequest) returns (Empty) {\n    option (buffalo.permissions.method_perms) = {\n      action: \"delete\"\n      roles: [\"admin\"]\n      audit_log: true\n    };\n  };\n}\n```",
 			},
 		},
 	}

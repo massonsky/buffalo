@@ -77,7 +77,7 @@ func (p *Parser) parseScanner(scanner *bufio.Scanner, filename string) ([]*Servi
 	serviceRe := regexp.MustCompile(`^\s*service\s+(\w+)\s*\{?`)
 	serviceOptRe := regexp.MustCompile(`option\s*\(buffalo\.permissions\.resource\)\s*=\s*"([^"]+)"`)
 	rpcRe := regexp.MustCompile(`^\s*rpc\s+(\w+)\s*\(`)
-	permStartRe := regexp.MustCompile(`\[\s*\(buffalo\.permissions\)\s*=\s*\{`)
+	permStartRe := regexp.MustCompile(`\(buffalo\.permissions(?:\.method_perms)?\)\s*=\s*\{`)
 	actionRe := regexp.MustCompile(`action\s*:\s*"([^"]+)"`)
 	rolesRe := regexp.MustCompile(`roles\s*:\s*\[([^\]]+)\]`)
 	scopesRe := regexp.MustCompile(`scopes\s*:\s*\[([^\]]+)\]`)
@@ -85,6 +85,9 @@ func (p *Parser) parseScanner(scanner *bufio.Scanner, filename string) ([]*Servi
 	requireMFARe := regexp.MustCompile(`require_mfa\s*:\s*true`)
 	auditLogRe := regexp.MustCompile(`audit_log\s*:\s*true`)
 	publicRe := regexp.MustCompile(`public\s*:\s*true`)
+	ownerFieldRe := regexp.MustCompile(`owner_field\s*:\s*"([^"]+)"`)
+	requireApprovalRe := regexp.MustCompile(`require_approval\s*:\s*true`)
+	conditionRe := regexp.MustCompile(`condition\s*:\s*"([^"]+)"`)
 
 	var permBuffer strings.Builder
 	var inPermission bool
@@ -151,7 +154,7 @@ func (p *Parser) parseScanner(scanner *bufio.Scanner, filename string) ([]*Servi
 			permBuffer.WriteString(line)
 
 			// Check if permission block ended
-			if strings.Contains(line, "}]") || strings.Contains(line, "} ]") {
+			if strings.Contains(line, "}]") || strings.Contains(line, "} ]") || strings.Contains(line, "};") {
 				inPermission = false
 				permText := permBuffer.String()
 
@@ -184,6 +187,18 @@ func (p *Parser) parseScanner(scanner *bufio.Scanner, filename string) ([]*Servi
 
 				if publicRe.MatchString(permText) {
 					perm.Public = true
+				}
+
+				if matches := ownerFieldRe.FindStringSubmatch(permText); len(matches) > 1 {
+					perm.OwnerField = matches[1]
+				}
+
+				if requireApprovalRe.MatchString(permText) {
+					perm.RequireApproval = true
+				}
+
+				if matches := conditionRe.FindStringSubmatch(permText); len(matches) > 1 {
+					perm.Condition = matches[1]
 				}
 
 				// Parse conditions
