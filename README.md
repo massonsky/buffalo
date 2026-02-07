@@ -314,7 +314,139 @@ buffalo template generate        # Генерация из шаблона
 
 ---
 
-## 📊 Граф зависимостей (buffalo graph)
+## �️ Установка языковых инструментов (buffalo tools)
+
+Buffalo требует различные инструменты для генерации кода в зависимости от целевых языков. Команда `buffalo tools` позволяет легко устанавливать и проверять эти инструменты.
+
+### Проверка инструментов
+
+```bash
+# Проверить статус всех инструментов
+buffalo tools check
+
+# Проверить инструменты для конкретных языков
+buffalo tools check go python
+
+# Проверить только языки из конфигурации
+buffalo tools check
+```
+
+Пример вывода:
+```
+📋 Tool Installation Status
+═══════════════════════════════════════════════════
+
+Core Tools:
+──────────────────────────────────────────────────
+  ✅ protoc * - libprotoc 3.21.12
+
+Go:
+──────────────────────────────────────────────────
+  ✅ go * - go version go1.24.0 linux/amd64
+  ❌ protoc-gen-go *
+     Install: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+  ❌ protoc-gen-go-grpc *
+     Install: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+Python:
+──────────────────────────────────────────────────
+  ✅ python3 * - Python 3.12.3
+  ✅ pip * - pip 24.0
+  ❌ grpcio-tools *
+     Install: pip3 install grpcio-tools
+
+❌ Some critical tools are missing!
+   Run 'buffalo tools install' to install them.
+```
+
+### Установка инструментов
+
+```bash
+# Установить все необходимые инструменты для включенных языков
+buffalo tools install
+
+# Установить инструменты для конкретных языков
+buffalo tools install go python
+
+# Установить все инструменты (включая опциональные)
+buffalo tools install --all
+
+# Принудительная переустановка
+buffalo tools install --force
+
+# Посмотреть что будет установлено (без установки)
+buffalo tools install --dry-run
+
+# Интерактивный режим (подтверждение для каждого)
+buffalo tools install --interactive
+```
+
+### Список доступных инструментов
+
+```bash
+# Показать все доступные инструменты
+buffalo tools list
+
+# Показать инструменты для конкретного языка
+buffalo tools list go
+
+# Включить опциональные инструменты
+buffalo tools list --all
+```
+
+Пример вывода:
+```
+📦 Available Tools for Protobuf/gRPC Development
+═══════════════════════════════════════════════════
+
+Core (Required):
+────────────────────────────────────────────────────────────
+  ✅ protoc * (libprotoc 3.21.12)
+     Protocol Buffers Compiler
+
+Go:
+────────────────────────────────────────────────────────────
+  ✅ go * (go version go1.24.0)
+     Go Programming Language
+  ❌ protoc-gen-go *
+     Go Protocol Buffers Generator
+     Install: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+  ❌ protoc-gen-go-grpc *
+     Go gRPC Generator
+     Install: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+  ❌ protoc-gen-grpc-gateway
+     gRPC-Gateway Generator (REST API proxy)
+     Install: go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+```
+
+### Поддерживаемые инструменты
+
+| Язык | Инструмент | Описание | Критичный |
+|------|------------|----------|-----------|
+| **Core** | `protoc` | Protocol Buffers Compiler | ✅ |
+| **Go** | `go` | Go Language | ✅ |
+| **Go** | `protoc-gen-go` | Go Protobuf Generator | ✅ |
+| **Go** | `protoc-gen-go-grpc` | Go gRPC Generator | ✅ |
+| **Go** | `protoc-gen-grpc-gateway` | REST API Gateway | ❌ |
+| **Go** | `protoc-gen-openapiv2` | OpenAPI Generator | ❌ |
+| **Go** | `protoc-gen-validate` | Validation Generator | ❌ |
+| **Python** | `python3` | Python Language | ✅ |
+| **Python** | `pip` | Package Installer | ✅ |
+| **Python** | `grpcio-tools` | Python gRPC Tools | ✅ |
+| **Python** | `grpcio` | gRPC Runtime | ✅ |
+| **Python** | `protobuf` | Protobuf Library | ✅ |
+| **Python** | `mypy-protobuf` | Type Stubs | ❌ |
+| **Rust** | `rustc` | Rust Compiler | ✅ |
+| **Rust** | `cargo` | Package Manager | ✅ |
+| **Rust** | `protobuf-codegen` | Code Generator | ✅ |
+| **C++** | `g++` | C++ Compiler | ✅ |
+| **C++** | `cmake` | Build System | ✅ |
+| **C++** | `libprotobuf-dev` | Protobuf Dev Files | ✅ |
+| **C++** | `grpc-dev` | gRPC Dev Files | ✅ |
+
+---
+
+## �📊 Граф зависимостей (buffalo graph)
 
 Визуализация и анализ зависимостей между proto файлами.
 
