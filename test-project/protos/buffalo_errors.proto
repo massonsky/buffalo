@@ -1,0 +1,237 @@
+syntax = "proto3";
+
+package buffalo.test.errors;
+
+option go_package = "github.com/massonsky/buffalo/test-project/gen/errors";
+
+// This file contains intentional errors to test Buffalo LSP diagnostics
+
+import "buffalo/validate/validate.proto";
+import "buffalo/permissions/permissions.proto";
+
+// ============================================================================
+// VALIDATION ERRORS - These should trigger LSP diagnostics
+// ============================================================================
+
+message ValidationErrors {
+  // ERROR: min_len > max_len (conflict)
+  string bad_length = 1 [(buffalo.validate.rules).string = {
+    min_len: 100,
+    max_len: 10
+  }];
+
+  // ERROR: gte > lte (conflict)
+  int32 bad_range = 2 [(buffalo.validate.rules).int32 = {
+    gte: 100,
+    lte: 10
+  }];
+
+  // ERROR: gt >= lt (conflict)
+  double bad_bounds = 3 [(buffalo.validate.rules).double = {
+    gt: 50.0,
+    lt: 50.0
+  }];
+
+  // ERROR: negative min_items
+  repeated string bad_array = 4 [(buffalo.validate.rules).repeated = {
+    min_items: -1,
+    max_items: 10
+  }];
+
+  // ERROR: min_items > max_items
+  repeated int32 bad_array2 = 5 [(buffalo.validate.rules).repeated = {
+    min_items: 100,
+    max_items: 10
+  }];
+
+  // WARNING: len with min_len/max_len is redundant
+  string redundant_len = 6 [(buffalo.validate.rules).string = {
+    len: 10,
+    min_len: 5,
+    max_len: 15
+  }];
+}
+
+// ============================================================================
+// NAMING CONVENTION ERRORS
+// ============================================================================
+
+// ERROR: Message name should be PascalCase
+message bad_message_name {
+  string field = 1;
+}
+
+// ERROR: Message name should be PascalCase  
+message ALLCAPS_MESSAGE {
+  string field = 1;
+}
+
+message GoodMessageName {
+  // ERROR: Field name should be snake_case
+  string BadFieldName = 1;
+  
+  // ERROR: Field name should be snake_case
+  string camelCaseField = 2;
+  
+  // GOOD: snake_case field
+  string good_field_name = 3;
+}
+
+// ERROR: Enum name should be PascalCase
+enum bad_enum_name {
+  BAD_ENUM_NAME_UNSPECIFIED = 0;
+}
+
+enum GoodEnumName {
+  // ERROR: Enum value should be UPPER_SNAKE_CASE
+  goodEnumNameUnspecified = 0;
+  
+  // ERROR: Enum value should be UPPER_SNAKE_CASE
+  GoodEnumName_Active = 1;
+  
+  // GOOD: UPPER_SNAKE_CASE
+  GOOD_ENUM_NAME_COMPLETED = 2;
+}
+
+// ============================================================================
+// FIELD NUMBER ERRORS
+// ============================================================================
+
+message FieldNumberErrors {
+  // ERROR: Field number 0 is invalid
+  string zero_field = 0;
+
+  // GOOD: Valid field number
+  string valid_field = 1;
+
+  // ERROR: Duplicate field number
+  string duplicate_one = 1;
+
+  // WARNING: Reserved range (19000-19999)
+  string reserved_field = 19000;
+
+  // ERROR: Field number too large
+  string too_large = 536870912;
+}
+
+// ============================================================================
+// SERVICE ERRORS
+// ============================================================================
+
+// ERROR: Service name should be PascalCase
+service bad_service {
+  rpc GetSomething(SomeRequest) returns (SomeResponse) {}
+}
+
+service GoodService {
+  // ERROR: RPC name should be PascalCase
+  rpc get_something(SomeRequest) returns (SomeResponse) {}
+  
+  // GOOD: PascalCase RPC
+  rpc GetSomethingElse(SomeRequest) returns (SomeResponse) {}
+}
+
+message SomeRequest {
+  string id = 1;
+}
+
+message SomeResponse {
+  string result = 1;
+}
+
+// ============================================================================
+// IMPORT ERRORS
+// ============================================================================
+
+// The imports at the top should work, but this demonstrates
+// what happens with missing imports:
+
+// If we had:
+// import "nonexistent/file.proto";
+// LSP would show: "Import not found: nonexistent/file.proto"
+
+// ============================================================================
+// PERMISSION ERRORS
+// ============================================================================
+
+service PermissionErrors {
+  option (buffalo.permissions.resource) = "test";
+
+  // WARNING: Public endpoint with roles defined (redundant)
+  rpc PublicWithRoles(SomeRequest) returns (SomeResponse) {
+    option (buffalo.permissions.public) = true;
+    option (buffalo.permissions.roles) = ["admin"];  // Redundant
+  }
+
+  // WARNING: No roles or public defined
+  rpc MissingPermissions(SomeRequest) returns (SomeResponse) {
+    option (buffalo.permissions.action) = "read";
+    // Missing: roles or public
+  }
+
+  // ERROR: Empty roles array
+  rpc EmptyRoles(SomeRequest) returns (SomeResponse) {
+    option (buffalo.permissions.roles) = [];
+  }
+
+  // WARNING: rate_limit without action
+  rpc RateLimitNoAction(SomeRequest) returns (SomeResponse) {
+    option (buffalo.permissions.rate_limit) = {
+      requests_per_minute: 100
+    };
+  }
+}
+
+// ============================================================================
+// SYNTAX ERRORS (for parser testing)
+// ============================================================================
+
+// Uncomment to test syntax error detection:
+
+// message MissingBrace {
+//   string field = 1;
+// // Missing closing brace
+
+// message UnclosedString {
+//   string value = 1 [default = "unclosed];
+// }
+
+// ============================================================================
+// COMPLEX VALIDATION SCENARIOS
+// ============================================================================
+
+message ComplexValidation {
+  // Nested message with validation
+  NestedMessage nested = 1;
+
+  // Map with key/value validation
+  map<string, int32> scores = 2 [(buffalo.validate.rules).map = {
+    min_pairs: 1,
+    max_pairs: 100
+  }];
+
+  // Oneof with different validations per field
+  oneof choice {
+    string text_choice = 3 [(buffalo.validate.rules).string = {
+      min_len: 1
+    }];
+    int32 number_choice = 4 [(buffalo.validate.rules).int32 = {
+      gte: 0
+    }];
+  }
+}
+
+message NestedMessage {
+  string inner_field = 1 [(buffalo.validate.rules).string = {
+    max_len: 100
+  }];
+
+  // Deeply nested
+  DeeplyNested deep = 2;
+}
+
+message DeeplyNested {
+  repeated string values = 1 [(buffalo.validate.rules).repeated = {
+    max_items: 10
+  }];
+}

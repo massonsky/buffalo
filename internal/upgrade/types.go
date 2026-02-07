@@ -107,6 +107,8 @@ type UpgradeOptions struct {
 	BackupDir string
 	// ConfigPath is the path to buffalo.yaml.
 	ConfigPath string
+	// FromSource if true, builds from source using 'go install'.
+	FromSource bool
 }
 
 // RollbackInfo contains information about a previous upgrade for rollback.

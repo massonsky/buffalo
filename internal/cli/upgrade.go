@@ -23,6 +23,7 @@ var (
 	upgradeCheck         bool
 	upgradeChangelog     bool
 	upgradeRollback      bool
+	upgradeFromSource    bool
 
 	upgradeCmd = &cobra.Command{
 		Use:   "upgrade",
@@ -55,7 +56,10 @@ Examples:
   buffalo upgrade --skip-binary
 
   # Skip config migration, only upgrade binary
-  buffalo upgrade --skip-config`,
+  buffalo upgrade --skip-config
+
+  # Build from source instead of downloading binary
+  buffalo upgrade --source`,
 		Run: runUpgrade,
 	}
 )
@@ -72,6 +76,7 @@ func init() {
 	upgradeCmd.Flags().BoolVar(&upgradeCheck, "check", false, "check for available updates")
 	upgradeCmd.Flags().BoolVar(&upgradeChangelog, "changelog", false, "show changelog between versions")
 	upgradeCmd.Flags().BoolVar(&upgradeRollback, "rollback", false, "rollback to previous version")
+	upgradeCmd.Flags().BoolVar(&upgradeFromSource, "source", false, "build from source using 'go install'")
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) {
@@ -246,6 +251,7 @@ func runUpgradeProcess(ctx context.Context, log *logger.Logger, upgrader *upgrad
 		CreateBackup:        upgradeBackup,
 		BackupDir:           ".buffalo/backup",
 		ConfigPath:          configPath,
+		FromSource:          upgradeFromSource,
 	}
 
 	result, err := upgrader.Upgrade(ctx, opts)

@@ -1,0 +1,335 @@
+syntax = "proto3";
+
+package buffalo.test.permissions;
+
+option go_package = "github.com/massonsky/buffalo/test-project/gen/permissions";
+
+// Import Buffalo permissions
+import "buffalo/permissions/permissions.proto";
+
+// ============================================================================
+// User Management Service with RBAC/ABAC permissions
+// ============================================================================
+
+service UserService {
+  // Service-level resource declaration
+  option (buffalo.permissions.resource) = "users";
+
+  // Public endpoint - no authentication required
+  rpc GetPublicProfile(GetPublicProfileRequest) returns (PublicProfile) {
+    option (buffalo.permissions.public) = true;
+  }
+
+  // Read user - requires 'users:read' permission
+  rpc GetUser(GetUserRequest) returns (User) {
+    option (buffalo.permissions.action) = "read";
+    option (buffalo.permissions.roles) = ["admin", "user", "viewer"];
+  }
+
+  // List users - requires 'users:list' permission
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
+    option (buffalo.permissions.action) = "list";
+    option (buffalo.permissions.roles) = ["admin", "moderator"];
+  }
+
+  // Create user - requires 'users:create' permission
+  rpc CreateUser(CreateUserRequest) returns (User) {
+    option (buffalo.permissions.action) = "create";
+    option (buffalo.permissions.roles) = ["admin"];
+  }
+
+  // Update user - requires 'users:update' permission with owner check
+  rpc UpdateUser(UpdateUserRequest) returns (User) {
+    option (buffalo.permissions.action) = "update";
+    option (buffalo.permissions.roles) = ["admin", "user"];
+    option (buffalo.permissions.owner_field) = "user_id";
+  }
+
+  // Delete user - admin only
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse) {
+    option (buffalo.permissions.action) = "delete";
+    option (buffalo.permissions.roles) = ["admin", "superadmin"];
+  }
+
+  // Bulk operations - superadmin only
+  rpc BulkDeleteUsers(BulkDeleteRequest) returns (BulkDeleteResponse) {
+    option (buffalo.permissions.action) = "bulk_delete";
+    option (buffalo.permissions.roles) = ["superadmin"];
+    option (buffalo.permissions.audit) = true;
+  }
+}
+
+// ============================================================================
+// Admin Service with strict permissions
+// ============================================================================
+
+service AdminService {
+  option (buffalo.permissions.resource) = "admin";
+  option (buffalo.permissions.require_mfa) = true;
+
+  // Get system stats
+  rpc GetSystemStats(GetStatsRequest) returns (SystemStats) {
+    option (buffalo.permissions.action) = "read";
+    option (buffalo.permissions.roles) = ["admin", "superadmin"];
+  }
+
+  // Manage roles
+  rpc AssignRole(AssignRoleRequest) returns (AssignRoleResponse) {
+    option (buffalo.permissions.action) = "manage_roles";
+    option (buffalo.permissions.roles) = ["superadmin"];
+    option (buffalo.permissions.audit) = true;
+  }
+
+  // System configuration
+  rpc UpdateConfig(UpdateConfigRequest) returns (ConfigResponse) {
+    option (buffalo.permissions.action) = "configure";
+    option (buffalo.permissions.roles) = ["superadmin"];
+    option (buffalo.permissions.require_approval) = true;
+  }
+}
+
+// ============================================================================
+// Billing Service with rate limiting
+// ============================================================================
+
+service BillingService {
+  option (buffalo.permissions.resource) = "billing";
+
+  // Get invoice - rate limited
+  rpc GetInvoice(GetInvoiceRequest) returns (Invoice) {
+    option (buffalo.permissions.action) = "read";
+    option (buffalo.permissions.roles) = ["admin", "billing_admin", "user"];
+    option (buffalo.permissions.rate_limit) = {
+      requests_per_minute: 60,
+      requests_per_hour: 1000
+    };
+  }
+
+  // Process payment - strict rate limit
+  rpc ProcessPayment(PaymentRequest) returns (PaymentResponse) {
+    option (buffalo.permissions.action) = "process";
+    option (buffalo.permissions.roles) = ["billing_admin"];
+    option (buffalo.permissions.rate_limit) = {
+      requests_per_minute: 10,
+      requests_per_hour: 100
+    };
+    option (buffalo.permissions.audit) = true;
+  }
+
+  // Refund - requires approval
+  rpc ProcessRefund(RefundRequest) returns (RefundResponse) {
+    option (buffalo.permissions.action) = "refund";
+    option (buffalo.permissions.roles) = ["billing_admin", "superadmin"];
+    option (buffalo.permissions.require_approval) = true;
+    option (buffalo.permissions.audit) = true;
+  }
+}
+
+// ============================================================================
+// Content Service with field-level permissions
+// ============================================================================
+
+service ContentService {
+  option (buffalo.permissions.resource) = "content";
+
+  // Get article - public with optional auth for premium
+  rpc GetArticle(GetArticleRequest) returns (Article) {
+    option (buffalo.permissions.action) = "read";
+    option (buffalo.permissions.public) = true;
+    option (buffalo.permissions.field_permissions) = {
+      field: "premium_content",
+      roles: ["premium_user", "admin"]
+    };
+  }
+
+  // Create article - requires author role
+  rpc CreateArticle(CreateArticleRequest) returns (Article) {
+    option (buffalo.permissions.action) = "create";
+    option (buffalo.permissions.roles) = ["author", "editor", "admin"];
+  }
+
+  // Publish article - editor approval required
+  rpc PublishArticle(PublishArticleRequest) returns (Article) {
+    option (buffalo.permissions.action) = "publish";
+    option (buffalo.permissions.roles) = ["editor", "admin"];
+    option (buffalo.permissions.condition) = "article.status == 'draft'";
+  }
+
+  // Delete article - admin or owner
+  rpc DeleteArticle(DeleteArticleRequest) returns (DeleteArticleResponse) {
+    option (buffalo.permissions.action) = "delete";
+    option (buffalo.permissions.roles) = ["admin"];
+    option (buffalo.permissions.owner_field) = "author_id";
+  }
+}
+
+// ============================================================================
+// Message definitions
+// ============================================================================
+
+message GetPublicProfileRequest {
+  string username = 1;
+}
+
+message PublicProfile {
+  string username = 1;
+  string display_name = 2;
+  string avatar_url = 3;
+  string bio = 4;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message User {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  string display_name = 4;
+  repeated string roles = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}
+
+message ListUsersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string filter = 3;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message CreateUserRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+  repeated string roles = 4;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  string display_name = 2;
+  string email = 3;
+}
+
+message DeleteUserRequest {
+  string user_id = 1;
+  string reason = 2;
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+}
+
+message BulkDeleteRequest {
+  repeated string user_ids = 1;
+  string reason = 2;
+}
+
+message BulkDeleteResponse {
+  int32 deleted_count = 1;
+  repeated string failed_ids = 2;
+}
+
+message GetStatsRequest {
+  string time_range = 1;
+}
+
+message SystemStats {
+  int64 total_users = 1;
+  int64 active_users = 2;
+  int64 requests_today = 3;
+  double cpu_usage = 4;
+  double memory_usage = 5;
+}
+
+message AssignRoleRequest {
+  string user_id = 1;
+  string role = 2;
+}
+
+message AssignRoleResponse {
+  bool success = 1;
+}
+
+message UpdateConfigRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message ConfigResponse {
+  bool success = 1;
+  string previous_value = 2;
+}
+
+message GetInvoiceRequest {
+  string invoice_id = 1;
+}
+
+message Invoice {
+  string invoice_id = 1;
+  string user_id = 2;
+  double amount = 3;
+  string currency = 4;
+  string status = 5;
+  int64 created_at = 6;
+}
+
+message PaymentRequest {
+  string invoice_id = 1;
+  string payment_method = 2;
+}
+
+message PaymentResponse {
+  string transaction_id = 1;
+  bool success = 2;
+}
+
+message RefundRequest {
+  string transaction_id = 1;
+  double amount = 2;
+  string reason = 3;
+}
+
+message RefundResponse {
+  string refund_id = 1;
+  bool success = 2;
+}
+
+message GetArticleRequest {
+  string article_id = 1;
+}
+
+message Article {
+  string article_id = 1;
+  string title = 2;
+  string content = 3;
+  string premium_content = 4;  // Only visible to premium users
+  string author_id = 5;
+  string status = 6;
+  int64 published_at = 7;
+}
+
+message CreateArticleRequest {
+  string title = 1;
+  string content = 2;
+  repeated string tags = 3;
+}
+
+message PublishArticleRequest {
+  string article_id = 1;
+}
+
+message DeleteArticleRequest {
+  string article_id = 1;
+  string author_id = 2;
+}
+
+message DeleteArticleResponse {
+  bool success = 1;
+}

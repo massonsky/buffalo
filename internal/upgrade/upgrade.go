@@ -9,8 +9,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/massonsky/buffalo/internal/version"
@@ -152,18 +154,40 @@ func (u *Upgrader) Upgrade(ctx context.Context, opts UpgradeOptions) (*Migration
 
 	// Upgrade binary
 	if !opts.SkipBinaryUpgrade {
-		u.logger.Info("📦 Downloading new version...")
+		if opts.FromSource {
+			u.logger.Info("🔨 Building from source...")
 
-		if opts.DryRun {
-			u.logger.Info("  [dry-run] Would download and install binary",
-				logger.String("version", targetVersion))
-		} else {
-			if err := u.downloadAndInstall(ctx, release); err != nil {
-				result.Success = false
-				result.Errors = append(result.Errors, err)
-				return result, err
+			if opts.DryRun {
+				u.logger.Info("  [dry-run] Would run: go install github.com/massonsky/buffalo/cmd/buffalo@v" + targetVersion)
+			} else {
+				if err := u.buildFromSource(ctx, targetVersion); err != nil {
+					result.Success = false
+					result.Errors = append(result.Errors, err)
+					return result, err
+				}
+				u.logger.Info("✅ Binary built and installed successfully")
 			}
-			u.logger.Info("✅ Binary upgraded successfully")
+		} else {
+			u.logger.Info("📦 Downloading new version...")
+
+			if opts.DryRun {
+				u.logger.Info("  [dry-run] Would download and install binary",
+					logger.String("version", targetVersion))
+			} else {
+				if err := u.downloadAndInstall(ctx, release); err != nil {
+					// Check if it's a "no binary" error
+					if strings.Contains(err.Error(), "no binary found") {
+						u.logger.Warn("⚠️  No pre-built binary available for your platform")
+						u.logger.Info("  Options:")
+						u.logger.Info("    1. Build from source: buffalo upgrade --source")
+						u.logger.Info("    2. Manual: go install github.com/massonsky/buffalo/cmd/buffalo@v" + targetVersion)
+					}
+					result.Success = false
+					result.Errors = append(result.Errors, err)
+					return result, err
+				}
+				u.logger.Info("✅ Binary upgraded successfully")
+			}
 		}
 	}
 
@@ -482,4 +506,31 @@ func hasAnySuffix(s string, suffixes ...string) bool {
 		}
 	}
 	return false
+}
+
+// buildFromSource builds buffalo from source using go install.
+func (u *Upgrader) buildFromSource(ctx context.Context, targetVersion string) error {
+	// Ensure version has 'v' prefix for go install
+	ver := targetVersion
+	if !strings.HasPrefix(ver, "v") {
+		ver = "v" + ver
+	}
+
+	pkg := fmt.Sprintf("github.com/massonsky/buffalo/cmd/buffalo@%s", ver)
+	u.logger.Info("  Running: go install " + pkg)
+
+	cmd := exec.CommandContext(ctx, "go", "install", pkg)
+	cmd.Env = os.Environ()
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		u.logger.Error("Build failed", logger.String("output", string(output)))
+		return errors.Wrap(err, errors.ErrIO, "failed to build from source: "+string(output))
+	}
+
+	if len(output) > 0 {
+		u.logger.Info("  " + string(output))
+	}
+
+	return nil
 }
