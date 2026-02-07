@@ -151,6 +151,9 @@ type syntaxContext struct {
 	// Enum tracking
 	enumValues map[string]map[int]int    // scope -> enum value -> line
 	enumNames  map[string]map[string]int // scope -> enum name -> line
+
+	// Multi-line option value tracking (e.g., option ... = { ... };)
+	optionValueDepth int
 }
 
 type scopeKind int
@@ -280,6 +283,41 @@ func (a *ProtoAnalyzer) analyzeLineSyntax(ctx *syntaxContext) {
 
 		// Import checks
 		a.checkImportSyntax(ctx, lineNum, line, cleanLine)
+
+		// Track multi-line option/annotation values (e.g., option ... = { ... }; or field = N [(rule) = { ... }];)
+		if ctx.optionValueDepth > 0 {
+			// We are inside a multi-line value literal — count braces and skip checks
+			opens, closes := countBracesOutsideStrings(cleanLine)
+			ctx.optionValueDepth += opens - closes
+			if ctx.optionValueDepth < 0 {
+				ctx.optionValueDepth = 0
+			}
+			continue
+		}
+
+		// Detect start of a multi-line value on this line.
+		// This covers both:
+		//   option (foo) = { ... };
+		//   string name = 1 [(buffalo.validate.rules).string = { ... }];
+		{
+			opens, closes := countBracesOutsideStrings(cleanLine)
+			delta := opens - closes
+			// Lines that open a scope (message/service/enum/oneof/rpc body) are NOT annotation values.
+			// They are handled by trackScopes below. We only track unclosed braces
+			// for option statements and field annotations.
+			isStructuralDecl := messagePattern.MatchString(cleanLine) ||
+				servicePattern.MatchString(cleanLine) ||
+				enumPattern.MatchString(cleanLine) ||
+				oneofPattern.MatchString(cleanLine) ||
+				strings.HasPrefix(cleanLine, "extend") ||
+				(ctx.currentScope == scopeService && rpcPattern.MatchString(cleanLine))
+
+			if delta > 0 && !isStructuralDecl {
+				// Entering a multi-line option/annotation value
+				ctx.optionValueDepth = delta
+				continue
+			}
+		}
 
 		// Save scope before tracking braces (declaration lines belong to the outer scope)
 		scopeBeforeTracking := ctx.currentScope

@@ -748,6 +748,85 @@ func TestCountBracesOutsideStrings(t *testing.T) {
 	}
 }
 
+func TestSyntaxDiagnostics_MultiLineFieldAnnotation(t *testing.T) {
+	log := logger.New()
+	analyzer := NewProtoAnalyzer(log)
+
+	content := `syntax = "proto3";
+package test;
+
+import "buffalo/validate/validate.proto";
+
+message CreateUserRequest {
+  string username = 1 [(buffalo.validate.rules).string = {
+    min_len: 3,
+    max_len: 50,
+    pattern: "^[a-zA-Z0-9_]+$"
+  }];
+
+  string email = 2 [(buffalo.validate.rules).string = {
+    min_len: 5,
+    max_len: 100
+  }];
+
+  int32 age = 3 [(buffalo.validate.rules).int32 = {
+    gte: 0,
+    lte: 150
+  }];
+
+  string simple_field = 4;
+}`
+
+	doc := NewDocument("file:///test.proto", content)
+	diagnostics := analyzer.SyntaxDiagnostics(doc)
+
+	errors := filterBySeverity(diagnostics, SeverityError)
+	if len(errors) > 0 {
+		t.Errorf("Expected no errors for multi-line field annotations, got %d:", len(errors))
+		for _, d := range errors {
+			t.Logf("  [%v] %s (line %d)", d.Code, d.Message, d.Range.Start.Line+1)
+		}
+	}
+
+	warnings := filterBySeverity(diagnostics, SeverityWarning)
+	if len(warnings) > 0 {
+		t.Errorf("Expected no warnings for multi-line field annotations, got %d:", len(warnings))
+		for _, d := range warnings {
+			t.Logf("  [%v] %s (line %d)", d.Code, d.Message, d.Range.Start.Line+1)
+		}
+	}
+}
+
+func TestSyntaxDiagnostics_MultiLineOptionInService(t *testing.T) {
+	log := logger.New()
+	analyzer := NewProtoAnalyzer(log)
+
+	content := `syntax = "proto3";
+package test;
+
+service UserService {
+  rpc GetUser (GetUserRequest) returns (GetUserResponse) {
+    option (buffalo.api) = {
+      method: "GET",
+      path: "/api/v1/users/{id}",
+      requests_per_minute: 60,
+      auth: true
+    };
+  }
+}`
+
+	doc := NewDocument("file:///test.proto", content)
+	diagnostics := analyzer.SyntaxDiagnostics(doc)
+
+	errors := filterBySeverity(diagnostics, SeverityError)
+	if len(errors) > 0 {
+		t.Errorf("Expected no errors for multi-line option in service, got %d:", len(errors))
+		for _, d := range errors {
+			t.Logf("  [%v] %s (line %d)", d.Code, d.Message, d.Range.Start.Line+1)
+		}
+	}
+}
+
 func TestTruncateStr(t *testing.T) {
 	tests := []struct {
 		input  string
