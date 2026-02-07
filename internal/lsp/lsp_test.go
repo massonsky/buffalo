@@ -56,8 +56,8 @@ package test;
 message User {
   string name = 0;
 }`,
-			wantDiagCount:  2,
-			wantSeverities: []DiagnosticSeverity{SeverityError, SeverityError},
+			wantDiagCount:  1,
+			wantSeverities: []DiagnosticSeverity{SeverityError},
 		},
 		{
 			name: "reserved field number range",
@@ -89,8 +89,8 @@ package test;
 message User {
   string name = 1;
 `,
-			wantDiagCount:  1,
-			wantSeverities: []DiagnosticSeverity{SeverityError},
+			wantDiagCount:  2,
+			wantSeverities: []DiagnosticSeverity{SeverityError, SeverityError},
 		},
 		{
 			name: "invalid syntax version",

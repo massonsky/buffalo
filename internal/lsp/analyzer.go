@@ -354,12 +354,15 @@ func (a *ProtoAnalyzer) Analyze(doc *Document) []Diagnostic {
 		})
 	}
 
+	// Syntax diagnostics (deep analysis)
+	diagnostics = append(diagnostics, a.SyntaxDiagnostics(doc)...)
+
 	// Buffalo-specific diagnostics
 	diagnostics = append(diagnostics, a.analyzeBuffaloAnnotations(doc)...)
 	diagnostics = append(diagnostics, a.analyzePermissions(doc)...)
 	diagnostics = append(diagnostics, a.analyzeImports(doc)...)
 
-	return diagnostics
+	return deduplicateDiagnostics(diagnostics)
 }
 
 // analyzeBuffaloAnnotations checks Buffalo validation annotations.
@@ -1352,4 +1355,59 @@ func tokenizeLine(line string) []semanticToken {
 	}
 
 	return tokens
+}
+
+// deduplicateDiagnostics removes diagnostics that have the same line and severity
+// when a more specific (coded) diagnostic exists for the same issue.
+func deduplicateDiagnostics(diagnostics []Diagnostic) []Diagnostic {
+	type diagKey struct {
+		line     int
+		severity DiagnosticSeverity
+	}
+
+	// Group by line + severity
+	seen := make(map[diagKey][]int) // key -> indices
+	for i, d := range diagnostics {
+		key := diagKey{line: d.Range.Start.Line, severity: d.Severity}
+		seen[key] = append(seen[key], i)
+	}
+
+	// For groups with multiple diagnostics on the same line+severity,
+	// prefer the one with a diagnostic code (from SyntaxDiagnostics)
+	remove := make(map[int]bool)
+	for _, indices := range seen {
+		if len(indices) <= 1 {
+			continue
+		}
+
+		// Check if there are both coded and uncoded diagnostics
+		hasCodedDiag := false
+		for _, idx := range indices {
+			if diagnostics[idx].Code != nil && diagnostics[idx].Code != "" {
+				hasCodedDiag = true
+				break
+			}
+		}
+
+		// If we have coded diagnostics, remove uncoded ones on the same line
+		if hasCodedDiag {
+			for _, idx := range indices {
+				if diagnostics[idx].Code == nil || diagnostics[idx].Code == "" {
+					remove[idx] = true
+				}
+			}
+		}
+	}
+
+	if len(remove) == 0 {
+		return diagnostics
+	}
+
+	result := make([]Diagnostic, 0, len(diagnostics)-len(remove))
+	for i, d := range diagnostics {
+		if !remove[i] {
+			result = append(result, d)
+		}
+	}
+	return result
 }
