@@ -68,6 +68,7 @@ func ValidateProtoImportPath(workspaceDir string) (string, error) {
 	requiredFiles := []string{
 		filepath.Join(workspaceDir, "proto", "buffalo", "validate", "validate.proto"),
 		filepath.Join(workspaceDir, "proto", "buffalo", "permissions", "permissions.proto"),
+		filepath.Join(workspaceDir, "proto", "buffalo", "models", "models.proto"),
 	}
 
 	for _, target := range requiredFiles {

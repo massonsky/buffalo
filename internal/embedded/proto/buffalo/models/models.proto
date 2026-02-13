@@ -1,0 +1,353 @@
+// Copyright 2026 Massonsky. All rights reserved.
+// Use of this source code is governed by the MIT license
+// that can be found in the LICENSE file.
+
+// Buffalo Models — ORM-like model annotations for protobuf messages.
+//
+// Generates typed model classes / structs for target languages with
+// optional ORM framework integration (pydantic, sqlalchemy, gorm, diesel, etc.).
+//
+// Usage:
+//   import "buffalo/models/models.proto";
+//
+//   message User {
+//     option (buffalo.models.model) = {
+//       name: "User"
+//       description: "System user"
+//       tags: ["core", "auth"]
+//     };
+//
+//     string id = 1 [(buffalo.models.field) = {
+//       primary_key: true
+//       description: "Unique identifier"
+//     }];
+//
+//     string email = 2 [(buffalo.models.field) = {
+//       unique: true
+//       max_length: 255
+//       example: "user@example.com"
+//       visibility: PUBLIC
+//     }];
+//   }
+
+syntax = "proto3";
+
+package buffalo.models;
+
+option go_package = "github.com/massonsky/buffalo/proto/buffalo/models";
+
+import "google/protobuf/descriptor.proto";
+
+// ══════════════════════════════════════════════════════════════════
+//  Enums
+// ══════════════════════════════════════════════════════════════════
+
+// FieldVisibility controls serialization / API exposure of a field.
+enum FieldVisibility {
+  // DEFAULT — normal field, included everywhere.
+  VISIBILITY_DEFAULT = 0;
+
+  // PUBLIC — explicitly public; always serialized.
+  PUBLIC = 1;
+
+  // INTERNAL — included in internal APIs / admin, excluded from public API.
+  INTERNAL = 2;
+
+  // EXTERNAL — comes from an external source, may be read-only.
+  EXTERNAL = 3;
+
+  // PRIVATE — never serialized, used only in server logic.
+  PRIVATE = 4;
+
+  // PROTECTED — available only to parent/child models.
+  PROTECTED = 5;
+}
+
+// FieldBehavior describes the behavioral semantics of a field.
+enum FieldBehavior {
+  BEHAVIOR_DEFAULT = 0;
+
+  // READONLY — field cannot be set by client after creation.
+  READONLY = 1;
+
+  // WRITEONLY — field can be written but never returned (e.g. password).
+  WRITEONLY = 2;
+
+  // IMMUTABLE — field is set once at creation and never updated.
+  IMMUTABLE = 3;
+
+  // COMPUTED — value is derived / calculated, never set directly.
+  COMPUTED = 4;
+
+  // VIRTUAL — exists on the model but is not persisted.
+  VIRTUAL = 5;
+
+  // OUTPUT_ONLY — only present in responses, never in requests.
+  OUTPUT_ONLY = 6;
+
+  // INPUT_ONLY — only present in requests, never in responses.
+  INPUT_ONLY = 7;
+}
+
+// RelationType describes how models relate to each other.
+enum RelationType {
+  RELATION_UNSPECIFIED = 0;
+  BELONGS_TO = 1;
+  HAS_ONE = 2;
+  HAS_MANY = 3;
+  MANY_TO_MANY = 4;
+}
+
+// OnAction defines referential integrity actions.
+enum OnAction {
+  ACTION_UNSPECIFIED = 0;
+  CASCADE = 1;
+  SET_NULL = 2;
+  SET_DEFAULT = 3;
+  RESTRICT = 4;
+  NO_ACTION = 5;
+}
+
+// IndexType defines index algorithm / strategy.
+enum IndexType {
+  INDEX_DEFAULT = 0;
+  BTREE = 1;
+  HASH = 2;
+  GIN = 3;
+  GIST = 4;
+  BRIN = 5;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Message-level: model definition
+// ══════════════════════════════════════════════════════════════════
+
+// ModelOptions is applied via (buffalo.models.model) to a message.
+message ModelOptions {
+  // name — custom model class name (defaults to message name).
+  string name = 1;
+
+  // table_name — DB table name if the model maps to a table (optional).
+  string table_name = 2;
+
+  // schema — DB schema or namespace (e.g. "public").
+  string schema = 3;
+
+  // description — human-readable model description / docstring.
+  string description = 4;
+
+  // tags — arbitrary tags for grouping / filtering.
+  repeated string tags = 5;
+
+  // abstract — if true, model is not instantiated directly, only inherited.
+  bool abstract = 6;
+
+  // extends — parent model name this model extends / inherits from.
+  string extends = 7;
+
+  // mixins — model names to mix in (multiple inheritance / traits).
+  repeated string mixins = 8;
+
+  // indexes — composite indexes on this model.
+  repeated IndexDef indexes = 9;
+
+  // uniques — composite unique constraints.
+  repeated UniqueDef uniques = 10;
+
+  // checks — custom check constraints.
+  repeated CheckDef checks = 11;
+
+  // soft_delete — enable soft delete (adds deleted_at field).
+  bool soft_delete = 12;
+
+  // timestamps — auto-add created_at / updated_at fields.
+  bool timestamps = 13;
+
+  // deprecated — mark the entire model as deprecated.
+  bool deprecated = 14;
+
+  // deprecated_message — explanation of what to use instead.
+  string deprecated_message = 15;
+
+  // generate — list of outputs to generate: "model", "repo", "factory", "fixture".
+  repeated string generate = 16;
+}
+
+// IndexDef describes a composite index.
+message IndexDef {
+  string name = 1;
+  repeated string columns = 2;
+  bool unique = 3;
+  IndexType type = 4;
+  string where = 5; // partial index condition
+  string comment = 6;
+}
+
+// UniqueDef describes a composite unique constraint.
+message UniqueDef {
+  string name = 1;
+  repeated string columns = 2;
+}
+
+// CheckDef describes a CHECK constraint.
+message CheckDef {
+  string name = 1;
+  string expression = 2;
+}
+
+extend google.protobuf.MessageOptions {
+  optional ModelOptions model = 53000;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Field-level: field options
+// ══════════════════════════════════════════════════════════════════
+
+// FieldOptions controls per-field code generation and metadata.
+message FieldModelOptions {
+  // ── Identity ──────────────────────────────────────────────────
+
+  // alias — alternative name used in serialization / ORM column.
+  string alias = 1;
+
+  // description — docstring / comment for the field.
+  string description = 2;
+
+  // ── Constraints ───────────────────────────────────────────────
+
+  // primary_key — this field is the primary key.
+  bool primary_key = 3;
+
+  // auto_increment — auto-increment (serial).
+  bool auto_increment = 4;
+
+  // nullable — field may be null.
+  bool nullable = 5;
+
+  // unique — field must be unique.
+  bool unique = 6;
+
+  // default_value — default value expression (language-appropriate literal).
+  string default_value = 7;
+
+  // max_length — maximum string / bytes length.
+  int32 max_length = 8;
+
+  // min_length — minimum string / bytes length.
+  int32 min_length = 9;
+
+  // precision — decimal precision.
+  int32 precision = 10;
+
+  // scale — decimal scale.
+  int32 scale = 11;
+
+  // ── Typing ────────────────────────────────────────────────────
+
+  // custom_type — explicit target-language type override.
+  string custom_type = 12;
+
+  // db_type — explicit SQL type override (VARCHAR(255), JSONB, etc.).
+  string db_type = 13;
+
+  // ── Visibility & behavior ─────────────────────────────────────
+
+  // visibility — controls serialization / API exposure.
+  FieldVisibility visibility = 14;
+
+  // behavior — read-only, write-only, computed, etc.
+  FieldBehavior behavior = 15;
+
+  // sensitive — field contains PII / secret data; may affect logging / serialization.
+  bool sensitive = 16;
+
+  // deprecated — field is deprecated.
+  bool deprecated = 17;
+
+  // deprecated_message — what to use instead.
+  string deprecated_message = 18;
+
+  // ── Indexing ──────────────────────────────────────────────────
+
+  // index — create a single-column index.
+  bool index = 19;
+
+  // index_type — type of single-column index.
+  IndexType index_type = 20;
+
+  // ── Serialization ─────────────────────────────────────────────
+
+  // json_name — custom JSON field name.
+  string json_name = 21;
+
+  // xml_name — custom XML element / attribute name.
+  string xml_name = 22;
+
+  // omit_empty — omit field if zero value during serialization.
+  bool omit_empty = 23;
+
+  // ── Relation ──────────────────────────────────────────────────
+
+  // relation — define a relationship to another model.
+  RelationDef relation = 24;
+
+  // ── Documentation ─────────────────────────────────────────────
+
+  // example — example value shown in docs / OpenAPI.
+  string example = 25;
+
+  // comment — arbitrary comment (may appear in SQL DDL COMMENT ON).
+  string comment = 26;
+
+  // ── Auto ──────────────────────────────────────────────────────
+
+  // auto_generate — value is auto-generated (UUID, snowflake, etc.).
+  bool auto_generate = 27;
+
+  // auto_now — auto-set to current timestamp on every update.
+  bool auto_now = 28;
+
+  // auto_now_add — auto-set to current timestamp on creation only.
+  bool auto_now_add = 29;
+
+  // ── Extras ────────────────────────────────────────────────────
+
+  // sequence — explicit DB sequence name.
+  string sequence = 30;
+
+  // collation — collation for string columns.
+  string collation = 31;
+
+  // ignore — skip this field in model generation entirely.
+  bool ignore = 32;
+
+  // db_ignore — include in model but skip in DB / DDL.
+  bool db_ignore = 33;
+
+  // api_ignore — include in model but skip in API / serialization.
+  bool api_ignore = 34;
+
+  // tags — arbitrary tags for the field.
+  repeated string tags = 35;
+
+  // metadata — arbitrary key-value metadata.
+  map<string, string> metadata = 36;
+}
+
+// RelationDef describes a relationship between two models.
+message RelationDef {
+  RelationType type = 1;
+  string model = 2; // target model / message name
+  string foreign_key = 3;
+  string references = 4; // target field (default: "id")
+  string join_table = 5; // for many_to_many
+  OnAction on_delete = 6;
+  OnAction on_update = 7;
+  bool eager = 8; // auto-load related model
+  string through = 9; // intermediate model for m2m
+  string inverse_of = 10; // name of the inverse relation field
+}
+
+extend google.protobuf.FieldOptions {
+  optional FieldModelOptions field = 53001;
+}
