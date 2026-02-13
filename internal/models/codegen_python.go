@@ -352,6 +352,8 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 	} else if f.DefaultValue != "" {
 		if f.ProtoType == "string" {
 			fieldArgs = append(fieldArgs, fmt.Sprintf("default=\"%s\"", f.DefaultValue))
+		} else if f.ProtoType == "bool" {
+			fieldArgs = append(fieldArgs, fmt.Sprintf("default=%s", pythonBool(f.DefaultValue)))
 		} else {
 			fieldArgs = append(fieldArgs, fmt.Sprintf("default=%s", f.DefaultValue))
 		}

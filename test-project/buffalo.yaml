@@ -1,11 +1,10 @@
 project:
-    name: my-proto-project
-    version: 0.1.0
+    name: models-e2e-test
+    version: 1.0.0
 proto:
     paths:
         - ./protos
-    exclude:
-        - '**/*_test.proto'
+    exclude: []
     import_paths: []
 output:
     base_dir: "./generated"
@@ -14,77 +13,44 @@ output:
         go: go
         python: python
         rust: rust
-    preserve_proto_structure: true
+    preserve_proto_structure: false
 languages:
     python:
-        enabled: false
+        enabled: true
         package: proto_gen
         generator: grpcio-tools
-        workdir: ""
+        orm: true
+        orm_plugin: "pydantic@2.0"
+        models_output: generated/models/python
     go:
         enabled: true
-        module: github.com/yourorg/yourproject
+        module: github.com/yourorg/models-test
         generator: protoc-gen-go
+        orm: true
+        orm_plugin: "gorm"
+        models_output: generated/models/go
     rust:
         enabled: true
         generator: rust-protobuf
+        orm: true
+        orm_plugin: "diesel@2.1"
+        models_output: generated/models/rust
     cpp:
-        enabled: false
-        namespace: myproject
+        enabled: true
+        namespace: models_test
+        orm: true
+        orm_plugin: "None"
+        models_output: generated/models/cpp
 build:
     workers: 0
     incremental: true
     cache:
-        enabled: true
-        directory: .buffalo-cache
+        enabled: false
 versioning:
-    enabled: true
-    strategy: semantic
-    outputformat: ""
-    keepversions: 0
+    enabled: false
 logging:
-    level: info
+    level: debug
     format: colored
     output: stdout
-    file: buffalo.log
-dependencies:
-    - name: googleapis
-      source:
-        type: git
-        url: https://github.com/googleapis/googleapis
-        ref: master
-      version: master
-plugins:
-    - name: naming-validator
-      enabled: false
-      hookpoints:
-        - pre-build
-        - post-parse
-        - post-build
-      priority: 100
-      options: {}
-templates:
-    - name: custom-go
-      language: go
-      path: ./templates/go
-      patterns:
-        - "**/*.tmpl"
-      enabled: true
-      vars:
-        packagePrefix: github.com/yourorg
-    - name: custom-python
-      language: python
-      path: ./templates/python
-      patterns:
-        - "**/*.tmpl"
-      enabled: true
-      vars:
-        modulePrefix: proto_gen
-    - name: custom-rust
-      language: rust
-      path: ./templates/rust
-      patterns:
-        - "**/*.tmpl"
-      enabled: true
-      vars:
-        cratePrefix: proto_rust
+models:
+    enabled: true

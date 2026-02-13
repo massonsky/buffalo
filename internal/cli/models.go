@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	cfgpkg "github.com/massonsky/buffalo/internal/config"
 	"github.com/massonsky/buffalo/internal/models"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/spf13/cobra"
@@ -427,8 +428,8 @@ func (w *modelsConfigWrapper) GetModelsOutputDir(lang string) string {
 }
 
 func loadBuffaloConfigForModels(path string) (*modelsConfigWrapper, error) {
-	// Use the standard config loader
-	cfg, err := configLoadFunc(path)
+	// Use the config loader
+	cfg, err := configLoad(path)
 	if err != nil {
 		return nil, err
 	}
@@ -457,17 +458,6 @@ func loadBuffaloConfigForModels(path string) (*modelsConfigWrapper, error) {
 	return w, nil
 }
 
-// configLoadFunc is assigned at init to break import cycles.
-var configLoadFunc = defaultConfigLoadFunc
-
-func defaultConfigLoadFunc(path string) (configInterface, error) {
-	c, err := configLoad(path)
-	if err != nil {
-		return nil, err
-	}
-	return c, nil
-}
-
 // configInterface abstracts config.Config for CLI use.
 type configInterface interface {
 	IsORMEnabled(lang string) bool
@@ -475,8 +465,14 @@ type configInterface interface {
 	GetModelsOutputDir(lang string) string
 }
 
-// configLoad is set at init to avoid hard import of config package.
-var configLoad func(string) (configInterface, error)
+// configLoad loads config from a file path and returns configInterface.
+var configLoad = func(path string) (configInterface, error) {
+	cfg, err := cfgpkg.LoadFromFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
 
 func init() {
 	// Register subcommands

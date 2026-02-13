@@ -3,69 +3,55 @@
 # This file is auto-generated from buffalo.yaml
 
 version: "1"
-generated_at: 2026-02-07T13:34:23.687887829Z
-config_hash: 4d413275c4fd7d465a6a11361264422a26fe3a983523fe58ea61b2c608a11458
+generated_at: 2026-02-13T15:38:41.5394768Z
+config_hash: d44ba55bb818667759a4671f6a74582a69d427ef32ab23a6634511455cc5c2a0
 project:
-    name: my-proto-project
-    version: 0.1.0
+    name: models-e2e-test
+    version: 1.0.0
 proto:
     files:
-        protos/bad_name.proto:
-            hash: 7a62b9a3947484cb7f375a81e71f101a99ef87f0f74fa257050744f4245b66e2
-            size: 216
-            modified_at: 2026-02-03T12:21:13.538014826Z
-            package: test.v1
-        protos/buffalo_errors.proto:
-            hash: d127e458e98a9ac05b24fdb874a12eedef8943688c6ff04016213bf34b5ae57f
-            size: 6285
-            modified_at: 2026-02-07T02:50:41.263173558Z
-            package: buffalo.test.errors
-        protos/buffalo_full_example.proto:
-            hash: 02bcb7fbfa10399ffc3300b25d216bbc76c2a02506480a7d9cfa23d8a56a8d57
-            size: 11531
-            modified_at: 2026-02-07T02:50:41.264187185Z
-            package: buffalo.test.full
-        protos/buffalo_permissions.proto:
-            hash: 237222b6662d8388414e9f406a9fb33cea8d1aca9628a2a97f40b7391ca1d0bd
-            size: 8986
-            modified_at: 2026-02-07T02:50:41.263173558Z
-            package: buffalo.test.permissions
-        protos/buffalo_validation.proto:
-            hash: aca304d45488d0cd2f5eb1eb3a21ccfae414e54beb684faab9e7c7948eb566e8
-            size: 4575
-            modified_at: 2026-02-07T01:26:35.693381473Z
-            package: buffalo.test.validation
-        protos/example.proto:
-            hash: 2d9879f5346cb470bb94c224545219b1692c6897d8db6c8c05ac1888a9db683b
-            size: 511
-            modified_at: 2026-02-03T12:21:13.538812631Z
-            package: example
-        protos/good_name.proto:
-            hash: 121785495ecbbefb802c25f0915fab120811500e434103af88805f8f448452dc
-            size: 230
-            modified_at: 2026-02-03T12:21:13.538812631Z
-            package: test.v1
-        protos/user/v1/user.proto:
-            hash: d9a1a170067079995a90e59b1cf9313ef3d9e63e6d45b6324537f3d5b5c2fd60
-            size: 1866
-            modified_at: 2026-02-03T12:21:13.539030688Z
-            package: user.v1
+        protos\ecommerce.proto:
+            hash: b0c18db1ec1847abc74340e95112b1f2b037cdb7b3ac75ee1d6e2700605a4f2e
+            size: 6622
+            modified_at: 2026-02-13T15:22:46.8598476Z
+            package: ecommerce.models
+        protos\services.proto:
+            hash: 0d48fa91c280f17cd6aa90f5b0339b2179c5d97e29a1dc72602447af62beb01d
+            size: 2973
+            modified_at: 2026-02-13T15:22:53.9204946Z
+            package: ecommerce.permissions
+        protos\validation.proto:
+            hash: 1dc6aec71ea235fae5cc2787bae4b9b0a9e95f2d1590e82804c2aee7101d8ba9
+            size: 2141
+            modified_at: 2026-02-13T15:24:42.3185365Z
+            package: ecommerce.validation
     import_paths: []
-    total_files: 8
+    total_files: 3
 languages:
+    python:
+        enabled: true
+        exclude_imports:
+            - buf.
+            - envoy.
+            - google.
+            - googleapis
+            - grpc
+            - opentelemetry
+            - protobuf
+            - validate
+        output_dir: generated\python
     go:
         enabled: true
-        module: github.com/yourorg/yourproject
-        output_dir: generated/go
+        module: github.com/yourorg/models-test
+        output_dir: generated\go
     rust:
         enabled: true
         generator: rust-protobuf
-        output_dir: generated/rust
-dependencies:
-    - name: googleapis
-      type: git
-      url: https://github.com/googleapis/googleapis
-      version: master
-      hash: ""
+        output_dir: generated\rust
+    cpp:
+        enabled: true
+        namespace: models_test
+        output_dir: generated\cpp
+dependencies: []
 tools:
     protoc: protoc

@@ -234,6 +234,10 @@ func pythonDefaultValue(f FieldDef) string {
 		if f.ProtoType == "string" && !strings.HasPrefix(f.DefaultValue, "\"") {
 			return fmt.Sprintf("\"%s\"", f.DefaultValue)
 		}
+		// Bool: convert to Python True/False
+		if f.ProtoType == "bool" {
+			return pythonBool(f.DefaultValue)
+		}
 		return f.DefaultValue
 	}
 	if f.Nullable {
@@ -252,6 +256,14 @@ func pythonDefaultValue(f FieldDef) string {
 	default:
 		return "None"
 	}
+}
+
+// pythonBool converts proto bool ("true"/"false") to Python ("True"/"False").
+func pythonBool(s string) string {
+	if s == "true" || s == "1" {
+		return "True"
+	}
+	return "False"
 }
 
 // goDefaultValue returns Go-appropriate default commentary (for struct tags / comments).

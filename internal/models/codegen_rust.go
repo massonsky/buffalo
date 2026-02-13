@@ -71,7 +71,7 @@ func (g *RustNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) 
 	if model.TableName != "" {
 		b.WriteString(fmt.Sprintf("// table_name: %s\n", model.TableName))
 	}
-	b.WriteString(fmt.Sprintf("pub struct %s {{\n", className))
+	b.WriteString(fmt.Sprintf("pub struct %s {\n", className))
 	b.WriteString("    pub base: BaseModel,\n")
 
 	for _, f := range model.Fields {
@@ -204,7 +204,7 @@ func (g *RustDieselGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	}
 	b.WriteString(fmt.Sprintf("#[derive(%s)]\n", strings.Join(derives, ", ")))
 	b.WriteString(fmt.Sprintf("#[diesel(table_name = %s)]\n", tableName))
-	b.WriteString(fmt.Sprintf("pub struct %s {{\n", className))
+	b.WriteString(fmt.Sprintf("pub struct %s {\n", className))
 	b.WriteString("    pub id: Uuid,\n")
 	b.WriteString("    pub created_at: DateTime<Utc>,\n")
 	b.WriteString("    pub updated_at: DateTime<Utc>,\n")
@@ -224,7 +224,7 @@ func (g *RustDieselGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	b.WriteString(fmt.Sprintf("/// Insertable form of %s.\n", className))
 	b.WriteString(fmt.Sprintf("#[derive(Debug, Clone, Insertable, Serialize, Deserialize)]\n"))
 	b.WriteString(fmt.Sprintf("#[diesel(table_name = %s)]\n", tableName))
-	b.WriteString(fmt.Sprintf("pub struct %s {{\n", newName))
+	b.WriteString(fmt.Sprintf("pub struct %s {\n", newName))
 	for _, f := range model.Fields {
 		if f.Ignore || f.PrimaryKey || f.Behavior == BehaviorReadOnly || f.Behavior == BehaviorComputed {
 			continue

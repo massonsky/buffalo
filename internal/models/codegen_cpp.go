@@ -90,9 +90,16 @@ func (g *CppNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) (
 
 	h.WriteString(fmt.Sprintf("struct %s : buffalo::models::BaseModel {\n", className))
 
+	// Group fields by access specifier — emit specifier only on change
+	currentAccess := "public" // structs default to public
 	for _, f := range model.Fields {
 		if f.Ignore || f.PrimaryKey {
 			continue
+		}
+		newAccess := g.cppAccess(f.Visibility)
+		if newAccess != currentAccess {
+			h.WriteString(fmt.Sprintf("  %s:\n", newAccess))
+			currentAccess = newAccess
 		}
 		line := g.fieldToCpp(f)
 		h.WriteString(line)
@@ -134,21 +141,6 @@ func (g *CppNoneGenerator) fieldToCpp(f FieldDef) string {
 		cppType = f.CustomType
 	}
 
-	accessSpec := ""
-	switch f.Visibility {
-	case VisibilityPrivate:
-		accessSpec = "private"
-	case VisibilityProtected:
-		accessSpec = "protected"
-	default:
-		accessSpec = "public"
-	}
-
-	// Emit access specifier only when different from default (public for structs)
-	if accessSpec != "public" {
-		b.WriteString(fmt.Sprintf("  %s:\n", accessSpec))
-	}
-
 	if f.DefaultValue != "" {
 		b.WriteString(fmt.Sprintf("    %s %s = %s;\n", cppType, f.Name, cppDefaultLiteral(f)))
 	} else {
@@ -156,6 +148,18 @@ func (g *CppNoneGenerator) fieldToCpp(f FieldDef) string {
 	}
 
 	return b.String()
+}
+
+// cppAccess returns the C++ access specifier for given visibility.
+func (g *CppNoneGenerator) cppAccess(v FieldVisibility) string {
+	switch v {
+	case VisibilityPrivate:
+		return "private"
+	case VisibilityProtected:
+		return "protected"
+	default:
+		return "public"
+	}
 }
 
 func (g *CppNoneGenerator) GenerateInit(_ []ModelDef, _ GenerateOptions) (GeneratedFile, error) {
