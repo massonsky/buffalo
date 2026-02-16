@@ -183,7 +183,7 @@ func protoTypeToPython(protoType string, nullable bool) string {
 	case "bytes":
 		base = "bytes"
 	default:
-		base = fmt.Sprintf("\"%s\"", toPascalCase(stripPackagePrefix(protoType)))
+		base = toPascalCase(stripPackagePrefix(protoType))
 	}
 	if nullable {
 		return fmt.Sprintf("Optional[%s]", base)
@@ -436,15 +436,15 @@ func stripPackagePrefix(protoType string) string {
 
 func wellKnownTypeGo(pt string) (string, bool) {
 	m := map[string]string{
-		"google.protobuf.Timestamp": "time.Time",
-		"google.protobuf.Duration":  "time.Duration",
-		"google.protobuf.Empty":     "struct{}",
-		"google.protobuf.Any":       "interface{}",
-		"google.protobuf.Struct":    "map[string]interface{}",
-		"google.protobuf.Value":     "interface{}",
-		"google.protobuf.BoolValue": "bool",
-		"google.protobuf.Int32Value": "int32",
-		"google.protobuf.Int64Value": "int64",
+		"google.protobuf.Timestamp":   "time.Time",
+		"google.protobuf.Duration":    "time.Duration",
+		"google.protobuf.Empty":       "struct{}",
+		"google.protobuf.Any":         "interface{}",
+		"google.protobuf.Struct":      "map[string]interface{}",
+		"google.protobuf.Value":       "interface{}",
+		"google.protobuf.BoolValue":   "bool",
+		"google.protobuf.Int32Value":  "int32",
+		"google.protobuf.Int64Value":  "int64",
 		"google.protobuf.UInt32Value": "uint32",
 		"google.protobuf.UInt64Value": "uint64",
 		"google.protobuf.FloatValue":  "float32",

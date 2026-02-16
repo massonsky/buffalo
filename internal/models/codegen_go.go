@@ -179,8 +179,47 @@ func (g *GoNoneGenerator) fieldToGoStruct(f FieldDef) string {
 	return b.String()
 }
 
-func (g *GoNoneGenerator) GenerateInit(_ []ModelDef, _ GenerateOptions) (GeneratedFile, error) {
-	return GeneratedFile{}, nil // Go doesn't need init files
+func (g *GoNoneGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateGoMod(models, opts)
+}
+
+// generateGoMod creates a go.mod file for the generated models package.
+func generateGoMod(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
+	moduleName := opts.Package
+	if moduleName == "" {
+		moduleName = "models"
+	}
+
+	// Collect required imports from generated models
+	needProto := false
+	needUUID := false
+	needTime := false
+	for _, m := range models {
+		needProto = true // base_model always imports proto
+		needUUID = true  // base_model always imports uuid
+		for _, f := range m.Fields {
+			if _, ok := wellKnownTypeGo(f.ProtoType); ok {
+				if strings.Contains(f.ProtoType, "Timestamp") || strings.Contains(f.ProtoType, "Duration") {
+					needTime = true
+				}
+			}
+		}
+	}
+	_ = needTime // time is stdlib, no module needed
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("module %s\n\n", moduleName))
+	b.WriteString("go 1.21\n\n")
+	b.WriteString("require (\n")
+	if needProto {
+		b.WriteString("\tgoogle.golang.org/protobuf v1.34.2\n")
+	}
+	if needUUID {
+		b.WriteString("\tgithub.com/google/uuid v1.6.0\n")
+	}
+	b.WriteString(")\n")
+
+	return GeneratedFile{Path: "go.mod", Content: b.String()}, nil
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -379,8 +418,8 @@ func (g *GoGORMGenerator) fieldToGORM(f FieldDef, model ModelDef) string {
 	return b.String()
 }
 
-func (g *GoGORMGenerator) GenerateInit(_ []ModelDef, _ GenerateOptions) (GeneratedFile, error) {
-	return GeneratedFile{}, nil
+func (g *GoGORMGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateGoMod(models, opts)
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -505,6 +544,6 @@ func (g *GoSQLXGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
 }
 
-func (g *GoSQLXGenerator) GenerateInit(_ []ModelDef, _ GenerateOptions) (GeneratedFile, error) {
-	return GeneratedFile{}, nil
+func (g *GoSQLXGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateGoMod(models, opts)
 }
