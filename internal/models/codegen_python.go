@@ -83,6 +83,10 @@ func (g *PythonNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	b.WriteString("from dataclasses import dataclass, field\n")
 	b.WriteString("from typing import List, Optional\n\n")
 	b.WriteString("from .base_model import BaseModel\n\n\n")
+	if model.Extends != "" {
+		extendsModule := toSnakeCase(model.Extends)
+		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = BaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
+	}
 
 	className := model.EffectiveName()
 
@@ -338,6 +342,10 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 		b.WriteString("from pydantic import Field\n\n")
 	}
 	b.WriteString("from .base_model import ProtoBaseModel\n\n\n")
+	if model.Extends != "" {
+		extendsModule := toSnakeCase(model.Extends)
+		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = ProtoBaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
+	}
 
 	className := model.EffectiveName()
 
@@ -598,6 +606,10 @@ func (g *PythonSQLAlchemyGenerator) GenerateModel(model ModelDef, opts GenerateO
 		b.WriteString("from sqlalchemy.orm import relationship\n\n")
 	}
 	b.WriteString("from .base_model import BaseModel\n\n\n")
+	if model.Extends != "" {
+		extendsModule := toSnakeCase(model.Extends)
+		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = BaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
+	}
 
 	className := model.EffectiveName()
 

@@ -201,6 +201,21 @@ func TestPythonPydanticGenerator_BaseModel_ProtoConversion(t *testing.T) {
 	assertContains(t, f.Content, "ParseDict")
 }
 
+func TestPythonPydanticGenerator_Model_WithExtendsImportFallback(t *testing.T) {
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	m := testModel()
+	m.Extends = "AuditableEntity"
+
+	files, err := gen.GenerateModel(m, testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "from .auditable_entity import AuditableEntity")
+	assertContains(t, content, "AuditableEntity = ProtoBaseModel")
+	assertContains(t, content, "class UserProfile(AuditableEntity)")
+}
+
 func TestPythonSQLAlchemyGenerator_Model(t *testing.T) {
 	gen := &PythonSQLAlchemyGenerator{version: "2.0"}
 	files, err := gen.GenerateModel(testModel(), testOpts())
