@@ -39,9 +39,10 @@ var packageRe = regexp.MustCompile(`(?m)^\s*package\s+([\w.]+)\s*;`)
 // Multi-line annotations are handled separately.
 //
 //	repeated string tags = 5;
+//	optional float speed = 6;
 //	string name = 1 [(buffalo.models.field) = { ... }];
 var fieldLineRe = regexp.MustCompile(
-	`(?m)^\s*(repeated\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*(\d+)`,
+	`(?m)^\s*((?:repeated|optional)\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*(\d+)`,
 )
 
 // listValueRe matches list values: ["a", "b", "c"]
@@ -114,8 +115,10 @@ func ExtractModels(content, filePath string) ([]ModelDef, error) {
 			fl[3] = msg.body[flIdx[6]:flIdx[7]]
 			fl[4] = msg.body[flIdx[8]:flIdx[9]]
 
+			qualifier := strings.TrimSpace(fl[1])
 			fd := FieldDef{
-				Repeated:  strings.TrimSpace(fl[1]) != "",
+				Repeated:  qualifier == "repeated",
+				Nullable:  qualifier == "optional",
 				ProtoType: fl[2],
 				Name:      fl[3],
 			}
@@ -248,8 +251,10 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 				continue
 			}
 
+			qualifier := strings.TrimSpace(fl[1])
 			fd := FieldDef{
-				Repeated:  strings.TrimSpace(fl[1]) != "",
+				Repeated:  qualifier == "repeated",
+				Nullable:  qualifier == "optional",
 				ProtoType: fl[2],
 				Name:      fieldName,
 			}

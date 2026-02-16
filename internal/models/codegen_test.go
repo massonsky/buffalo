@@ -495,10 +495,13 @@ func TestProtoTypeToCpp(t *testing.T) {
 
 func TestToSnakeCase(t *testing.T) {
 	cases := map[string]string{
-		"UserProfile": "user_profile",
-		"HTTPHandler": "h_t_t_p_handler",
-		"simple":      "simple",
-		"CamelCase":   "camel_case",
+		"UserProfile":  "user_profile",
+		"HTTPHandler":  "http_handler",
+		"GPSData":      "gps_data",
+		"HTTPSHandler": "https_handler",
+		"UserID":       "user_id",
+		"simple":       "simple",
+		"CamelCase":    "camel_case",
 	}
 	for input, want := range cases {
 		got := toSnakeCase(input)

@@ -9,6 +9,33 @@ import (
 //  Python generators: None, pydantic, sqlalchemy
 // ══════════════════════════════════════════════════════════════════
 
+// pythonExtraImports scans model fields and returns import lines
+// for types that need additional Python imports (datetime, timedelta, UUID, etc.)
+func pythonExtraImports(model ModelDef) string {
+	needDatetime := false
+	needTimedelta := false
+	for _, f := range model.Fields {
+		ft := fieldTypePython(f)
+		if strings.Contains(ft, "datetime") {
+			needDatetime = true
+		}
+		if strings.Contains(ft, "timedelta") {
+			needTimedelta = true
+		}
+	}
+	var parts []string
+	if needDatetime {
+		parts = append(parts, "datetime")
+	}
+	if needTimedelta {
+		parts = append(parts, "timedelta")
+	}
+	if len(parts) > 0 {
+		return fmt.Sprintf("from datetime import %s\n", strings.Join(parts, ", "))
+	}
+	return ""
+}
+
 func newPythonGenerator(orm ORMPlugin) (ModelCodeGenerator, error) {
 	switch {
 	case orm.IsNone():
@@ -81,6 +108,10 @@ func (g *PythonNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	b.WriteString(pythonHeader("buffalo-models"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
 	b.WriteString("from dataclasses import dataclass, field\n")
+	// Dynamic imports for well-known types (datetime, timedelta, etc.)
+	if extra := pythonExtraImports(model); extra != "" {
+		b.WriteString(extra)
+	}
 	b.WriteString("from typing import Dict, List, Optional\n\n")
 	b.WriteString("from .base_model import BaseModel\n\n\n")
 	if model.Extends != "" {
@@ -333,6 +364,12 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	b.WriteString("except ImportError:\n")
 	b.WriteString("    from typing_extensions import Self\n\n")
 	b.WriteString("T = TypeVar(\"T\")\n\n")
+
+	// Dynamic imports for well-known types (datetime, timedelta, etc.)
+	if extra := pythonExtraImports(model); extra != "" {
+		b.WriteString(extra)
+		b.WriteString("\n")
+	}
 
 	if g.isV2() {
 		b.WriteString("from pydantic import ConfigDict, Field\n\n")
@@ -593,6 +630,12 @@ func (g *PythonSQLAlchemyGenerator) GenerateModel(model ModelDef, opts GenerateO
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models (sqlalchemy)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
+
+	// Dynamic imports for well-known types (datetime, timedelta, etc.)
+	if extra := pythonExtraImports(model); extra != "" {
+		b.WriteString(extra)
+		b.WriteString("\n")
+	}
 
 	if g.isV2() {
 		b.WriteString("from sqlalchemy import CheckConstraint, Index, String, Integer, Float, Boolean\n")
