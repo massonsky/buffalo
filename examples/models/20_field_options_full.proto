@@ -1,0 +1,143 @@
+syntax = "proto3";
+
+package examples.models.fieldfull;
+
+import "buffalo/models/models.proto";
+
+// Covers all FieldModelOptions options in one model.
+message FieldOptionsShowcase {
+  option (buffalo.models.model) = {
+    name: "FieldOptionsShowcase"
+    table_name: "field_options_showcase"
+    description: "Полный пример field-level опций"
+    generate: ["model"]
+  };
+
+  // 1) alias, description, primary_key, auto_increment
+  int64 internal_id = 1 [(buffalo.models.field) = {
+    alias: "id"
+    description: "Internal numeric PK"
+    primary_key: true
+    auto_increment: true
+    db_type: "BIGINT"
+  }];
+
+  // 2) nullable, unique, default_value, lengths
+  string username = 2 [(buffalo.models.field) = {
+    description: "Public username"
+    nullable: false
+    unique: true
+    default_value: "guest"
+    max_length: 50
+    min_length: 3
+    visibility: PUBLIC
+    example: "neo"
+    comment: "Shown in profile"
+  }];
+
+  // 3) precision/scale + custom_type
+  string amount_decimal = 3 [(buffalo.models.field) = {
+    custom_type: "decimal.Decimal"
+    precision: 18
+    scale: 6
+    db_type: "DECIMAL(18,6)"
+    default_value: "0"
+  }];
+
+  // 4) visibility + behavior + sensitive + deprecated
+  string password_hash = 4 [(buffalo.models.field) = {
+    visibility: PRIVATE
+    behavior: WRITEONLY
+    sensitive: true
+    deprecated: true
+    deprecated_message: "Use credential_ref instead"
+    api_ignore: true
+  }];
+
+  // 5) single-column index + index type
+  string email = 5 [(buffalo.models.field) = {
+    unique: true
+    index: true
+    index_type: BTREE
+    max_length: 255
+    json_name: "email"
+    xml_name: "Email"
+    omit_empty: false
+    example: "person@example.com"
+  }];
+
+  // 6) relation definition (belongs_to)
+  string owner_id = 6 [(buffalo.models.field) = {
+    relation: {
+      type: BELONGS_TO
+      model: "Owner"
+      foreign_key: "owner_id"
+      references: "id"
+      on_delete: CASCADE
+      on_update: NO_ACTION
+      eager: true
+      inverse_of: "items"
+    }
+    index: true
+  }];
+
+  // 7) docs + auto_* + sequence + collation
+  string serial_no = 7 [(buffalo.models.field) = {
+    description: "Business serial"
+    auto_generate: true
+    sequence: "seq_business_serial"
+    collation: "en_US.utf8"
+    tags: ["business", "serial"]
+    metadata: { key: "ui.group" value: "identity" }
+    metadata: { key: "audit.level" value: "high" }
+  }];
+
+  // 8) auto_now / auto_now_add
+  int64 created_at_epoch = 8 [(buffalo.models.field) = {
+    behavior: READONLY
+    auto_now_add: true
+  }];
+
+  int64 updated_at_epoch = 9 [(buffalo.models.field) = {
+    behavior: READONLY
+    auto_now: true
+  }];
+
+  // 9) ignore flags
+  string transient_runtime_field = 10 [(buffalo.models.field) = {
+    ignore: true
+    description: "Completely skipped in generation"
+  }];
+
+  string only_api_field = 11 [(buffalo.models.field) = {
+    db_ignore: true
+    visibility: EXTERNAL
+  }];
+
+  string only_db_field = 12 [(buffalo.models.field) = {
+    api_ignore: true
+    visibility: INTERNAL
+  }];
+
+  // 10) repeated + nullable pattern
+  repeated string labels = 13 [(buffalo.models.field) = {
+    description: "Label collection"
+    max_length: 32
+    index: false
+  }];
+}
+
+message Owner {
+  option (buffalo.models.model) = {
+    table_name: "owners"
+    generate: ["model"]
+  };
+
+  string id = 1 [(buffalo.models.field) = {
+    primary_key: true
+  }];
+
+  string name = 2 [(buffalo.models.field) = {
+    max_length: 120
+  }];
+}
