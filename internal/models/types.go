@@ -192,6 +192,9 @@ type ModelDef struct {
 	Uniques []UniqueDef
 	Checks  []CheckDef
 
+	// Nested enums within this message
+	Enums []EnumDef
+
 	// Fields (ordered)
 	Fields []FieldDef
 }
@@ -204,6 +207,18 @@ func (m *ModelDef) EffectiveName() string {
 	return m.MessageName
 }
 
+// EnumDef describes a proto enum extracted from a message.
+type EnumDef struct {
+	Name   string      // enum type name
+	Values []EnumValue // enum constants
+}
+
+// EnumValue describes a single enum constant.
+type EnumValue struct {
+	Name   string
+	Number int32
+}
+
 // FieldDef represents a parsed field within a model.
 type FieldDef struct {
 	// Proto source
@@ -211,6 +226,14 @@ type FieldDef struct {
 	ProtoType string // proto type (string, int32, etc.)
 	Number    int    // proto field number
 	Repeated  bool   // repeated field
+
+	// Map field support: map<KeyType, ValueType>
+	IsMap        bool   // true when the field is a proto map
+	MapKeyType   string // key type for map fields (e.g. "string")
+	MapValueType string // value type for map fields (e.g. "string")
+
+	// Oneof support
+	OneofGroup string // name of the oneof group this field belongs to
 
 	// From [(buffalo.models.field)]
 	Alias             string

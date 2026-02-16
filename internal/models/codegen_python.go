@@ -9,17 +9,99 @@ import (
 //  Python generators: None, pydantic, sqlalchemy
 // ══════════════════════════════════════════════════════════════════
 
-func newPythonGenerator(orm ORMPlugin) (ModelCodeGenerator, error) {
-	switch {
-	case orm.IsNone():
-		return &PythonNoneGenerator{}, nil
-	case orm.Name == "pydantic":
-		return &PythonPydanticGenerator{version: orm.Version}, nil
-	case orm.Name == "sqlalchemy":
-		return &PythonSQLAlchemyGenerator{version: orm.Version}, nil
-	default:
-		return nil, fmt.Errorf("unsupported Python ORM plugin: %s", orm.Name)
+// pythonExtraImports scans model fields and returns import lines
+// for types that need additional Python imports (datetime, timedelta, UUID, etc.)
+func pythonExtraImports(model ModelDef) string {
+	needDatetime := false
+	needTimedelta := false
+	for _, f := range model.Fields {
+		ft := fieldTypePython(f)
+		if strings.Contains(ft, "datetime") {
+			needDatetime = true
+		}
+		if strings.Contains(ft, "timedelta") {
+			needTimedelta = true
+		}
 	}
+	var parts []string
+	if needDatetime {
+		parts = append(parts, "datetime")
+	}
+	if needTimedelta {
+		parts = append(parts, "timedelta")
+	}
+	if len(parts) > 0 {
+		return fmt.Sprintf("from datetime import %s\n", strings.Join(parts, ", "))
+	}
+	return ""
+}
+
+// pythonPrimitiveTypes are proto types that map to Python builtins (no import needed).
+var pythonPrimitiveTypes = map[string]bool{
+	"string": true, "bool": true, "bytes": true,
+	"int32": true, "int64": true, "uint32": true, "uint64": true,
+	"sint32": true, "sint64": true, "fixed32": true, "fixed64": true,
+	"sfixed32": true, "sfixed64": true,
+	"float": true, "double": true,
+}
+
+// isCustomProtoType returns true if the proto type is a custom message
+// (not a primitive and not a well-known type).
+func isCustomProtoType(protoType string) bool {
+	if pythonPrimitiveTypes[protoType] {
+		return false
+	}
+	if _, ok := wellKnownTypePython(protoType); ok {
+		return false
+	}
+	return protoType != ""
+}
+
+// pythonCustomTypeImports generates from-import lines for custom message types
+// referenced in the model's fields (cross-package or same-package forward refs).
+func pythonCustomTypeImports(model ModelDef, ownClassName string) string {
+	seen := map[string]bool{}
+	var lines []string
+
+	collect := func(protoType string) {
+		if !isCustomProtoType(protoType) {
+			return
+		}
+		className := toPascalCase(stripPackagePrefix(protoType))
+		if className == ownClassName || seen[className] {
+			return
+		}
+		seen[className] = true
+		module := toSnakeCase(stripPackagePrefix(protoType))
+		lines = append(lines, fmt.Sprintf("from .%s import %s", module, className))
+	}
+
+	for _, f := range model.Fields {
+		if f.Ignore {
+			continue
+		}
+		if f.IsMap {
+			collect(f.MapKeyType)
+			collect(f.MapValueType)
+		} else {
+			collect(f.ProtoType)
+		}
+	}
+
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func newPythonGenerator(orm ORMPlugin) (ModelCodeGenerator, error) {
+	// Python always uses Pydantic v2 — None and sqlalchemy are not supported
+	// as separate generators.
+	version := orm.Version
+	if version == "" {
+		version = "2.0"
+	}
+	return &PythonPydanticGenerator{version: version}, nil
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -81,14 +163,23 @@ func (g *PythonNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	b.WriteString(pythonHeader("buffalo-models"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
 	b.WriteString("from dataclasses import dataclass, field\n")
-	b.WriteString("from typing import List, Optional\n\n")
-	b.WriteString("from .base_model import BaseModel\n\n\n")
+	// Dynamic imports for well-known types (datetime, timedelta, etc.)
+	if extra := pythonExtraImports(model); extra != "" {
+		b.WriteString(extra)
+	}
+	b.WriteString("from typing import Dict, List, Optional\n\n")
+	b.WriteString("from .base_model import BaseModel\n")
+
+	// Cross-package / custom type imports
+	className := model.EffectiveName()
+	if customImports := pythonCustomTypeImports(model, className); customImports != "" {
+		b.WriteString(customImports)
+	}
+	b.WriteString("\n\n")
 	if model.Extends != "" {
 		extendsModule := toSnakeCase(model.Extends)
 		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = BaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
 	}
-
-	className := model.EffectiveName()
 
 	// Deprecation
 	if model.Deprecated {
@@ -168,14 +259,12 @@ func (g *PythonNoneGenerator) fieldToDataclass(f FieldDef) string {
 		b.WriteString("    # [immutable]\n")
 	}
 
-	typeHint := protoTypeToPython(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		innerType := protoTypeToPython(f.ProtoType, false)
-		typeHint = fmt.Sprintf("List[%s]", innerType)
-	}
+	typeHint := fieldTypePython(f)
 
-	defaultVal := pythonDefaultValue(f)
-	if f.Repeated {
+	defaultVal := pythonDefaultForField(f)
+	if f.IsMap {
+		b.WriteString(fmt.Sprintf("    %s: %s = field(default_factory=dict)\n", f.Name, typeHint))
+	} else if f.Repeated {
 		b.WriteString(fmt.Sprintf("    %s: %s = field(default_factory=list)\n", f.Name, typeHint))
 	} else if f.Sensitive {
 		b.WriteString(fmt.Sprintf("    %s: %s = %s  # sensitive\n", f.Name, typeHint, defaultVal))
@@ -329,25 +418,36 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
-	b.WriteString("from typing import Any, ClassVar, List, Optional, Type, TypeVar\n\n")
+	b.WriteString("from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar\n\n")
 	b.WriteString("try:\n")
-	b.WriteString("    from typing import Self\n")
+	b.WriteString("    from typing import Self, override\n")
 	b.WriteString("except ImportError:\n")
-	b.WriteString("    from typing_extensions import Self\n\n")
+	b.WriteString("    from typing_extensions import Self, override\n\n")
 	b.WriteString("T = TypeVar(\"T\")\n\n")
+
+	// Dynamic imports for well-known types (datetime, timedelta, etc.)
+	if extra := pythonExtraImports(model); extra != "" {
+		b.WriteString(extra)
+		b.WriteString("\n")
+	}
 
 	if g.isV2() {
 		b.WriteString("from pydantic import ConfigDict, Field\n\n")
 	} else {
 		b.WriteString("from pydantic import Field\n\n")
 	}
-	b.WriteString("from .base_model import ProtoBaseModel\n\n\n")
+	b.WriteString("from .base_model import ProtoBaseModel\n")
+
+	// Cross-package / custom type imports
+	className := model.EffectiveName()
+	if customImports := pythonCustomTypeImports(model, className); customImports != "" {
+		b.WriteString(customImports)
+	}
+	b.WriteString("\n\n")
 	if model.Extends != "" {
 		extendsModule := toSnakeCase(model.Extends)
 		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = ProtoBaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
 	}
-
-	className := model.EffectiveName()
 
 	if model.Deprecated {
 		b.WriteString(fmt.Sprintf("# DEPRECATED: %s\n", deprecatedComment(true, model.DeprecatedMessage)))
@@ -404,9 +504,11 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	b.WriteString("    # Default proto binding. Override in generated subclasses if needed.\n")
 	b.WriteString("    proto_class: ClassVar[Type[Any] | None] = None\n\n")
 	b.WriteString("    @classmethod\n")
+	b.WriteString("    @override\n")
 	b.WriteString("    def from_proto(cls, proto_msg: Any) -> Self:\n")
 	b.WriteString("        \"\"\"Override-friendly protobuf -> model conversion.\"\"\"\n")
 	b.WriteString("        return super().from_proto(proto_msg)\n\n")
+	b.WriteString("    @override\n")
 	b.WriteString("    def to_proto(self, proto_class: Type[T] | None = None) -> Any:\n")
 	b.WriteString("        \"\"\"Override-friendly model -> protobuf conversion.\"\"\"\n")
 	b.WriteString("        return super().to_proto(proto_class=proto_class)\n")
@@ -432,17 +534,15 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 		b.WriteString(fmt.Sprintf("    # [%s]\n", f.Behavior.String()))
 	}
 
-	typeHint := protoTypeToPython(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		innerType := protoTypeToPython(f.ProtoType, false)
-		typeHint = fmt.Sprintf("List[%s]", innerType)
-	}
+	typeHint := fieldTypePython(f)
 
 	// Build Field(...) arguments
 	var fieldArgs []string
 
 	// Default value
-	if f.Repeated {
+	if f.IsMap {
+		fieldArgs = append(fieldArgs, "default_factory=dict")
+	} else if f.Repeated {
 		fieldArgs = append(fieldArgs, "default_factory=list")
 	} else if f.DefaultValue != "" {
 		if f.ProtoType == "string" {
@@ -598,6 +698,12 @@ func (g *PythonSQLAlchemyGenerator) GenerateModel(model ModelDef, opts GenerateO
 	b.WriteString(pythonHeader("buffalo-models (sqlalchemy)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
 
+	// Dynamic imports for well-known types (datetime, timedelta, etc.)
+	if extra := pythonExtraImports(model); extra != "" {
+		b.WriteString(extra)
+		b.WriteString("\n")
+	}
+
 	if g.isV2() {
 		b.WriteString("from sqlalchemy import CheckConstraint, Index, String, Integer, Float, Boolean\n")
 		b.WriteString("from sqlalchemy.orm import Mapped, mapped_column, relationship\n\n")
@@ -605,13 +711,18 @@ func (g *PythonSQLAlchemyGenerator) GenerateModel(model ModelDef, opts GenerateO
 		b.WriteString("from sqlalchemy import CheckConstraint, Column, Index, String, Integer, Float, Boolean\n")
 		b.WriteString("from sqlalchemy.orm import relationship\n\n")
 	}
-	b.WriteString("from .base_model import BaseModel\n\n\n")
+	b.WriteString("from .base_model import BaseModel\n")
+
+	// Cross-package / custom type imports
+	className := model.EffectiveName()
+	if customImports := pythonCustomTypeImports(model, className); customImports != "" {
+		b.WriteString(customImports)
+	}
+	b.WriteString("\n\n")
 	if model.Extends != "" {
 		extendsModule := toSnakeCase(model.Extends)
 		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = BaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
 	}
-
-	className := model.EffectiveName()
 
 	parentClass := "BaseModel"
 	if model.Extends != "" {
@@ -733,9 +844,9 @@ func (g *PythonSQLAlchemyGenerator) fieldToSQLAlchemy(f FieldDef) string {
 	}
 
 	if g.isV2() {
-		goType := protoTypeToPython(f.ProtoType, f.Nullable)
+		pyType := fieldTypePython(f)
 		b.WriteString(fmt.Sprintf("    %s: Mapped[%s] = mapped_column(%s)\n",
-			f.Name, goType, strings.Join(colArgs, ", ")))
+			f.Name, pyType, strings.Join(colArgs, ", ")))
 	} else {
 		b.WriteString(fmt.Sprintf("    %s = Column(%s)\n", f.Name, strings.Join(colArgs, ", ")))
 	}

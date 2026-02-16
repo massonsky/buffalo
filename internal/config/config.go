@@ -26,8 +26,9 @@ type Config struct {
 
 // ModelsConfig contains buffalo.models generation settings.
 type ModelsConfig struct {
-	Enabled         bool              `mapstructure:"enabled"`
-	BaseModelFields []BaseFieldConfig `mapstructure:"base_model_fields"`
+	Enabled                 bool              `mapstructure:"enabled"`
+	GenerateModelsFromProto bool              `mapstructure:"generate_models_from_proto"`
+	BaseModelFields         []BaseFieldConfig `mapstructure:"base_model_fields"`
 }
 
 // BaseFieldConfig describes a field injected into the generated BaseModel.
@@ -328,4 +329,10 @@ func (c *Config) GetORMPlugin(language string) string {
 	default:
 		return ""
 	}
+}
+
+// IsGenerateModelsFromProto returns true when plain proto messages
+// (without buffalo.models annotations) should also produce model code.
+func (c *Config) IsGenerateModelsFromProto() bool {
+	return c.Models.GenerateModelsFromProto
 }

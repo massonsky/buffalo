@@ -39,13 +39,34 @@ var packageRe = regexp.MustCompile(`(?m)^\s*package\s+([\w.]+)\s*;`)
 // Multi-line annotations are handled separately.
 //
 //	repeated string tags = 5;
+//	optional float speed = 6;
 //	string name = 1 [(buffalo.models.field) = { ... }];
 var fieldLineRe = regexp.MustCompile(
-	`(?m)^\s*(repeated\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*(\d+)`,
+	`(?m)^\s*((?:repeated|optional)\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*(\d+)`,
 )
 
 // listValueRe matches list values: ["a", "b", "c"]
 var listValueRe = regexp.MustCompile(`"([^"]*)"`)
+
+// mapFieldRe matches map<KeyType, ValueType> field_name = N;
+var mapFieldRe = regexp.MustCompile(
+	`(?m)^\s*map\s*<\s*(\w[\w.]*)\s*,\s*(\w[\w.]*)\s*>\s+(\w+)\s*=\s*(\d+)`,
+)
+
+// oneofBlockRe matches oneof blocks: oneof name { ... }
+var oneofBlockRe = regexp.MustCompile(`(?m)^\s*oneof\s+(\w+)\s*\{`)
+
+// enumBlockRe matches enum blocks: enum Name { ... }
+var enumBlockRe = regexp.MustCompile(`(?m)^\s*enum\s+(\w+)\s*\{`)
+
+// enumValueRe matches enum value lines: NAME = N;
+var enumValueRe = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*(-?\d+)\s*;`)
+
+// commentRe matches single-line comments.
+var commentRe = regexp.MustCompile(`(?m)^\s*//\s*(.*)$`)
+
+// serviceBlockRe matches service blocks (to skip them).
+var serviceBlockRe = regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
 
 // ──────────────────────────────────────────────────────────────────
 // Public API
@@ -94,8 +115,10 @@ func ExtractModels(content, filePath string) ([]ModelDef, error) {
 			fl[3] = msg.body[flIdx[6]:flIdx[7]]
 			fl[4] = msg.body[flIdx[8]:flIdx[9]]
 
+			qualifier := strings.TrimSpace(fl[1])
 			fd := FieldDef{
-				Repeated:  strings.TrimSpace(fl[1]) != "",
+				Repeated:  qualifier == "repeated",
+				Nullable:  qualifier == "optional",
 				ProtoType: fl[2],
 				Name:      fl[3],
 			}
@@ -128,13 +151,291 @@ func ExtractModels(content, filePath string) ([]ModelDef, error) {
 	return results, nil
 }
 
+// ExtractAllMessages scans a full proto file and returns ModelDefs for EVERY
+// message, regardless of whether it has buffalo.models annotations.
+// This is the "generate_models_from_proto" mode:  plain proto messages
+// become models with auto-derived settings.  Annotated messages get their
+// annotations applied on top.
+//
+// Service definitions are skipped.  Nested enums are extracted into ModelDef.Enums.
+// map<K,V> fields are represented with IsMap=true, MapKeyType, MapValueType.
+func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
+	pkg := extractPackage(content)
+	messages := extractMessageBlocks(content)
+
+	var results []ModelDef
+	for _, msg := range messages {
+		// Skip if this is inside a service block (heuristic: check if name
+		// matches a Request/Response that is NOT a standalone message)
+		// — actually, extractMessageBlocks already only matches "message" keyword,
+		// so services are not captured.
+
+		md := ModelDef{
+			MessageName: msg.name,
+			Package:     pkg,
+			FilePath:    filePath,
+			Description: msg.comment,
+			Fields:      []FieldDef{},
+			Enums:       []EnumDef{},
+		}
+
+		// If this message also has buffalo.models annotations, apply them
+		modelMatch := modelAnnotationRe.FindStringSubmatch(msg.body)
+		if modelMatch != nil {
+			if err := parseModelOptions(modelMatch[1], &md); err != nil {
+				return nil, fmt.Errorf("%s: message %s: %w", filePath, msg.name, err)
+			}
+		}
+
+		// Extract nested enums
+		md.Enums = extractEnums(msg.body)
+
+		// Build a set of enum type names for resolving field types
+		enumNames := map[string]bool{}
+		for _, e := range md.Enums {
+			enumNames[e.Name] = true
+		}
+
+		// Extract map fields first (they have special syntax)
+		mapFieldPositions := map[string]bool{} // field name → consumed
+		mapMatches := mapFieldRe.FindAllStringSubmatch(msg.body, -1)
+		for _, mf := range mapMatches {
+			keyType := mf[1]
+			valType := mf[2]
+			fName := mf[3]
+			fNum, _ := strconv.Atoi(mf[4])
+
+			fd := FieldDef{
+				Name:         fName,
+				ProtoType:    "map",
+				Number:       fNum,
+				IsMap:        true,
+				MapKeyType:   keyType,
+				MapValueType: valType,
+			}
+
+			// Extract field comment
+			fd.Description = extractFieldComment(msg.body, fName)
+
+			// If annotated, apply field options
+			applyFieldAnnotation(msg.body, fName, &fd)
+
+			md.Fields = append(md.Fields, fd)
+			mapFieldPositions[fName] = true
+		}
+
+		// Extract oneof blocks and remember which fields belong to which group
+		oneofFields := extractOneofFields(msg.body)
+
+		// Extract regular fields
+		fieldLines := fieldLineRe.FindAllStringSubmatchIndex(msg.body, -1)
+		for _, flIdx := range fieldLines {
+			fl := []string{
+				msg.body[flIdx[0]:flIdx[1]],
+				"",
+				"",
+				"",
+				"",
+			}
+			if flIdx[2] >= 0 {
+				fl[1] = msg.body[flIdx[2]:flIdx[3]]
+			}
+			fl[2] = msg.body[flIdx[4]:flIdx[5]]
+			fl[3] = msg.body[flIdx[6]:flIdx[7]]
+			fl[4] = msg.body[flIdx[8]:flIdx[9]]
+
+			fieldName := fl[3]
+
+			// Skip if already captured as a map field
+			if mapFieldPositions[fieldName] {
+				continue
+			}
+
+			qualifier := strings.TrimSpace(fl[1])
+			fd := FieldDef{
+				Repeated:  qualifier == "repeated",
+				Nullable:  qualifier == "optional",
+				ProtoType: fl[2],
+				Name:      fieldName,
+			}
+			if n, err := strconv.Atoi(fl[4]); err == nil {
+				fd.Number = n
+			}
+
+			// If field type is a nested enum, mark ProtoType accordingly
+			if enumNames[fd.ProtoType] {
+				fd.ProtoType = "int32" // enums map to int in generated models
+				fd.Comment = fmt.Sprintf("enum %s", fl[2])
+			}
+
+			// Assign oneof group
+			if group, ok := oneofFields[fieldName]; ok {
+				fd.OneofGroup = group
+				fd.Nullable = true // oneof fields are implicitly optional
+			}
+
+			// Extract field comment
+			fd.Description = extractFieldComment(msg.body, fieldName)
+
+			// Check for buffalo.models.field annotation
+			applyFieldAnnotation(msg.body, fieldName, &fd)
+
+			// Also check inline annotation (original logic)
+			rest := msg.body[flIdx[1]:]
+			semiIdx := strings.Index(rest, ";")
+			if semiIdx >= 0 {
+				fieldTail := rest[:semiIdx+1]
+				if strings.Contains(fieldTail, "buffalo.models.field") {
+					fieldMatch := fieldAnnotationRe.FindStringSubmatch(fieldTail)
+					if fieldMatch != nil {
+						if err := parseFieldOptions(fieldMatch[1], &fd); err != nil {
+							return nil, fmt.Errorf("%s: %s.%s: %w", filePath, msg.name, fd.Name, err)
+						}
+					}
+				}
+			}
+
+			md.Fields = append(md.Fields, fd)
+		}
+
+		results = append(results, md)
+	}
+
+	return results, nil
+}
+
+// extractEnums parses enum blocks within a message body.
+func extractEnums(body string) []EnumDef {
+	var enums []EnumDef
+
+	locs := enumBlockRe.FindAllStringSubmatchIndex(body, -1)
+	for _, loc := range locs {
+		name := body[loc[2]:loc[3]]
+		braceStart := loc[1]
+
+		// Find matching }
+		depth := 1
+		pos := braceStart
+		for pos < len(body) && depth > 0 {
+			switch body[pos] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			pos++
+		}
+
+		if depth == 0 {
+			enumBody := body[braceStart : pos-1]
+			ed := EnumDef{Name: name}
+
+			valMatches := enumValueRe.FindAllStringSubmatch(enumBody, -1)
+			for _, vm := range valMatches {
+				num, _ := strconv.ParseInt(vm[2], 10, 32)
+				ed.Values = append(ed.Values, EnumValue{
+					Name:   vm[1],
+					Number: int32(num),
+				})
+			}
+
+			enums = append(enums, ed)
+		}
+	}
+
+	return enums
+}
+
+// extractOneofFields parses oneof blocks and returns field_name → oneof_group_name.
+func extractOneofFields(body string) map[string]string {
+	result := map[string]string{}
+
+	locs := oneofBlockRe.FindAllStringSubmatchIndex(body, -1)
+	for _, loc := range locs {
+		groupName := body[loc[2]:loc[3]]
+		braceStart := loc[1]
+
+		depth := 1
+		pos := braceStart
+		for pos < len(body) && depth > 0 {
+			switch body[pos] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			pos++
+		}
+
+		if depth == 0 {
+			oneofBody := body[braceStart : pos-1]
+			fieldMatches := fieldLineRe.FindAllStringSubmatch(oneofBody, -1)
+			for _, fm := range fieldMatches {
+				fieldName := fm[3]
+				result[fieldName] = groupName
+			}
+		}
+	}
+
+	return result
+}
+
+// extractFieldComment extracts the comment on the line(s) above a field.
+func extractFieldComment(body, fieldName string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		// Find the line containing the field definition
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, fieldName) &&
+			(strings.Contains(trimmed, "=") || strings.HasPrefix(trimmed, "map<")) {
+			// Collect comment lines above it
+			var comments []string
+			for j := i - 1; j >= 0; j-- {
+				cl := strings.TrimSpace(lines[j])
+				if strings.HasPrefix(cl, "//") {
+					comments = append([]string{strings.TrimSpace(strings.TrimPrefix(cl, "//"))}, comments...)
+				} else if cl == "" {
+					break
+				} else {
+					break
+				}
+			}
+			if len(comments) > 0 {
+				return strings.Join(comments, " ")
+			}
+			// Also check inline comment
+			if idx := strings.Index(line, "//"); idx >= 0 {
+				return strings.TrimSpace(line[idx+2:])
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+// applyFieldAnnotation finds and applies a buffalo.models.field annotation for a named field.
+func applyFieldAnnotation(body, fieldName string, fd *FieldDef) {
+	// Find the line with this field and check for annotation
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, fieldName) && strings.Contains(trimmed, "buffalo.models.field") {
+			fieldMatch := fieldAnnotationRe.FindStringSubmatch(trimmed)
+			if fieldMatch != nil {
+				_ = parseFieldOptions(fieldMatch[1], fd)
+			}
+		}
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Internal: proto structure extraction
 // ──────────────────────────────────────────────────────────────────
 
 type rawMessage struct {
-	name string
-	body string
+	name    string
+	body    string
+	comment string // leading comment block
 }
 
 func extractPackage(content string) string {
@@ -170,11 +471,38 @@ func extractMessageBlocks(content string) []rawMessage {
 		if depth == 0 {
 			// body is between the opening { (at bodyStart-1) and closing }
 			body := content[bodyStart:pos]
-			messages = append(messages, rawMessage{name: name, body: body})
+
+			// Extract leading comment (lines immediately before "message Name {")
+			comment := extractLeadingComment(content, loc[0])
+
+			messages = append(messages, rawMessage{name: name, body: body, comment: comment})
 		}
 	}
 
 	return messages
+}
+
+// extractLeadingComment extracts // comment lines immediately before a position.
+func extractLeadingComment(content string, pos int) string {
+	// Walk backwards from pos to find consecutive comment lines
+	lines := strings.Split(content[:pos], "\n")
+	var commentLines []string
+	for i := len(lines) - 1; i >= 0; i-- {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			// Skip one empty line
+			if len(commentLines) == 0 {
+				continue
+			}
+			break
+		}
+		if strings.HasPrefix(trimmed, "//") {
+			commentLines = append([]string{strings.TrimSpace(strings.TrimPrefix(trimmed, "//"))}, commentLines...)
+		} else {
+			break
+		}
+	}
+	return strings.Join(commentLines, " ")
 }
 
 // ──────────────────────────────────────────────────────────────────

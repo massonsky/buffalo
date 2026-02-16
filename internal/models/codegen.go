@@ -59,13 +59,25 @@ func NewModelCodeGenerator(language string, orm ORMPlugin) (ModelCodeGenerator, 
 // ══════════════════════════════════════════════════════════════════
 
 // toSnakeCase converts CamelCase to snake_case.
+// Handles consecutive uppercase (acronyms) correctly:
+//
+//	"GPSData"  → "gps_data"
+//	"HTTPSHandler" → "https_handler"
+//	"UserID" → "user_id"
+//	"BoatTelemetryMessage" → "boat_telemetry_message"
 func toSnakeCase(s string) string {
+	runes := []rune(s)
 	var b strings.Builder
-	for i, r := range s {
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			b.WriteByte('_')
-		}
+	for i, r := range runes {
 		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				prev := runes[i-1]
+				prevIsUpper := prev >= 'A' && prev <= 'Z'
+				nextIsLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
+				if !prevIsUpper || nextIsLower {
+					b.WriteByte('_')
+				}
+			}
 			b.WriteRune(r + 32)
 		} else {
 			b.WriteRune(r)
@@ -112,6 +124,13 @@ func pythonHeader(generator string) string {
 
 // protoTypeToGo maps proto types to Go types.
 func protoTypeToGo(protoType string, nullable bool) string {
+	// Well-known types
+	if wkt, ok := wellKnownTypeGo(protoType); ok {
+		if nullable {
+			return "*" + wkt
+		}
+		return wkt
+	}
 	base := ""
 	switch protoType {
 	case "string":
@@ -133,7 +152,7 @@ func protoTypeToGo(protoType string, nullable bool) string {
 	case "bytes":
 		base = "[]byte"
 	default:
-		base = protoType // custom message type
+		base = stripPackagePrefix(protoType) // custom message type
 	}
 	if nullable && base != "[]byte" {
 		return "*" + base
@@ -143,6 +162,13 @@ func protoTypeToGo(protoType string, nullable bool) string {
 
 // protoTypeToPython maps proto types to Python type hints.
 func protoTypeToPython(protoType string, nullable bool) string {
+	// Well-known types
+	if wkt, ok := wellKnownTypePython(protoType); ok {
+		if nullable {
+			return fmt.Sprintf("Optional[%s]", wkt)
+		}
+		return wkt
+	}
 	base := ""
 	switch protoType {
 	case "string":
@@ -157,7 +183,7 @@ func protoTypeToPython(protoType string, nullable bool) string {
 	case "bytes":
 		base = "bytes"
 	default:
-		base = fmt.Sprintf("\"%s\"", toPascalCase(protoType))
+		base = toPascalCase(stripPackagePrefix(protoType))
 	}
 	if nullable {
 		return fmt.Sprintf("Optional[%s]", base)
@@ -167,6 +193,13 @@ func protoTypeToPython(protoType string, nullable bool) string {
 
 // protoTypeToRust maps proto types to Rust types.
 func protoTypeToRust(protoType string, nullable bool) string {
+	// Well-known types
+	if wkt, ok := wellKnownTypeRust(protoType); ok {
+		if nullable {
+			return fmt.Sprintf("Option<%s>", wkt)
+		}
+		return wkt
+	}
 	base := ""
 	switch protoType {
 	case "string":
@@ -188,7 +221,7 @@ func protoTypeToRust(protoType string, nullable bool) string {
 	case "bytes":
 		base = "Vec<u8>"
 	default:
-		base = toPascalCase(protoType)
+		base = toPascalCase(stripPackagePrefix(protoType))
 	}
 	if nullable {
 		return fmt.Sprintf("Option<%s>", base)
@@ -198,6 +231,13 @@ func protoTypeToRust(protoType string, nullable bool) string {
 
 // protoTypeToCpp maps proto types to C++ types.
 func protoTypeToCpp(protoType string, nullable bool) string {
+	// Well-known types
+	if wkt, ok := wellKnownTypeCpp(protoType); ok {
+		if nullable {
+			return fmt.Sprintf("std::optional<%s>", wkt)
+		}
+		return wkt
+	}
 	base := ""
 	switch protoType {
 	case "string":
@@ -219,7 +259,7 @@ func protoTypeToCpp(protoType string, nullable bool) string {
 	case "bytes":
 		base = "std::vector<uint8_t>"
 	default:
-		base = toPascalCase(protoType)
+		base = toPascalCase(stripPackagePrefix(protoType))
 	}
 	if nullable {
 		return fmt.Sprintf("std::optional<%s>", base)
@@ -283,4 +323,201 @@ func deprecatedComment(deprecated bool, msg string) string {
 		return fmt.Sprintf("Deprecated: %s", msg)
 	}
 	return "Deprecated"
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Full field type resolution (handles map, repeated, scalar)
+// ══════════════════════════════════════════════════════════════════
+
+// fieldTypeGo returns the full Go type for a field, including map and repeated.
+func fieldTypeGo(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToGo(f.MapKeyType, false)
+		vt := protoTypeToGo(f.MapValueType, false)
+		return fmt.Sprintf("map[%s]%s", kt, vt)
+	}
+	base := protoTypeToGo(f.ProtoType, f.Nullable)
+	if f.Repeated {
+		return "[]" + protoTypeToGo(f.ProtoType, false)
+	}
+	return base
+}
+
+// fieldTypePython returns the full Python type hint for a field.
+func fieldTypePython(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToPython(f.MapKeyType, false)
+		vt := protoTypeToPython(f.MapValueType, false)
+		base := fmt.Sprintf("Dict[%s, %s]", kt, vt)
+		if f.Nullable {
+			return fmt.Sprintf("Optional[%s]", base)
+		}
+		return base
+	}
+	if f.Repeated {
+		inner := protoTypeToPython(f.ProtoType, false)
+		base := fmt.Sprintf("List[%s]", inner)
+		if f.Nullable {
+			return fmt.Sprintf("Optional[%s]", base)
+		}
+		return base
+	}
+	return protoTypeToPython(f.ProtoType, f.Nullable)
+}
+
+// fieldTypeRust returns the full Rust type for a field.
+func fieldTypeRust(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToRust(f.MapKeyType, false)
+		vt := protoTypeToRust(f.MapValueType, false)
+		base := fmt.Sprintf("std::collections::HashMap<%s, %s>", kt, vt)
+		if f.Nullable {
+			return fmt.Sprintf("Option<%s>", base)
+		}
+		return base
+	}
+	if f.Repeated {
+		inner := protoTypeToRust(f.ProtoType, false)
+		base := fmt.Sprintf("Vec<%s>", inner)
+		if f.Nullable {
+			return fmt.Sprintf("Option<%s>", base)
+		}
+		return base
+	}
+	return protoTypeToRust(f.ProtoType, f.Nullable)
+}
+
+// fieldTypeCpp returns the full C++ type for a field.
+func fieldTypeCpp(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToCpp(f.MapKeyType, false)
+		vt := protoTypeToCpp(f.MapValueType, false)
+		base := fmt.Sprintf("std::map<%s, %s>", kt, vt)
+		if f.Nullable {
+			return fmt.Sprintf("std::optional<%s>", base)
+		}
+		return base
+	}
+	if f.Repeated {
+		inner := protoTypeToCpp(f.ProtoType, false)
+		base := fmt.Sprintf("std::vector<%s>", inner)
+		if f.Nullable {
+			return fmt.Sprintf("std::optional<%s>", base)
+		}
+		return base
+	}
+	return protoTypeToCpp(f.ProtoType, f.Nullable)
+}
+
+// pythonDefaultForField returns a proper Python default value for any field.
+func pythonDefaultForField(f FieldDef) string {
+	if f.DefaultValue != "" {
+		return pythonDefaultValue(f)
+	}
+	if f.IsMap {
+		return "{}"
+	}
+	if f.Repeated {
+		return "[]"
+	}
+	return pythonDefaultValue(f)
+}
+
+// stripPackagePrefix removes a fully qualified proto package prefix,
+// returning just the type name: "araviec.common.v1.Resolution" → "Resolution"
+func stripPackagePrefix(protoType string) string {
+	parts := strings.Split(protoType, ".")
+	return parts[len(parts)-1]
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Well-known Google Protobuf type mappings
+// ══════════════════════════════════════════════════════════════════
+
+func wellKnownTypeGo(pt string) (string, bool) {
+	m := map[string]string{
+		"google.protobuf.Timestamp":   "time.Time",
+		"google.protobuf.Duration":    "time.Duration",
+		"google.protobuf.Empty":       "struct{}",
+		"google.protobuf.Any":         "interface{}",
+		"google.protobuf.Struct":      "map[string]interface{}",
+		"google.protobuf.Value":       "interface{}",
+		"google.protobuf.BoolValue":   "bool",
+		"google.protobuf.Int32Value":  "int32",
+		"google.protobuf.Int64Value":  "int64",
+		"google.protobuf.UInt32Value": "uint32",
+		"google.protobuf.UInt64Value": "uint64",
+		"google.protobuf.FloatValue":  "float32",
+		"google.protobuf.DoubleValue": "float64",
+		"google.protobuf.StringValue": "string",
+		"google.protobuf.BytesValue":  "[]byte",
+	}
+	v, ok := m[pt]
+	return v, ok
+}
+
+func wellKnownTypePython(pt string) (string, bool) {
+	m := map[string]string{
+		"google.protobuf.Timestamp":   "datetime",
+		"google.protobuf.Duration":    "float",
+		"google.protobuf.Empty":       "None",
+		"google.protobuf.Any":         "Any",
+		"google.protobuf.Struct":      "Dict[str, Any]",
+		"google.protobuf.Value":       "Any",
+		"google.protobuf.BoolValue":   "bool",
+		"google.protobuf.Int32Value":  "int",
+		"google.protobuf.Int64Value":  "int",
+		"google.protobuf.UInt32Value": "int",
+		"google.protobuf.UInt64Value": "int",
+		"google.protobuf.FloatValue":  "float",
+		"google.protobuf.DoubleValue": "float",
+		"google.protobuf.StringValue": "str",
+		"google.protobuf.BytesValue":  "bytes",
+	}
+	v, ok := m[pt]
+	return v, ok
+}
+
+func wellKnownTypeRust(pt string) (string, bool) {
+	m := map[string]string{
+		"google.protobuf.Timestamp":   "chrono::DateTime<chrono::Utc>",
+		"google.protobuf.Duration":    "std::time::Duration",
+		"google.protobuf.Empty":       "()",
+		"google.protobuf.Any":         "serde_json::Value",
+		"google.protobuf.Struct":      "std::collections::HashMap<String, serde_json::Value>",
+		"google.protobuf.Value":       "serde_json::Value",
+		"google.protobuf.BoolValue":   "bool",
+		"google.protobuf.Int32Value":  "i32",
+		"google.protobuf.Int64Value":  "i64",
+		"google.protobuf.UInt32Value": "u32",
+		"google.protobuf.UInt64Value": "u64",
+		"google.protobuf.FloatValue":  "f32",
+		"google.protobuf.DoubleValue": "f64",
+		"google.protobuf.StringValue": "String",
+		"google.protobuf.BytesValue":  "Vec<u8>",
+	}
+	v, ok := m[pt]
+	return v, ok
+}
+
+func wellKnownTypeCpp(pt string) (string, bool) {
+	m := map[string]string{
+		"google.protobuf.Timestamp":   "std::chrono::system_clock::time_point",
+		"google.protobuf.Duration":    "std::chrono::nanoseconds",
+		"google.protobuf.Empty":       "void",
+		"google.protobuf.Any":         "nlohmann::json",
+		"google.protobuf.Struct":      "std::map<std::string, nlohmann::json>",
+		"google.protobuf.Value":       "nlohmann::json",
+		"google.protobuf.BoolValue":   "bool",
+		"google.protobuf.Int32Value":  "int32_t",
+		"google.protobuf.Int64Value":  "int64_t",
+		"google.protobuf.UInt32Value": "uint32_t",
+		"google.protobuf.UInt64Value": "uint64_t",
+		"google.protobuf.FloatValue":  "float",
+		"google.protobuf.DoubleValue": "double",
+		"google.protobuf.StringValue": "std::string",
+		"google.protobuf.BytesValue":  "std::vector<uint8_t>",
+	}
+	v, ok := m[pt]
+	return v, ok
 }
