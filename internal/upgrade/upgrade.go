@@ -454,18 +454,84 @@ func replaceBinary(currentPath, newPath string) error {
 		return errors.Wrap(err, errors.ErrIO, "failed to set permissions")
 	}
 
-	// On Windows, we need to rename the current binary first
+	// On Windows, running executables are file-locked.
+	// We schedule deferred replacement via a detached cmd script.
 	if runtime.GOOS == "windows" {
-		oldPath := currentPath + ".old"
-		os.Remove(oldPath) // Remove any existing .old file
-		if err := os.Rename(currentPath, oldPath); err != nil {
-			return errors.Wrap(err, errors.ErrIO, "failed to rename current binary")
+		if err := scheduleWindowsBinaryReplacement(currentPath, newPath); err != nil {
+			return err
 		}
+		return nil
 	}
 
 	// Copy new binary to current location
 	if err := copyFile(newPath, currentPath); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to replace binary")
+	}
+
+	return nil
+}
+
+// scheduleWindowsBinaryReplacement stages and schedules executable replacement
+// after the current process exits (Windows locks running .exe files).
+func scheduleWindowsBinaryReplacement(currentPath, newPath string) error {
+	stagedPath := currentPath + ".new"
+	oldPath := currentPath + ".old"
+
+	// Stage the new binary next to the current executable.
+	if err := copyFile(newPath, stagedPath); err != nil {
+		return errors.Wrap(err, errors.ErrIO, "failed to stage new binary")
+	}
+
+	scriptFile, err := os.CreateTemp("", "buffalo-upgrade-*.cmd")
+	if err != nil {
+		return errors.Wrap(err, errors.ErrIO, "failed to create windows upgrade script")
+	}
+
+	// Escape % to prevent unintended env expansion in batch script.
+	esc := func(s string) string {
+		return strings.ReplaceAll(s, "%", "%%")
+	}
+
+	script := fmt.Sprintf(`@echo off
+setlocal EnableDelayedExpansion
+set "TARGET=%s"
+set "STAGED=%s"
+set "OLD=%s"
+set /a RETRIES=0
+
+:retry
+set /a RETRIES+=1
+move /Y "%%TARGET%%" "%%OLD%%" >nul 2>&1
+if errorlevel 1 (
+	if %%RETRIES%% GEQ 60 exit /b 1
+	timeout /t 1 /nobreak >nul
+	goto retry
+)
+
+move /Y "%%STAGED%%" "%%TARGET%%" >nul 2>&1
+if errorlevel 1 exit /b 1
+
+del /F /Q "%%OLD%%" >nul 2>&1
+del /F /Q "%%~f0" >nul 2>&1
+exit /b 0
+`, esc(currentPath), esc(stagedPath), esc(oldPath))
+
+	if _, err := scriptFile.WriteString(script); err != nil {
+		scriptFile.Close()
+		os.Remove(scriptFile.Name())
+		return errors.Wrap(err, errors.ErrIO, "failed to write windows upgrade script")
+	}
+
+	if err := scriptFile.Close(); err != nil {
+		os.Remove(scriptFile.Name())
+		return errors.Wrap(err, errors.ErrIO, "failed to finalize windows upgrade script")
+	}
+
+	// Run detached: start "" /B cmd /C <script>
+	cmd := exec.Command("cmd", "/C", "start", "", "/B", "cmd", "/C", scriptFile.Name())
+	if err := cmd.Start(); err != nil {
+		os.Remove(scriptFile.Name())
+		return errors.Wrap(err, errors.ErrIO, "failed to start windows replacement script")
 	}
 
 	return nil
