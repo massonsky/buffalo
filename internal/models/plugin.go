@@ -56,7 +56,7 @@ func (p *ModelsPlugin) Execute(ctx context.Context, input *plugin.Input) (*plugi
 	var cfg *pluginModelsConfig
 	cfg = p.buildConfig()
 
-	// ── Parse all proto files for buffalo.models annotations ──
+	// ── Parse all proto files for model definitions ──
 	var allModels []ModelDef
 	for _, protoFile := range input.ProtoFiles {
 		content, err := os.ReadFile(protoFile)
@@ -66,7 +66,14 @@ func (p *ModelsPlugin) Execute(ctx context.Context, input *plugin.Input) (*plugi
 			continue
 		}
 
-		models, err := ExtractModels(string(content), protoFile)
+		var models []ModelDef
+		if cfg.generateModelsFromProto {
+			// Generate models from ALL proto messages (not just annotated ones)
+			models, err = ExtractAllMessages(string(content), protoFile)
+		} else {
+			// Only annotated messages
+			models, err = ExtractModels(string(content), protoFile)
+		}
 		if err != nil {
 			output.Warnings = append(output.Warnings,
 				fmt.Sprintf("buffalo-models: error parsing %s: %v", protoFile, err))
@@ -119,7 +126,8 @@ func (p *ModelsPlugin) Execute(ctx context.Context, input *plugin.Input) (*plugi
 
 // pluginModelsConfig extracts ORM settings from plugin.Config.Options.
 type pluginModelsConfig struct {
-	langs map[string]langORMCfg
+	langs                   map[string]langORMCfg
+	generateModelsFromProto bool
 }
 
 type langORMCfg struct {
@@ -134,6 +142,12 @@ func (p *ModelsPlugin) buildConfig() *pluginModelsConfig {
 	}
 	if p.config.Options == nil {
 		return c
+	}
+	// Check generate_models_from_proto flag
+	if v, ok := p.config.Options["generate_models_from_proto"]; ok {
+		if genFromProto, isBool := v.(bool); isBool {
+			c.generateModelsFromProto = genFromProto
+		}
 	}
 	for _, lang := range []string{"python", "go", "rust", "cpp"} {
 		if v, ok := p.config.Options[lang+"_orm"]; ok {
@@ -279,13 +293,16 @@ func shouldGenerateModel(m ModelDef) bool {
 
 // GenerateModels is a standalone entry point for the CLI.
 // It reads proto files, parses models, and generates code for the specified language.
-func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string) ([]string, error) {
+// When fromProto is true, ALL messages are extracted (not just annotated ones).
+func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string, fromProto ...bool) ([]string, error) {
 	orm := ParseORMPlugin(ormRaw)
 
 	gen, err := NewModelCodeGenerator(lang, orm)
 	if err != nil {
 		return nil, err
 	}
+
+	useFromProto := len(fromProto) > 0 && fromProto[0]
 
 	// Parse all models
 	var allModels []ModelDef
@@ -294,9 +311,14 @@ func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string) ([
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", pf, err)
 		}
-		models, parseErr := ExtractModels(string(content), pf)
-		if parseErr != nil {
-			return nil, fmt.Errorf("parse %s: %w", pf, parseErr)
+		var models []ModelDef
+		if useFromProto {
+			models, err = ExtractAllMessages(string(content), pf)
+		} else {
+			models, err = ExtractModels(string(content), pf)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", pf, err)
 		}
 		allModels = append(allModels, models...)
 	}
@@ -366,14 +388,22 @@ func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string) ([
 }
 
 // ListModelAnnotations scans proto files and returns parsed ModelDef without generating.
-func ListModelAnnotations(protoFiles []string) ([]ModelDef, error) {
+// When fromProto is true, ALL messages are returned (not just annotated ones).
+func ListModelAnnotations(protoFiles []string, fromProto ...bool) ([]ModelDef, error) {
+	useFromProto := len(fromProto) > 0 && fromProto[0]
+
 	var all []ModelDef
 	for _, pf := range protoFiles {
 		content, err := os.ReadFile(pf)
 		if err != nil {
 			return nil, err
 		}
-		models, err := ExtractModels(string(content), pf)
+		var models []ModelDef
+		if useFromProto {
+			models, err = ExtractAllMessages(string(content), pf)
+		} else {
+			models, err = ExtractModels(string(content), pf)
+		}
 		if err != nil {
 			return nil, err
 		}

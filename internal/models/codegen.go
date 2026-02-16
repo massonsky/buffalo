@@ -284,3 +284,108 @@ func deprecatedComment(deprecated bool, msg string) string {
 	}
 	return "Deprecated"
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  Full field type resolution (handles map, repeated, scalar)
+// ══════════════════════════════════════════════════════════════════
+
+// fieldTypeGo returns the full Go type for a field, including map and repeated.
+func fieldTypeGo(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToGo(f.MapKeyType, false)
+		vt := protoTypeToGo(f.MapValueType, false)
+		return fmt.Sprintf("map[%s]%s", kt, vt)
+	}
+	base := protoTypeToGo(f.ProtoType, f.Nullable)
+	if f.Repeated {
+		return "[]" + protoTypeToGo(f.ProtoType, false)
+	}
+	return base
+}
+
+// fieldTypePython returns the full Python type hint for a field.
+func fieldTypePython(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToPython(f.MapKeyType, false)
+		vt := protoTypeToPython(f.MapValueType, false)
+		base := fmt.Sprintf("Dict[%s, %s]", kt, vt)
+		if f.Nullable {
+			return fmt.Sprintf("Optional[%s]", base)
+		}
+		return base
+	}
+	if f.Repeated {
+		inner := protoTypeToPython(f.ProtoType, false)
+		base := fmt.Sprintf("List[%s]", inner)
+		if f.Nullable {
+			return fmt.Sprintf("Optional[%s]", base)
+		}
+		return base
+	}
+	return protoTypeToPython(f.ProtoType, f.Nullable)
+}
+
+// fieldTypeRust returns the full Rust type for a field.
+func fieldTypeRust(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToRust(f.MapKeyType, false)
+		vt := protoTypeToRust(f.MapValueType, false)
+		base := fmt.Sprintf("std::collections::HashMap<%s, %s>", kt, vt)
+		if f.Nullable {
+			return fmt.Sprintf("Option<%s>", base)
+		}
+		return base
+	}
+	if f.Repeated {
+		inner := protoTypeToRust(f.ProtoType, false)
+		base := fmt.Sprintf("Vec<%s>", inner)
+		if f.Nullable {
+			return fmt.Sprintf("Option<%s>", base)
+		}
+		return base
+	}
+	return protoTypeToRust(f.ProtoType, f.Nullable)
+}
+
+// fieldTypeCpp returns the full C++ type for a field.
+func fieldTypeCpp(f FieldDef) string {
+	if f.IsMap {
+		kt := protoTypeToCpp(f.MapKeyType, false)
+		vt := protoTypeToCpp(f.MapValueType, false)
+		base := fmt.Sprintf("std::map<%s, %s>", kt, vt)
+		if f.Nullable {
+			return fmt.Sprintf("std::optional<%s>", base)
+		}
+		return base
+	}
+	if f.Repeated {
+		inner := protoTypeToCpp(f.ProtoType, false)
+		base := fmt.Sprintf("std::vector<%s>", inner)
+		if f.Nullable {
+			return fmt.Sprintf("std::optional<%s>", base)
+		}
+		return base
+	}
+	return protoTypeToCpp(f.ProtoType, f.Nullable)
+}
+
+// pythonDefaultForField returns a proper Python default value for any field.
+func pythonDefaultForField(f FieldDef) string {
+	if f.DefaultValue != "" {
+		return pythonDefaultValue(f)
+	}
+	if f.IsMap {
+		return "{}"
+	}
+	if f.Repeated {
+		return "[]"
+	}
+	return pythonDefaultValue(f)
+}
+
+// stripPackagePrefix removes a fully qualified proto package prefix,
+// returning just the type name: "araviec.common.v1.Resolution" → "Resolution"
+func stripPackagePrefix(protoType string) string {
+	parts := strings.Split(protoType, ".")
+	return parts[len(parts)-1]
+}

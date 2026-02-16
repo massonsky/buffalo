@@ -128,10 +128,7 @@ func (g *RustNoneGenerator) fieldToRust(f FieldDef) string {
 		b.WriteString(fmt.Sprintf("    /// [%s]\n", f.Behavior.String()))
 	}
 
-	rustType := protoTypeToRust(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		rustType = fmt.Sprintf("Vec<%s>", protoTypeToRust(f.ProtoType, false))
-	}
+	rustType := fieldTypeRust(f)
 	if f.CustomType != "" {
 		rustType = f.CustomType
 	}
@@ -286,6 +283,9 @@ func (g *RustDieselGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 		if f.Repeated {
 			continue // skip repeated in insertable
 		}
+		if f.IsMap {
+			continue // skip maps in insertable
+		}
 		b.WriteString(fmt.Sprintf("    pub %s: %s,\n", f.Name, rustType))
 	}
 	b.WriteString("}\n")
@@ -301,10 +301,7 @@ func (g *RustDieselGenerator) fieldToRust(f FieldDef) string {
 		b.WriteString(fmt.Sprintf("    /// %s\n", f.Description))
 	}
 
-	rustType := protoTypeToRust(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		rustType = fmt.Sprintf("Vec<%s>", protoTypeToRust(f.ProtoType, false))
-	}
+	rustType := fieldTypeRust(f)
 
 	columnName := f.Name
 	if f.Alias != "" {

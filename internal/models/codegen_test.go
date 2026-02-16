@@ -566,6 +566,113 @@ func TestCheckORMDependencies(t *testing.T) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  Map / from-proto codegen tests
+// ══════════════════════════════════════════════════════════════════
+
+func TestCodegenMapField_AllLanguages(t *testing.T) {
+	model := ModelDef{
+		MessageName: "Settings",
+		Package:     "test",
+		Fields: []FieldDef{
+			{Name: "source_id", ProtoType: "string", Number: 1},
+			{Name: "settings", ProtoType: "map", Number: 2, IsMap: true, MapKeyType: "string", MapValueType: "string"},
+			{Name: "tags", ProtoType: "string", Number: 3, Repeated: true},
+		},
+	}
+
+	opts := GenerateOptions{
+		Package: "test",
+	}
+
+	cases := []struct {
+		lang     string
+		orm      string
+		contains []string
+	}{
+		{"python", "None", []string{"Dict[str, str]", "List[str]", "default_factory=dict", "default_factory=list"}},
+		{"python", "pydantic", []string{"Dict[str, str]", "List[str]"}},
+		{"go", "None", []string{"map[string]string", "[]string"}},
+		{"go", "gorm", []string{"map[string]string", "[]string"}},
+		{"rust", "None", []string{"std::collections::HashMap<String, String>", "Vec<String>"}},
+		{"cpp", "None", []string{"std::map<std::string, std::string>", "std::vector<std::string>"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.lang+"/"+tc.orm, func(t *testing.T) {
+			orm := ParseORMPlugin(tc.orm)
+			gen, err := NewModelCodeGenerator(tc.lang, orm)
+			if err != nil {
+				t.Fatalf("NewModelCodeGenerator: %v", err)
+			}
+
+			opts.Language = tc.lang
+			opts.ORM = orm
+			files, err := gen.GenerateModel(model, opts)
+			if err != nil {
+				t.Fatalf("GenerateModel: %v", err)
+			}
+			if len(files) == 0 {
+				t.Fatal("expected generated files")
+			}
+
+			content := files[0].Content
+			for _, substr := range tc.contains {
+				assertContains(t, content, substr)
+			}
+		})
+	}
+}
+
+func TestCodegenFromProto_PlainMessage(t *testing.T) {
+	// Simulate a plain proto message (no buffalo annotations)
+	model := ModelDef{
+		MessageName: "VideoOptions",
+		Package:     "multimedia",
+		Description: "Video configuration",
+		Fields: []FieldDef{
+			{Name: "resolution", ProtoType: "Resolution", Number: 1},
+			{Name: "fps", ProtoType: "int32", Number: 2},
+			{Name: "bitrate", ProtoType: "int32", Number: 3},
+			{Name: "codec", ProtoType: "string", Number: 4},
+		},
+	}
+
+	opts := GenerateOptions{
+		Package: "multimedia",
+	}
+
+	// Test in all languages
+	for _, lang := range []string{"python", "go", "rust", "cpp"} {
+		t.Run(lang, func(t *testing.T) {
+			gen, err := NewModelCodeGenerator(lang, ORMPlugin{Name: "None"})
+			if err != nil {
+				t.Fatalf("NewModelCodeGenerator: %v", err)
+			}
+			opts.Language = lang
+			files, err := gen.GenerateModel(model, opts)
+			if err != nil {
+				t.Fatalf("GenerateModel: %v", err)
+			}
+			if len(files) == 0 {
+				t.Fatal("expected generated files")
+			}
+
+			content := files[0].Content
+			// All languages should contain the model name
+			assertContains(t, content, "VideoOptions")
+			// All should have fps and codec fields
+			if lang == "python" {
+				assertContains(t, content, "fps")
+				assertContains(t, content, "codec")
+			} else if lang == "go" {
+				assertContains(t, content, "Fps")
+				assertContains(t, content, "Codec")
+			}
+		})
+	}
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  Helpers
 // ══════════════════════════════════════════════════════════════════
 

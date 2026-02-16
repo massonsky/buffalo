@@ -163,10 +163,7 @@ func (g *GoNoneGenerator) fieldToGoStruct(f FieldDef) string {
 	}
 
 	goName := toPascalCase(f.Name)
-	goType := protoTypeToGo(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		goType = "[]" + protoTypeToGo(f.ProtoType, false)
-	}
+	goType := fieldTypeGo(f)
 	if f.CustomType != "" {
 		goType = f.CustomType
 	}
@@ -322,10 +319,7 @@ func (g *GoGORMGenerator) fieldToGORM(f FieldDef, model ModelDef) string {
 	}
 
 	goName := toPascalCase(f.Name)
-	goType := protoTypeToGo(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		goType = "[]" + protoTypeToGo(f.ProtoType, false)
-	}
+	goType := fieldTypeGo(f)
 	if f.CustomType != "" {
 		goType = f.CustomType
 	}
@@ -483,10 +477,7 @@ func (g *GoSQLXGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 			continue
 		}
 		goName := toPascalCase(f.Name)
-		goType := protoTypeToGo(f.ProtoType, f.Nullable)
-		if f.Repeated {
-			goType = "[]" + protoTypeToGo(f.ProtoType, false)
-		}
+		goType := fieldTypeGo(f)
 
 		dbName := f.Name
 		if f.Alias != "" {

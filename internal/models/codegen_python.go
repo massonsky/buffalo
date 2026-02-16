@@ -81,7 +81,7 @@ func (g *PythonNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	b.WriteString(pythonHeader("buffalo-models"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
 	b.WriteString("from dataclasses import dataclass, field\n")
-	b.WriteString("from typing import List, Optional\n\n")
+	b.WriteString("from typing import Dict, List, Optional\n\n")
 	b.WriteString("from .base_model import BaseModel\n\n\n")
 	if model.Extends != "" {
 		extendsModule := toSnakeCase(model.Extends)
@@ -168,14 +168,12 @@ func (g *PythonNoneGenerator) fieldToDataclass(f FieldDef) string {
 		b.WriteString("    # [immutable]\n")
 	}
 
-	typeHint := protoTypeToPython(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		innerType := protoTypeToPython(f.ProtoType, false)
-		typeHint = fmt.Sprintf("List[%s]", innerType)
-	}
+	typeHint := fieldTypePython(f)
 
-	defaultVal := pythonDefaultValue(f)
-	if f.Repeated {
+	defaultVal := pythonDefaultForField(f)
+	if f.IsMap {
+		b.WriteString(fmt.Sprintf("    %s: %s = field(default_factory=dict)\n", f.Name, typeHint))
+	} else if f.Repeated {
 		b.WriteString(fmt.Sprintf("    %s: %s = field(default_factory=list)\n", f.Name, typeHint))
 	} else if f.Sensitive {
 		b.WriteString(fmt.Sprintf("    %s: %s = %s  # sensitive\n", f.Name, typeHint, defaultVal))
@@ -329,7 +327,7 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
-	b.WriteString("from typing import Any, ClassVar, List, Optional, Type, TypeVar\n\n")
+	b.WriteString("from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar\n\n")
 	b.WriteString("try:\n")
 	b.WriteString("    from typing import Self\n")
 	b.WriteString("except ImportError:\n")
@@ -432,17 +430,15 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 		b.WriteString(fmt.Sprintf("    # [%s]\n", f.Behavior.String()))
 	}
 
-	typeHint := protoTypeToPython(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		innerType := protoTypeToPython(f.ProtoType, false)
-		typeHint = fmt.Sprintf("List[%s]", innerType)
-	}
+	typeHint := fieldTypePython(f)
 
 	// Build Field(...) arguments
 	var fieldArgs []string
 
 	// Default value
-	if f.Repeated {
+	if f.IsMap {
+		fieldArgs = append(fieldArgs, "default_factory=dict")
+	} else if f.Repeated {
 		fieldArgs = append(fieldArgs, "default_factory=list")
 	} else if f.DefaultValue != "" {
 		if f.ProtoType == "string" {
@@ -733,9 +729,9 @@ func (g *PythonSQLAlchemyGenerator) fieldToSQLAlchemy(f FieldDef) string {
 	}
 
 	if g.isV2() {
-		goType := protoTypeToPython(f.ProtoType, f.Nullable)
+		pyType := fieldTypePython(f)
 		b.WriteString(fmt.Sprintf("    %s: Mapped[%s] = mapped_column(%s)\n",
-			f.Name, goType, strings.Join(colArgs, ", ")))
+			f.Name, pyType, strings.Join(colArgs, ", ")))
 	} else {
 		b.WriteString(fmt.Sprintf("    %s = Column(%s)\n", f.Name, strings.Join(colArgs, ", ")))
 	}

@@ -50,7 +50,10 @@ model source files for the specified language and ORM framework.`,
   buffalo models generate --lang cpp --output include/models
 
   # Generate for all languages using buffalo.yaml config
-  buffalo models generate --all`,
+  buffalo models generate --all
+
+  # Generate models from ALL proto messages (not just annotated)
+  buffalo models generate --lang python --orm pydantic --from-proto --output gen/models`,
 	Aliases: []string{"gen", "g"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		protoDir, _ := cmd.Flags().GetString("proto")
@@ -59,6 +62,7 @@ model source files for the specified language and ORM framework.`,
 		outputDir, _ := cmd.Flags().GetString("output")
 		pkg, _ := cmd.Flags().GetString("package")
 		all, _ := cmd.Flags().GetBool("all")
+		fromProto, _ := cmd.Flags().GetBool("from-proto")
 
 		if all {
 			return runGenerateAll(protoDir)
@@ -87,14 +91,27 @@ model source files for the specified language and ORM framework.`,
 			ormPlugin = "None"
 		}
 
+		// If --from-proto not explicitly set, check config
+		if !fromProto {
+			if cfg, cfgErr := loadModelsConfig(); cfgErr == nil {
+				fromProto = cfg.generateModelsFromProto
+			}
+		}
+
+		mode := "annotations"
+		if fromProto {
+			mode = "all-messages"
+		}
+
 		log.Info("Generating models",
 			logger.String("lang", lang),
 			logger.String("orm", ormPlugin),
 			logger.String("output", outputDir),
+			logger.String("mode", mode),
 			logger.Int("protos", len(protoFiles)),
 		)
 
-		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, pkg)
+		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, pkg, fromProto)
 		if err != nil {
 			return fmt.Errorf("generation failed: %w", err)
 		}
@@ -123,6 +140,11 @@ func runGenerateAll(protoDir string) error {
 		log.Warn("Config load warning, using defaults", logger.Any("error", cfgErr))
 	}
 
+	fromProto := false
+	if cfg != nil {
+		fromProto = cfg.generateModelsFromProto
+	}
+
 	languages := []string{"python", "go", "rust", "cpp"}
 	totalFiles := 0
 	for _, lang := range languages {
@@ -142,9 +164,19 @@ func runGenerateAll(protoDir string) error {
 			continue
 		}
 
-		log.Info("Generating models", logger.String("lang", lang), logger.String("orm", ormPlugin), logger.String("output", outputDir))
+		mode := "annotations"
+		if fromProto {
+			mode = "all-messages"
+		}
 
-		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, "")
+		log.Info("Generating models",
+			logger.String("lang", lang),
+			logger.String("orm", ormPlugin),
+			logger.String("output", outputDir),
+			logger.String("mode", mode),
+		)
+
+		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, "", fromProto)
 		if err != nil {
 			log.Error("Generation failed", logger.String("lang", lang), logger.Any("error", err))
 			continue
@@ -169,16 +201,25 @@ var modelsListCmd = &cobra.Command{
 	Short: "List model annotations in proto files",
 	Long:  `Scan proto files and list all buffalo.models annotations found.`,
 	Example: `  buffalo models list
-  buffalo models list --proto ./protos`,
+  buffalo models list --proto ./protos
+  buffalo models list --from-proto`,
 	Aliases: []string{"ls", "l"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		protoDir, _ := cmd.Flags().GetString("proto")
+		fromProto, _ := cmd.Flags().GetBool("from-proto")
 		protoFiles, err := findProtoFiles(protoDir)
 		if err != nil {
 			return err
 		}
 
-		allModels, err := models.ListModelAnnotations(protoFiles)
+		// If --from-proto not explicitly set, check config
+		if !fromProto {
+			if cfg, cfgErr := loadModelsConfig(); cfgErr == nil {
+				fromProto = cfg.generateModelsFromProto
+			}
+		}
+
+		allModels, err := models.ListModelAnnotations(protoFiles, fromProto)
 		if err != nil {
 			return err
 		}
@@ -217,15 +258,24 @@ var modelsInspectCmd = &cobra.Command{
 	Short: "Inspect a specific model in detail",
 	Long:  `Show detailed information about a model including all fields, visibility, behavior, and relations.`,
 	Example: `  buffalo models inspect User
-  buffalo models inspect --proto ./protos`,
+  buffalo models inspect --proto ./protos
+  buffalo models inspect --from-proto Resolution`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		protoDir, _ := cmd.Flags().GetString("proto")
+		fromProto, _ := cmd.Flags().GetBool("from-proto")
 		protoFiles, err := findProtoFiles(protoDir)
 		if err != nil {
 			return err
 		}
 
-		allModels, err := models.ListModelAnnotations(protoFiles)
+		// If --from-proto not explicitly set, check config
+		if !fromProto {
+			if cfg, cfgErr := loadModelsConfig(); cfgErr == nil {
+				fromProto = cfg.generateModelsFromProto
+			}
+		}
+
+		allModels, err := models.ListModelAnnotations(protoFiles, fromProto)
 		if err != nil {
 			return err
 		}
@@ -373,10 +423,11 @@ func loadModelsConfig() (*modelsConfigWrapper, error) {
 
 // modelsConfigWrapper is a lightweight wrapper around config for models CLI.
 type modelsConfigWrapper struct {
-	python modelsLangCfg
-	golang modelsLangCfg
-	rust   modelsLangCfg
-	cpp    modelsLangCfg
+	python                  modelsLangCfg
+	golang                  modelsLangCfg
+	rust                    modelsLangCfg
+	cpp                     modelsLangCfg
+	generateModelsFromProto bool
 }
 
 type modelsLangCfg struct {
@@ -454,6 +505,7 @@ func loadBuffaloConfigForModels(path string) (*modelsConfigWrapper, error) {
 			ormPlugin:    cfg.GetORMPlugin("cpp"),
 			modelsOutput: cfg.GetModelsOutputDir("cpp"),
 		},
+		generateModelsFromProto: cfg.IsGenerateModelsFromProto(),
 	}
 	return w, nil
 }
@@ -463,6 +515,7 @@ type configInterface interface {
 	IsORMEnabled(lang string) bool
 	GetORMPlugin(lang string) string
 	GetModelsOutputDir(lang string) string
+	IsGenerateModelsFromProto() bool
 }
 
 // configLoad loads config from a file path and returns configInterface.
@@ -493,8 +546,13 @@ func init() {
 	modelsGenerateCmd.Flags().StringP("output", "o", "", "Output directory for generated models")
 	modelsGenerateCmd.Flags().String("package", "", "Package name for generated code")
 	modelsGenerateCmd.Flags().Bool("all", false, "Generate for all configured languages from buffalo.yaml")
+	modelsGenerateCmd.Flags().Bool("from-proto", false, "Generate models from ALL proto messages (not just annotated)")
 
 	// Check-deps flags
 	modelsCheckDepsCmd.Flags().StringP("lang", "l", "", "Target language")
 	modelsCheckDepsCmd.Flags().StringP("orm", "r", "", "ORM framework")
+
+	// --from-proto flag for list and inspect
+	modelsListCmd.Flags().Bool("from-proto", false, "Show all proto messages (not just annotated)")
+	modelsInspectCmd.Flags().Bool("from-proto", false, "Inspect any proto message (not just annotated)")
 }

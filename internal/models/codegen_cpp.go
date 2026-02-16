@@ -32,9 +32,11 @@ func (g *CppNoneGenerator) GenerateBaseModel(_ GenerateOptions) (GeneratedFile, 
 	b.WriteString("#pragma once\n\n")
 	b.WriteString("#include <chrono>\n")
 	b.WriteString("#include <cstdint>\n")
+	b.WriteString("#include <map>\n")
 	b.WriteString("#include <stdexcept>\n")
 	b.WriteString("#include <optional>\n")
-	b.WriteString("#include <string>\n\n")
+	b.WriteString("#include <string>\n")
+	b.WriteString("#include <vector>\n\n")
 	b.WriteString("#include <google/protobuf/util/json_util.h>\n")
 	b.WriteString("#include <nlohmann/json.hpp>\n\n")
 
@@ -189,11 +191,7 @@ func (g *CppNoneGenerator) fieldToCpp(f FieldDef) string {
 		b.WriteString(fmt.Sprintf("    [[deprecated(\"%s\")]]\n", deprecatedComment(true, f.DeprecatedMessage)))
 	}
 
-	cppType := protoTypeToCpp(f.ProtoType, f.Nullable)
-	if f.Repeated {
-		elem := protoTypeToCpp(f.ProtoType, false)
-		cppType = fmt.Sprintf("std::vector<%s>", elem)
-	}
+	cppType := fieldTypeCpp(f)
 	if f.CustomType != "" {
 		cppType = f.CustomType
 	}
