@@ -21,6 +21,25 @@ type Config struct {
 	Dependencies []dependency.Dependency `mapstructure:"dependencies"`
 	Plugins      []PluginConfig          `mapstructure:"plugins"`
 	Templates    []TemplateConfig        `mapstructure:"templates"`
+	Models       ModelsConfig            `mapstructure:"models"`
+}
+
+// ModelsConfig contains buffalo.models generation settings.
+type ModelsConfig struct {
+	Enabled         bool              `mapstructure:"enabled"`
+	BaseModelFields []BaseFieldConfig `mapstructure:"base_model_fields"`
+}
+
+// BaseFieldConfig describes a field injected into the generated BaseModel.
+type BaseFieldConfig struct {
+	Name         string `mapstructure:"name"`
+	Type         string `mapstructure:"type"`
+	PrimaryKey   bool   `mapstructure:"primary_key"`
+	AutoGenerate bool   `mapstructure:"auto_generate"`
+	AutoNow      bool   `mapstructure:"auto_now"`
+	AutoNowAdd   bool   `mapstructure:"auto_now_add"`
+	Nullable     bool   `mapstructure:"nullable"`
+	Comment      string `mapstructure:"comment"`
 }
 
 // ProjectConfig contains project-level settings
@@ -58,25 +77,37 @@ type PythonConfig struct {
 	Generator      string   `mapstructure:"generator"`
 	WorkDir        string   `mapstructure:"workdir"`
 	ExcludeImports []string `mapstructure:"exclude_imports"`
+	ORM            bool     `mapstructure:"orm"`
+	ORMPlugin      string   `mapstructure:"orm_plugin"`
+	ModelsOutput   string   `mapstructure:"models_output"`
 }
 
 // GoConfig contains Go-specific settings
 type GoConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Module    string `mapstructure:"module"`
-	Generator string `mapstructure:"generator"`
+	Enabled      bool   `mapstructure:"enabled"`
+	Module       string `mapstructure:"module"`
+	Generator    string `mapstructure:"generator"`
+	ORM          bool   `mapstructure:"orm"`
+	ORMPlugin    string `mapstructure:"orm_plugin"`
+	ModelsOutput string `mapstructure:"models_output"`
 }
 
 // RustConfig contains Rust-specific settings
 type RustConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Generator string `mapstructure:"generator"`
+	Enabled      bool   `mapstructure:"enabled"`
+	Generator    string `mapstructure:"generator"`
+	ORM          bool   `mapstructure:"orm"`
+	ORMPlugin    string `mapstructure:"orm_plugin"`
+	ModelsOutput string `mapstructure:"models_output"`
 }
 
 // CppConfig contains C++-specific settings
 type CppConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Namespace string `mapstructure:"namespace"`
+	Enabled      bool   `mapstructure:"enabled"`
+	Namespace    string `mapstructure:"namespace"`
+	ORM          bool   `mapstructure:"orm"`
+	ORMPlugin    string `mapstructure:"orm_plugin"`
+	ModelsOutput string `mapstructure:"models_output"`
 }
 
 // BuildConfig contains build settings
@@ -236,4 +267,65 @@ func (c *Config) GetEnabledLanguages() []string {
 		languages = append(languages, "cpp")
 	}
 	return languages
+}
+
+// GetModelsOutputDir returns the models output directory for a specific language.
+// Priority: language.models_output > output.directories["models_<lang>"] > output.base_dir/<lang>/models
+func (c *Config) GetModelsOutputDir(language string) string {
+	switch language {
+	case "python":
+		if c.Languages.Python.ModelsOutput != "" {
+			return c.Languages.Python.ModelsOutput
+		}
+	case "go":
+		if c.Languages.Go.ModelsOutput != "" {
+			return c.Languages.Go.ModelsOutput
+		}
+	case "rust":
+		if c.Languages.Rust.ModelsOutput != "" {
+			return c.Languages.Rust.ModelsOutput
+		}
+	case "cpp":
+		if c.Languages.Cpp.ModelsOutput != "" {
+			return c.Languages.Cpp.ModelsOutput
+		}
+	}
+
+	// Fallback: base_dir/<lang>/models
+	return filepath.Join(c.GetOutputDir(language), "models")
+}
+
+// IsORMEnabled returns whether ORM model generation is enabled for a language.
+func (c *Config) IsORMEnabled(language string) bool {
+	if !c.Models.Enabled {
+		return false
+	}
+	switch language {
+	case "python":
+		return c.Languages.Python.ORM
+	case "go":
+		return c.Languages.Go.ORM
+	case "rust":
+		return c.Languages.Rust.ORM
+	case "cpp":
+		return c.Languages.Cpp.ORM
+	default:
+		return false
+	}
+}
+
+// GetORMPlugin returns the ORM plugin string for a language.
+func (c *Config) GetORMPlugin(language string) string {
+	switch language {
+	case "python":
+		return c.Languages.Python.ORMPlugin
+	case "go":
+		return c.Languages.Go.ORMPlugin
+	case "rust":
+		return c.Languages.Rust.ORMPlugin
+	case "cpp":
+		return c.Languages.Cpp.ORMPlugin
+	default:
+		return ""
+	}
 }

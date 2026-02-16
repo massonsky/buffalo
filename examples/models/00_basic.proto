@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package examples.models.basic;
+
+import "buffalo/models/models.proto";
+
+// Minimal example: only model + a few fields.
+message User {
+  option (buffalo.models.model) = {
+    name: "User"
+    description: "Минимальный пример модели"
+    table_name: "users"
+    generate: ["model"]
+  };
+
+  string id = 1 [(buffalo.models.field) = {
+    primary_key: true
+    auto_generate: true
+    description: "Primary key"
+  }];
+
+  string email = 2 [(buffalo.models.field) = {
+    unique: true
+    max_length: 255
+    example: "user@example.com"
+    visibility: PUBLIC
+  }];
+
+  string display_name = 3 [(buffalo.models.field) = {
+    nullable: true
+    default_value: "Anonymous"
+    omit_empty: true
+  }];
+
+  bool is_active = 4 [(buffalo.models.field) = {
+    default_value: "true"
+  }];
+}

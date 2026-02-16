@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package examples.models.relations;
+
+import "buffalo/models/models.proto";
+
+// Relation-focused examples: belongs_to, has_one, has_many, many_to_many.
+message User {
+  option (buffalo.models.model) = {
+    table_name: "users"
+    generate: ["model", "repo"]
+  };
+
+  string id = 1 [(buffalo.models.field) = {
+    primary_key: true
+  }];
+
+  string email = 2 [(buffalo.models.field) = {
+    unique: true
+    max_length: 255
+  }];
+
+  Profile profile = 3 [(buffalo.models.field) = {
+    relation: {
+      type: HAS_ONE
+      model: "Profile"
+      foreign_key: "user_id"
+      references: "id"
+      on_delete: CASCADE
+      on_update: CASCADE
+      eager: true
+      inverse_of: "user"
+    }
+  }];
+
+  repeated Post posts = 4 [(buffalo.models.field) = {
+    relation: {
+      type: HAS_MANY
+      model: "Post"
+      foreign_key: "author_id"
+      references: "id"
+      on_delete: CASCADE
+      on_update: NO_ACTION
+      inverse_of: "author"
+    }
+  }];
+
+  repeated Role roles = 5 [(buffalo.models.field) = {
+    relation: {
+      type: MANY_TO_MANY
+      model: "Role"
+      join_table: "user_roles"
+      foreign_key: "user_id"
+      references: "id"
+      through: "UserRole"
+      inverse_of: "users"
+    }
+  }];
+}
+
+message Profile {
+  option (buffalo.models.model) = {
+    table_name: "profiles"
+    generate: ["model"]
+  };
+
+  string id = 1 [(buffalo.models.field) = { primary_key: true }];
+
+  string user_id = 2 [(buffalo.models.field) = {
+    relation: {
+      type: BELONGS_TO
+      model: "User"
+      foreign_key: "user_id"
+      references: "id"
+      on_delete: CASCADE
+      on_update: CASCADE
+      inverse_of: "profile"
+    }
+    index: true
+  }];
+
+  string bio = 3 [(buffalo.models.field) = {
+    nullable: true
+    max_length: 500
+  }];
+}
+
+message Post {
+  option (buffalo.models.model) = {
+    table_name: "posts"
+    generate: ["model", "factory"]
+    indexes: {
+      name: "idx_posts_author_published"
+      columns: ["author_id", "published_at"]
+      type: BRIN
+    }
+  };
+
+  string id = 1 [(buffalo.models.field) = { primary_key: true }];
+
+  string author_id = 2 [(buffalo.models.field) = {
+    relation: {
+      type: BELONGS_TO
+      model: "User"
+      foreign_key: "author_id"
+      references: "id"
+      on_delete: CASCADE
+      inverse_of: "posts"
+    }
+    index: true
+  }];
+
+  string title = 3 [(buffalo.models.field) = {
+    max_length: 200
+    min_length: 3
+  }];
+
+  string body = 4 [(buffalo.models.field) = {
+    db_type: "TEXT"
+  }];
+
+  int64 published_at = 5 [(buffalo.models.field) = {
+    nullable: true
+    index: true
+  }];
+}
+
+message Role {
+  option (buffalo.models.model) = {
+    table_name: "roles"
+    uniques: {
+      name: "uq_role_code"
+      columns: ["code"]
+    }
+  };
+
+  string id = 1 [(buffalo.models.field) = { primary_key: true }];
+  string code = 2 [(buffalo.models.field) = { unique: true max_length: 64 }];
+  string name = 3 [(buffalo.models.field) = { max_length: 128 }];
+}
+
+message UserRole {
+  option (buffalo.models.model) = {
+    table_name: "user_roles"
+    generate: ["model"]
+    uniques: {
+      name: "uq_user_role"
+      columns: ["user_id", "role_id"]
+    }
+  };
+
+  string user_id = 1 [(buffalo.models.field) = {
+    relation: {
+      type: BELONGS_TO
+      model: "User"
+      foreign_key: "user_id"
+      references: "id"
+      on_delete: CASCADE
+    }
+    index: true
+  }];
+
+  string role_id = 2 [(buffalo.models.field) = {
+    relation: {
+      type: BELONGS_TO
+      model: "Role"
+      foreign_key: "role_id"
+      references: "id"
+      on_delete: CASCADE
+    }
+    index: true
+  }];
+}

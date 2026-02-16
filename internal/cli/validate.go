@@ -2,7 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 
 	"github.com/massonsky/buffalo/internal/embedded"
 	"github.com/massonsky/buffalo/pkg/logger"
@@ -152,10 +155,20 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	for _, file := range allProtoFiles {
 		relPath := getRelativePath(file)
 
-		// Run protoc --descriptor_set_out=/dev/null to validate without generating output
+		// Run protoc --descriptor_set_out to validate without generating output
+		devNull := "/dev/null"
+		if runtime.GOOS == "windows" {
+			devNull = "NUL"
+		}
 		args := []string{
-			"--descriptor_set_out=/dev/null",
+			fmt.Sprintf("--descriptor_set_out=%s", devNull),
 			"--proto_path=.",
+		}
+
+		// Auto-add .buffalo/proto if it exists (extracted buffalo imports)
+		buffaloProtoDir := filepath.Join(".buffalo", "proto")
+		if _, statErr := os.Stat(buffaloProtoDir); statErr == nil {
+			args = append(args, fmt.Sprintf("--proto_path=%s", buffaloProtoDir))
 		}
 
 		// Add import paths if available

@@ -24,6 +24,23 @@ func TestProtoFS_Contains_ValidateProto(t *testing.T) {
 	}
 }
 
+func TestProtoFS_Contains_ModelsProto(t *testing.T) {
+	data, err := ProtoFS.ReadFile("proto/buffalo/models/models.proto")
+	if err != nil {
+		t.Fatalf("failed to read embedded models.proto: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("embedded models.proto is empty")
+	}
+	content := string(data)
+	if !strings.Contains(content, "package buffalo.models") {
+		t.Error("expected embedded proto to contain 'package buffalo.models'")
+	}
+	if !strings.Contains(content, "ModelOptions") {
+		t.Error("expected embedded proto to contain 'ModelOptions'")
+	}
+}
+
 func TestListEmbeddedProtos(t *testing.T) {
 	files, err := ListEmbeddedProtos()
 	if err != nil {

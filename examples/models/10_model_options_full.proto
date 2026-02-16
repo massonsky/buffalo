@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package examples.models.fullmodel;
+
+import "buffalo/models/models.proto";
+
+// Covers almost all ModelOptions fields.
+message AuditableEntity {
+  option (buffalo.models.model) = {
+    abstract: true
+    description: "Базовая абстрактная модель с аудитом"
+    tags: ["base", "audit"]
+    generate: ["model"]
+  };
+
+  string created_by = 1 [(buffalo.models.field) = {
+    description: "Кто создал"
+    max_length: 128
+    behavior: READONLY
+  }];
+
+  string updated_by = 2 [(buffalo.models.field) = {
+    description: "Кто обновил"
+    max_length: 128
+  }];
+}
+
+message Account {
+  option (buffalo.models.model) = {
+    name: "AccountModel"
+    table_name: "accounts"
+    schema: "iam"
+    description: "Демонстрация всех model-level опций"
+    tags: ["iam", "billing", "v1"]
+    abstract: false
+    extends: "AuditableEntity"
+    mixins: ["SoftDeleteMixin", "TenantScopedMixin"]
+    indexes: {
+      name: "idx_account_tenant_status"
+      columns: ["tenant_id", "status"]
+      unique: false
+      type: BTREE
+      where: "deleted_at IS NULL"
+      comment: "Tenant+status for active rows"
+    }
+    indexes: {
+      name: "idx_account_search"
+      columns: ["name", "external_ref"]
+      type: GIN
+    }
+    uniques: {
+      name: "uq_account_tenant_name"
+      columns: ["tenant_id", "name"]
+    }
+    checks: {
+      name: "chk_status"
+      expression: "status IN ('active','suspended','pending')"
+    }
+    checks: {
+      name: "chk_credit_non_negative"
+      expression: "credit_limit >= 0"
+    }
+    soft_delete: true
+    timestamps: true
+    deprecated: false
+    deprecated_message: ""
+    generate: ["model", "repo", "factory", "fixture"]
+  };
+
+  string id = 1 [(buffalo.models.field) = {
+    primary_key: true
+    auto_generate: true
+  }];
+
+  string tenant_id = 2 [(buffalo.models.field) = {
+    max_length: 64
+    index: true
+  }];
+
+  string name = 3 [(buffalo.models.field) = {
+    max_length: 120
+    min_length: 3
+    unique: false
+  }];
+
+  string status = 4 [(buffalo.models.field) = {
+    default_value: "active"
+    visibility: INTERNAL
+  }];
+
+  double credit_limit = 5 [(buffalo.models.field) = {
+    default_value: "0"
+    precision: 12
+    scale: 2
+  }];
+
+  string external_ref = 6 [(buffalo.models.field) = {
+    nullable: true
+    omit_empty: true
+  }];
+}
+
+message LegacyAccount {
+  option (buffalo.models.model) = {
+    name: "LegacyAccount"
+    table_name: "legacy_accounts"
+    description: "Пример deprecated модели"
+    deprecated: true
+    deprecated_message: "Use AccountModel instead"
+    generate: ["model"]
+  };
+
+  string id = 1 [(buffalo.models.field) = {
+    primary_key: true
+  }];
+
+  string code = 2 [(buffalo.models.field) = {
+    unique: true
+    max_length: 32
+  }];
+}
