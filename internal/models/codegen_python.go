@@ -418,12 +418,11 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
-	b.WriteString("from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar\n\n")
+	b.WriteString("from typing import Any, ClassVar, Dict, List, Optional, Type\n\n")
 	b.WriteString("try:\n")
 	b.WriteString("    from typing import Self, override\n")
 	b.WriteString("except ImportError:\n")
 	b.WriteString("    from typing_extensions import Self, override\n\n")
-	b.WriteString("T = TypeVar(\"T\")\n\n")
 
 	// Dynamic imports for well-known types (datetime, timedelta, etc.)
 	if extra := pythonExtraImports(model); extra != "" {
@@ -436,6 +435,7 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	} else {
 		b.WriteString("from pydantic import Field\n\n")
 	}
+	b.WriteString("from google.protobuf.message import Message\n\n")
 	b.WriteString("from .base_model import ProtoBaseModel\n")
 
 	// Cross-package / custom type imports
@@ -443,6 +443,20 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	if customImports := pythonCustomTypeImports(model, className); customImports != "" {
 		b.WriteString(customImports)
 	}
+
+	// Derive pb2 import path from proto file path
+	protoFilePath := strings.ReplaceAll(model.FilePath, "\\", "/")
+	lastSlash := strings.LastIndex(protoFilePath, "/")
+	var pb2Module string
+	if lastSlash >= 0 {
+		dir := strings.TrimPrefix(protoFilePath[:lastSlash], "./")
+		base := strings.TrimSuffix(protoFilePath[lastSlash+1:], ".proto")
+		dotPath := strings.ReplaceAll(dir, "/", ".")
+		pb2Module = dotPath + "." + base + "_pb2"
+	} else {
+		pb2Module = strings.TrimSuffix(protoFilePath, ".proto") + "_pb2"
+	}
+	b.WriteString(fmt.Sprintf("\ntry:\n    from %s import %s as _ProtoClass\nexcept ImportError:\n    _ProtoClass = None  # type: ignore[assignment]\n", pb2Module, model.MessageName))
 	b.WriteString("\n\n")
 	if model.Extends != "" {
 		extendsModule := toSnakeCase(model.Extends)
@@ -501,18 +515,16 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	}
 
 	b.WriteString("\n")
-	b.WriteString("    # Default proto binding. Override in generated subclasses if needed.\n")
-	b.WriteString("    proto_class: ClassVar[Type[Any] | None] = None\n\n")
+	b.WriteString("    proto_class: ClassVar[Type[Message] | None] = _ProtoClass\n\n")
 	b.WriteString("    @classmethod\n")
 	b.WriteString("    @override\n")
-	b.WriteString("    def from_proto(cls, proto_msg: Any) -> Self:\n")
+	b.WriteString("    def from_proto(cls, proto_msg: Message) -> Self:\n")
 	b.WriteString("        \"\"\"Override-friendly protobuf -> model conversion.\"\"\"\n")
 	b.WriteString("        return super().from_proto(proto_msg)\n\n")
 	b.WriteString("    @override\n")
-	b.WriteString("    def to_proto(self, proto_class: Type[T] | None = None) -> Any:\n")
+	b.WriteString("    def to_proto(self) -> Message:\n")
 	b.WriteString("        \"\"\"Override-friendly model -> protobuf conversion.\"\"\"\n")
-	b.WriteString("        return super().to_proto(proto_class=proto_class)\n")
-
+	b.WriteString("        return super().to_proto(proto_class=type(self).proto_class)\n")
 	fileName := toSnakeCase(model.MessageName) + ".py"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
 }

@@ -287,8 +287,15 @@ from datetime import datetime
 
 from pydantic import ConfigDict, Field
 
+from google.protobuf.message import Message
+
 from .base_model import ProtoBaseModel
 from .gps_data import GpsData
+
+try:
+    from araviec.boat.v1.boat_telemetry_pb2 import BoatTelemetryMessage as _ProtoClass
+except ImportError:
+    _ProtoClass = None  # type: ignore[assignment]
 
 
 class BoatTelemetry(ProtoBaseModel):
@@ -308,18 +315,18 @@ class BoatTelemetry(ProtoBaseModel):
     speed_knots: float = Field(default=0.0)
     heading: float = Field(default=0.0)
 
-    proto_class: ClassVar[Type[Any] | None] = None
+    proto_class: ClassVar[Type[Message] | None] = _ProtoClass
 
     @classmethod
     @override
-    def from_proto(cls, proto_msg: Any) -> Self:
+    def from_proto(cls, proto_msg: Message) -> Self:
         """Override-friendly protobuf -> model conversion."""
         return super().from_proto(proto_msg)
 
     @override
-    def to_proto(self, proto_class: Type[T] | None = None) -> Any:
+    def to_proto(self) -> Message:
         """Override-friendly model -> protobuf conversion."""
-        return super().to_proto(proto_class=proto_class)
+        return super().to_proto(proto_class=type(self).proto_class)
 ```
 
 ---
@@ -592,10 +599,8 @@ print(user.email)  # "test@example.com"
 
 ```python
 user = User(email="test@example.com", display_name="Neo")
-user.proto_class = user_pb2.User  # или: передать явно
+# proto_class уже привязан автоматически через try/except импорт _pb2
 proto_msg = user.to_proto()
-# или:
-proto_msg = user.to_proto(proto_class=user_pb2.User)
 ```
 
 ### @override декоратор
@@ -606,14 +611,14 @@ proto_msg = user.to_proto(proto_class=user_pb2.User)
 class User(ProtoBaseModel):
     @classmethod
     @override
-    def from_proto(cls, proto_msg: Any) -> Self:
+    def from_proto(cls, proto_msg: Message) -> Self:
         """Override-friendly protobuf -> model conversion."""
         return super().from_proto(proto_msg)
 
     @override
-    def to_proto(self, proto_class: Type[T] | None = None) -> Any:
+    def to_proto(self) -> Message:
         """Override-friendly model -> protobuf conversion."""
-        return super().to_proto(proto_class=proto_class)
+        return super().to_proto(proto_class=type(self).proto_class)
 ```
 
 ---

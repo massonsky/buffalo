@@ -15,11 +15,11 @@ func TestNewModelCodeGenerator_AllLanguages(t *testing.T) {
 		orm  string
 		want string
 	}{
-		// Python
-		{"python", "None", "None"},
+		// Python (always pydantic)
+		{"python", "None", "pydantic"},
 		{"python", "pydantic", "pydantic"},
 		{"python", "pydantic@2.0", "pydantic"},
-		{"python", "sqlalchemy", "sqlalchemy"},
+		{"python", "sqlalchemy", "pydantic"},
 		// Go
 		{"go", "None", "None"},
 		{"go", "gorm", "gorm"},
@@ -61,7 +61,6 @@ func TestNewModelCodeGenerator_UnsupportedORM(t *testing.T) {
 		orm  string
 	}{
 		{"go", "django"},
-		{"python", "gorm"},
 		{"rust", "gorm"},
 		{"cpp", "gorm"},
 	}
@@ -148,32 +147,6 @@ func testOpts() GenerateOptions {
 //  Python generator tests
 // ══════════════════════════════════════════════════════════════════
 
-func TestPythonNoneGenerator_BaseModel(t *testing.T) {
-	gen := &PythonNoneGenerator{}
-	f, err := gen.GenerateBaseModel(testOpts())
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertContains(t, f.Content, "class BaseModel")
-	assertContains(t, f.Content, "from dataclasses import")
-	assertContains(t, f.Content, "def to_dict")
-}
-
-func TestPythonNoneGenerator_Model(t *testing.T) {
-	gen := &PythonNoneGenerator{}
-	files, err := gen.GenerateModel(testModel(), testOpts())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) == 0 {
-		t.Fatal("expected at least one file")
-	}
-	content := files[0].Content
-	assertContains(t, content, "class UserProfile")
-	assertContains(t, content, "email: str")
-	assertContains(t, content, "tags: List[str]")
-}
-
 func TestPythonPydanticGenerator_Model(t *testing.T) {
 	gen := &PythonPydanticGenerator{version: "2.0"}
 	files, err := gen.GenerateModel(testModel(), testOpts())
@@ -216,26 +189,15 @@ func TestPythonPydanticGenerator_Model_WithExtendsImportFallback(t *testing.T) {
 	assertContains(t, content, "class UserProfile(AuditableEntity)")
 }
 
-func TestPythonSQLAlchemyGenerator_Model(t *testing.T) {
-	gen := &PythonSQLAlchemyGenerator{version: "2.0"}
-	files, err := gen.GenerateModel(testModel(), testOpts())
-	if err != nil {
-		t.Fatal(err)
-	}
-	content := files[0].Content
-	assertContains(t, content, "class UserProfile")
-	assertContains(t, content, "__tablename__")
-	assertContains(t, content, "user_profiles")
-}
-
-func TestPythonGenerator_Init(t *testing.T) {
-	gen := &PythonNoneGenerator{}
+func TestPythonPydanticGenerator_Init(t *testing.T) {
+	gen := &PythonPydanticGenerator{version: "2.0"}
 	models := []ModelDef{testModel()}
 	f, err := gen.GenerateInit(models, testOpts())
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertContains(t, f.Content, "from .base_model import BaseModel")
+	assertContains(t, f.Content, "ProtoBaseModel")
 	assertContains(t, f.Content, "__all__")
 
 	if !strings.Contains(f.Path, "__init__.py") {
@@ -592,7 +554,7 @@ func TestCodegenMapField_AllLanguages(t *testing.T) {
 		orm      string
 		contains []string
 	}{
-		{"python", "None", []string{"Dict[str, str]", "List[str]", "default_factory=dict", "default_factory=list"}},
+		{"python", "None", []string{"Dict[str, str]", "List[str]"}},
 		{"python", "pydantic", []string{"Dict[str, str]", "List[str]"}},
 		{"go", "None", []string{"map[string]string", "[]string"}},
 		{"go", "gorm", []string{"map[string]string", "[]string"}},
