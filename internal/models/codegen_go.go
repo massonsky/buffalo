@@ -42,8 +42,12 @@ func (g *GoNoneGenerator) GenerateBaseModel(opts GenerateOptions) (GeneratedFile
 	b.WriteString(header("buffalo-models"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
 	b.WriteString("import (\n")
+	b.WriteString("\t\"encoding/json\"\n")
+	b.WriteString("\t\"fmt\"\n")
 	b.WriteString("\t\"time\"\n\n")
 	b.WriteString("\t\"github.com/google/uuid\"\n")
+	b.WriteString("\t\"google.golang.org/protobuf/encoding/protojson\"\n")
+	b.WriteString("\t\"google.golang.org/protobuf/proto\"\n")
 	b.WriteString(")\n\n")
 
 	b.WriteString("// BaseModel is the base for all buffalo-models generated models.\n")
@@ -52,6 +56,29 @@ func (g *GoNoneGenerator) GenerateBaseModel(opts GenerateOptions) (GeneratedFile
 	b.WriteString("\tCreatedAt time.Time  `json:\"created_at\"`\n")
 	b.WriteString("\tUpdatedAt time.Time  `json:\"updated_at\"`\n")
 	b.WriteString("\tDeletedAt *time.Time `json:\"deleted_at,omitempty\"`\n")
+	b.WriteString("}\n")
+	b.WriteString("\n")
+	b.WriteString("// FromProto fills model fields from a protobuf message via JSON bridge.\n")
+	b.WriteString("func (m *BaseModel) FromProto(msg proto.Message) error {\n")
+	b.WriteString("\tif msg == nil {\n")
+	b.WriteString("\t\treturn fmt.Errorf(\"proto message is nil\")\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tbts, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(msg)\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString("\t\treturn err\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn json.Unmarshal(bts, m)\n")
+	b.WriteString("}\n\n")
+	b.WriteString("// ToProto writes model fields to a protobuf message via JSON bridge.\n")
+	b.WriteString("func (m *BaseModel) ToProto(msg proto.Message) error {\n")
+	b.WriteString("\tif msg == nil {\n")
+	b.WriteString("\t\treturn fmt.Errorf(\"proto message is nil\")\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tbts, err := json.Marshal(m)\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString("\t\treturn err\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn protojson.UnmarshalOptions{DiscardUnknown: false}.Unmarshal(bts, msg)\n")
 	b.WriteString("}\n")
 
 	return GeneratedFile{Path: "base_model.go", Content: b.String()}, nil
@@ -66,6 +93,7 @@ func (g *GoNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	var b strings.Builder
 	b.WriteString(header("buffalo-models"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
+	b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
 
 	className := model.EffectiveName()
 
@@ -104,6 +132,15 @@ func (g *GoNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 		b.WriteString(fmt.Sprintf("\n// TableName returns the table name for %s.\n", className))
 		b.WriteString(fmt.Sprintf("func (%s) TableName() string { return \"%s\" }\n", className, model.TableName))
 	}
+
+	b.WriteString(fmt.Sprintf("\n// FromProto maps protobuf payload into %s via BaseModel bridge.\n", className))
+	b.WriteString(fmt.Sprintf("func (m *%s) FromProto(msg proto.Message) error {\n", className))
+	b.WriteString("\treturn m.BaseModel.FromProto(msg)\n")
+	b.WriteString("}\n")
+	b.WriteString(fmt.Sprintf("\n// ToProto maps %s into protobuf payload via BaseModel bridge.\n", className))
+	b.WriteString(fmt.Sprintf("func (m *%s) ToProto(msg proto.Message) error {\n", className))
+	b.WriteString("\treturn m.BaseModel.ToProto(msg)\n")
+	b.WriteString("}\n")
 
 	fileName := toSnakeCase(model.MessageName) + ".go"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
@@ -169,8 +206,12 @@ func (g *GoGORMGenerator) GenerateBaseModel(opts GenerateOptions) (GeneratedFile
 	b.WriteString(header("buffalo-models (gorm)"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
 	b.WriteString("import (\n")
+	b.WriteString("\t\"encoding/json\"\n")
+	b.WriteString("\t\"fmt\"\n")
 	b.WriteString("\t\"time\"\n\n")
 	b.WriteString("\t\"github.com/google/uuid\"\n")
+	b.WriteString("\t\"google.golang.org/protobuf/encoding/protojson\"\n")
+	b.WriteString("\t\"google.golang.org/protobuf/proto\"\n")
 	b.WriteString("\t\"gorm.io/gorm\"\n")
 	b.WriteString(")\n\n")
 
@@ -180,6 +221,29 @@ func (g *GoGORMGenerator) GenerateBaseModel(opts GenerateOptions) (GeneratedFile
 	b.WriteString("\tCreatedAt time.Time      `gorm:\"autoCreateTime\" json:\"created_at\"`\n")
 	b.WriteString("\tUpdatedAt time.Time      `gorm:\"autoUpdateTime\" json:\"updated_at\"`\n")
 	b.WriteString("\tDeletedAt gorm.DeletedAt `gorm:\"index\" json:\"deleted_at,omitempty\"`\n")
+	b.WriteString("}\n")
+	b.WriteString("\n")
+	b.WriteString("// FromProto fills model fields from a protobuf message via JSON bridge.\n")
+	b.WriteString("func (m *BaseModel) FromProto(msg proto.Message) error {\n")
+	b.WriteString("\tif msg == nil {\n")
+	b.WriteString("\t\treturn fmt.Errorf(\"proto message is nil\")\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tbts, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(msg)\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString("\t\treturn err\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn json.Unmarshal(bts, m)\n")
+	b.WriteString("}\n\n")
+	b.WriteString("// ToProto writes model fields to a protobuf message via JSON bridge.\n")
+	b.WriteString("func (m *BaseModel) ToProto(msg proto.Message) error {\n")
+	b.WriteString("\tif msg == nil {\n")
+	b.WriteString("\t\treturn fmt.Errorf(\"proto message is nil\")\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tbts, err := json.Marshal(m)\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString("\t\treturn err\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn protojson.UnmarshalOptions{DiscardUnknown: false}.Unmarshal(bts, msg)\n")
 	b.WriteString("}\n")
 
 	return GeneratedFile{Path: "base_model.go", Content: b.String()}, nil
@@ -194,6 +258,7 @@ func (g *GoGORMGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	var b strings.Builder
 	b.WriteString(header("buffalo-models (gorm)"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
+	b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
 
 	className := model.EffectiveName()
 
@@ -230,6 +295,14 @@ func (g *GoGORMGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	}
 	b.WriteString(fmt.Sprintf("\n// TableName returns the table name for %s.\n", className))
 	b.WriteString(fmt.Sprintf("func (%s) TableName() string { return \"%s\" }\n", className, tableName))
+	b.WriteString(fmt.Sprintf("\n// FromProto maps protobuf payload into %s via BaseModel bridge.\n", className))
+	b.WriteString(fmt.Sprintf("func (m *%s) FromProto(msg proto.Message) error {\n", className))
+	b.WriteString("\treturn m.BaseModel.FromProto(msg)\n")
+	b.WriteString("}\n")
+	b.WriteString(fmt.Sprintf("\n// ToProto maps %s into protobuf payload via BaseModel bridge.\n", className))
+	b.WriteString(fmt.Sprintf("func (m *%s) ToProto(msg proto.Message) error {\n", className))
+	b.WriteString("\treturn m.BaseModel.ToProto(msg)\n")
+	b.WriteString("}\n")
 
 	fileName := toSnakeCase(model.MessageName) + ".go"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
@@ -336,8 +409,12 @@ func (g *GoSQLXGenerator) GenerateBaseModel(opts GenerateOptions) (GeneratedFile
 	b.WriteString(header("buffalo-models (sqlx)"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
 	b.WriteString("import (\n")
+	b.WriteString("\t\"encoding/json\"\n")
+	b.WriteString("\t\"fmt\"\n")
 	b.WriteString("\t\"time\"\n\n")
 	b.WriteString("\t\"github.com/google/uuid\"\n")
+	b.WriteString("\t\"google.golang.org/protobuf/encoding/protojson\"\n")
+	b.WriteString("\t\"google.golang.org/protobuf/proto\"\n")
 	b.WriteString(")\n\n")
 
 	b.WriteString("// BaseModel is the sqlx base for all buffalo-models generated models.\n")
@@ -346,6 +423,29 @@ func (g *GoSQLXGenerator) GenerateBaseModel(opts GenerateOptions) (GeneratedFile
 	b.WriteString("\tCreatedAt time.Time  `db:\"created_at\" json:\"created_at\"`\n")
 	b.WriteString("\tUpdatedAt time.Time  `db:\"updated_at\" json:\"updated_at\"`\n")
 	b.WriteString("\tDeletedAt *time.Time `db:\"deleted_at\" json:\"deleted_at,omitempty\"`\n")
+	b.WriteString("}\n")
+	b.WriteString("\n")
+	b.WriteString("// FromProto fills model fields from a protobuf message via JSON bridge.\n")
+	b.WriteString("func (m *BaseModel) FromProto(msg proto.Message) error {\n")
+	b.WriteString("\tif msg == nil {\n")
+	b.WriteString("\t\treturn fmt.Errorf(\"proto message is nil\")\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tbts, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(msg)\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString("\t\treturn err\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn json.Unmarshal(bts, m)\n")
+	b.WriteString("}\n\n")
+	b.WriteString("// ToProto writes model fields to a protobuf message via JSON bridge.\n")
+	b.WriteString("func (m *BaseModel) ToProto(msg proto.Message) error {\n")
+	b.WriteString("\tif msg == nil {\n")
+	b.WriteString("\t\treturn fmt.Errorf(\"proto message is nil\")\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tbts, err := json.Marshal(m)\n")
+	b.WriteString("\tif err != nil {\n")
+	b.WriteString("\t\treturn err\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn protojson.UnmarshalOptions{DiscardUnknown: false}.Unmarshal(bts, msg)\n")
 	b.WriteString("}\n")
 
 	return GeneratedFile{Path: "base_model.go", Content: b.String()}, nil
@@ -360,6 +460,7 @@ func (g *GoSQLXGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	var b strings.Builder
 	b.WriteString(header("buffalo-models (sqlx)"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
+	b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
 
 	className := model.EffectiveName()
 
@@ -399,6 +500,14 @@ func (g *GoSQLXGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 
 		b.WriteString(fmt.Sprintf("\t%s %s `db:\"%s\" json:\"%s\"`\n", goName, goType, dbName, jsonTag))
 	}
+	b.WriteString("}\n")
+	b.WriteString(fmt.Sprintf("\n// FromProto maps protobuf payload into %s via BaseModel bridge.\n", className))
+	b.WriteString(fmt.Sprintf("func (m *%s) FromProto(msg proto.Message) error {\n", className))
+	b.WriteString("\treturn m.BaseModel.FromProto(msg)\n")
+	b.WriteString("}\n")
+	b.WriteString(fmt.Sprintf("\n// ToProto maps %s into protobuf payload via BaseModel bridge.\n", className))
+	b.WriteString(fmt.Sprintf("func (m *%s) ToProto(msg proto.Message) error {\n", className))
+	b.WriteString("\treturn m.BaseModel.ToProto(msg)\n")
 	b.WriteString("}\n")
 
 	fileName := toSnakeCase(model.MessageName) + ".go"

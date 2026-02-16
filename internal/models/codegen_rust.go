@@ -35,7 +35,16 @@ func (g *RustNoneGenerator) GenerateBaseModel(_ GenerateOptions) (GeneratedFile,
 	b.WriteString(rustHeader("buffalo-models"))
 	b.WriteString("use chrono::{DateTime, Utc};\n")
 	b.WriteString("use serde::{Deserialize, Serialize};\n")
+	b.WriteString("use serde_json::Value;\n")
 	b.WriteString("use uuid::Uuid;\n\n")
+	b.WriteString("/// Trait for protobuf JSON bridge conversion.\n")
+	b.WriteString("///\n")
+	b.WriteString("/// This trait intentionally works with JSON Value as an interoperability\n")
+	b.WriteString("/// layer between protobuf messages and Rust models.\n")
+	b.WriteString("pub trait ProtoConvertible: Sized {\n")
+	b.WriteString("    fn from_proto_json(proto_json: Value) -> Result<Self, serde_json::Error>;\n")
+	b.WriteString("    fn to_proto_json(&self) -> Result<Value, serde_json::Error>;\n")
+	b.WriteString("}\n\n")
 
 	b.WriteString("/// Base model for all buffalo-models generated structs.\n")
 	b.WriteString("#[derive(Debug, Clone, Serialize, Deserialize)]\n")
@@ -45,6 +54,15 @@ func (g *RustNoneGenerator) GenerateBaseModel(_ GenerateOptions) (GeneratedFile,
 	b.WriteString("    pub updated_at: DateTime<Utc>,\n")
 	b.WriteString("    pub deleted_at: Option<DateTime<Utc>>,\n")
 	b.WriteString("}\n")
+	b.WriteString("\n")
+	b.WriteString("impl ProtoConvertible for BaseModel {\n")
+	b.WriteString("    fn from_proto_json(proto_json: Value) -> Result<Self, serde_json::Error> {\n")
+	b.WriteString("        serde_json::from_value(proto_json)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    fn to_proto_json(&self) -> Result<Value, serde_json::Error> {\n")
+	b.WriteString("        serde_json::to_value(self)\n")
+	b.WriteString("    }\n")
+	b.WriteString("}\n")
 
 	return GeneratedFile{Path: "base_model.rs", Content: b.String()}, nil
 }
@@ -52,8 +70,9 @@ func (g *RustNoneGenerator) GenerateBaseModel(_ GenerateOptions) (GeneratedFile,
 func (g *RustNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([]GeneratedFile, error) {
 	var b strings.Builder
 	b.WriteString(rustHeader("buffalo-models"))
+	b.WriteString("use serde_json::Value;\n")
 	b.WriteString("use serde::{Deserialize, Serialize};\n")
-	b.WriteString("use super::base_model::BaseModel;\n\n")
+	b.WriteString("use super::base_model::{BaseModel, ProtoConvertible};\n\n")
 
 	className := model.EffectiveName()
 
@@ -81,6 +100,15 @@ func (g *RustNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) 
 		line := g.fieldToRust(f)
 		b.WriteString(line)
 	}
+	b.WriteString("}\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("impl ProtoConvertible for %s {\n", className))
+	b.WriteString("    fn from_proto_json(proto_json: Value) -> Result<Self, serde_json::Error> {\n")
+	b.WriteString("        serde_json::from_value(proto_json)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    fn to_proto_json(&self) -> Result<Value, serde_json::Error> {\n")
+	b.WriteString("        serde_json::to_value(self)\n")
+	b.WriteString("    }\n")
 	b.WriteString("}\n")
 
 	fileName := toSnakeCase(model.MessageName) + ".rs"
@@ -161,7 +189,13 @@ func (g *RustDieselGenerator) GenerateBaseModel(_ GenerateOptions) (GeneratedFil
 	b.WriteString("use chrono::{DateTime, Utc};\n")
 	b.WriteString("use diesel::prelude::*;\n")
 	b.WriteString("use serde::{Deserialize, Serialize};\n")
+	b.WriteString("use serde_json::Value;\n")
 	b.WriteString("use uuid::Uuid;\n\n")
+	b.WriteString("/// Trait for protobuf JSON bridge conversion.\n")
+	b.WriteString("pub trait ProtoConvertible: Sized {\n")
+	b.WriteString("    fn from_proto_json(proto_json: Value) -> Result<Self, serde_json::Error>;\n")
+	b.WriteString("    fn to_proto_json(&self) -> Result<Value, serde_json::Error>;\n")
+	b.WriteString("}\n\n")
 
 	b.WriteString("/// Base model fields for all diesel models.\n")
 	b.WriteString("#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Identifiable)]\n")
@@ -170,6 +204,15 @@ func (g *RustDieselGenerator) GenerateBaseModel(_ GenerateOptions) (GeneratedFil
 	b.WriteString("    pub created_at: DateTime<Utc>,\n")
 	b.WriteString("    pub updated_at: DateTime<Utc>,\n")
 	b.WriteString("    pub deleted_at: Option<DateTime<Utc>>,\n")
+	b.WriteString("}\n")
+	b.WriteString("\n")
+	b.WriteString("impl ProtoConvertible for BaseModel {\n")
+	b.WriteString("    fn from_proto_json(proto_json: Value) -> Result<Self, serde_json::Error> {\n")
+	b.WriteString("        serde_json::from_value(proto_json)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    fn to_proto_json(&self) -> Result<Value, serde_json::Error> {\n")
+	b.WriteString("        serde_json::to_value(self)\n")
+	b.WriteString("    }\n")
 	b.WriteString("}\n")
 
 	return GeneratedFile{Path: "base_model.rs", Content: b.String()}, nil
@@ -181,7 +224,9 @@ func (g *RustDieselGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	b.WriteString("use chrono::{DateTime, Utc};\n")
 	b.WriteString("use diesel::prelude::*;\n")
 	b.WriteString("use serde::{Deserialize, Serialize};\n")
+	b.WriteString("use serde_json::Value;\n")
 	b.WriteString("use uuid::Uuid;\n\n")
+	b.WriteString("use super::base_model::ProtoConvertible;\n\n")
 
 	className := model.EffectiveName()
 
@@ -217,6 +262,14 @@ func (g *RustDieselGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 		line := g.fieldToRust(f)
 		b.WriteString(line)
 	}
+	b.WriteString("}\n\n")
+	b.WriteString(fmt.Sprintf("impl ProtoConvertible for %s {\n", className))
+	b.WriteString("    fn from_proto_json(proto_json: Value) -> Result<Self, serde_json::Error> {\n")
+	b.WriteString("        serde_json::from_value(proto_json)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    fn to_proto_json(&self) -> Result<Value, serde_json::Error> {\n")
+	b.WriteString("        serde_json::to_value(self)\n")
+	b.WriteString("    }\n")
 	b.WriteString("}\n\n")
 
 	// Insertable (New) struct

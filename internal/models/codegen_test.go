@@ -182,7 +182,23 @@ func TestPythonPydanticGenerator_Model(t *testing.T) {
 	}
 	content := files[0].Content
 	assertContains(t, content, "class UserProfile")
+	assertContains(t, content, "ProtoBaseModel")
 	assertContains(t, content, "Field(")
+	assertContains(t, content, "def from_proto")
+	assertContains(t, content, "def to_proto")
+}
+
+func TestPythonPydanticGenerator_BaseModel_ProtoConversion(t *testing.T) {
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	f, err := gen.GenerateBaseModel(testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "class ProtoBaseModel(BaseModel)")
+	assertContains(t, f.Content, "def from_proto")
+	assertContains(t, f.Content, "def to_proto")
+	assertContains(t, f.Content, "MessageToDict")
+	assertContains(t, f.Content, "ParseDict")
 }
 
 func TestPythonSQLAlchemyGenerator_Model(t *testing.T) {
@@ -224,6 +240,8 @@ func TestGoNoneGenerator_BaseModel(t *testing.T) {
 	}
 	assertContains(t, f.Content, "type BaseModel struct")
 	assertContains(t, f.Content, "uuid.UUID")
+	assertContains(t, f.Content, "func (m *BaseModel) FromProto")
+	assertContains(t, f.Content, "func (m *BaseModel) ToProto")
 }
 
 func TestGoNoneGenerator_Model(t *testing.T) {
@@ -237,6 +255,8 @@ func TestGoNoneGenerator_Model(t *testing.T) {
 	assertContains(t, content, "Email string")
 	assertContains(t, content, "`json:\"email\"`")
 	assertContains(t, content, "Tags []string")
+	assertContains(t, content, "func (m *UserProfile) FromProto")
+	assertContains(t, content, "func (m *UserProfile) ToProto")
 }
 
 func TestGoGORMGenerator_Model(t *testing.T) {
@@ -250,6 +270,8 @@ func TestGoGORMGenerator_Model(t *testing.T) {
 	assertContains(t, content, "gorm:")
 	assertContains(t, content, "TableName()")
 	assertContains(t, content, "user_profiles")
+	assertContains(t, content, "func (m *UserProfile) FromProto")
+	assertContains(t, content, "func (m *UserProfile) ToProto")
 }
 
 func TestGoSQLXGenerator_Model(t *testing.T) {
@@ -261,6 +283,8 @@ func TestGoSQLXGenerator_Model(t *testing.T) {
 	content := files[0].Content
 	assertContains(t, content, "type UserProfile struct")
 	assertContains(t, content, "`db:")
+	assertContains(t, content, "func (m *UserProfile) FromProto")
+	assertContains(t, content, "func (m *UserProfile) ToProto")
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -276,6 +300,7 @@ func TestRustNoneGenerator_BaseModel(t *testing.T) {
 	assertContains(t, f.Content, "pub struct BaseModel")
 	assertContains(t, f.Content, "Serialize")
 	assertContains(t, f.Content, "Deserialize")
+	assertContains(t, f.Content, "trait ProtoConvertible")
 }
 
 func TestRustNoneGenerator_Model(t *testing.T) {
@@ -287,6 +312,7 @@ func TestRustNoneGenerator_Model(t *testing.T) {
 	content := files[0].Content
 	assertContains(t, content, "pub struct UserProfile")
 	assertContains(t, content, "pub email: String")
+	assertContains(t, content, "impl ProtoConvertible for UserProfile")
 }
 
 func TestRustNoneGenerator_VisibilityMapping(t *testing.T) {
@@ -315,6 +341,7 @@ func TestRustDieselGenerator_Model(t *testing.T) {
 	assertContains(t, content, "diesel(table_name")
 	assertContains(t, content, "Queryable")
 	assertContains(t, content, "pub struct NewUserProfile")
+	assertContains(t, content, "impl ProtoConvertible for UserProfile")
 }
 
 func TestRustGenerator_Init(t *testing.T) {
@@ -341,6 +368,8 @@ func TestCppNoneGenerator_BaseModel(t *testing.T) {
 	assertContains(t, f.Content, "struct BaseModel")
 	assertContains(t, f.Content, "#pragma once")
 	assertContains(t, f.Content, "namespace buffalo::models")
+	assertContains(t, f.Content, "proto_to_json")
+	assertContains(t, f.Content, "json_to_proto")
 }
 
 func TestCppNoneGenerator_Model(t *testing.T) {
@@ -353,6 +382,8 @@ func TestCppNoneGenerator_Model(t *testing.T) {
 	assertContains(t, content, "struct UserProfile")
 	assertContains(t, content, "#pragma once")
 	assertContains(t, content, "std::string email")
+	assertContains(t, content, "to_json_obj() const override")
+	assertContains(t, content, "from_json_obj(const nlohmann::json& j) override")
 }
 
 // ══════════════════════════════════════════════════════════════════

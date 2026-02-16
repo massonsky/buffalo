@@ -221,8 +221,14 @@ func (g *PythonPydanticGenerator) GenerateBaseModel(opts GenerateOptions) (Gener
 	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
 	b.WriteString("from datetime import datetime\n")
-	b.WriteString("from typing import Any, Dict, Optional\n")
+	b.WriteString("from typing import Any, ClassVar, Dict, Optional, Type, TypeVar\n")
 	b.WriteString("from uuid import UUID, uuid4\n\n")
+	b.WriteString("from google.protobuf.json_format import MessageToDict, ParseDict\n\n")
+	b.WriteString("try:\n")
+	b.WriteString("    from typing import Self\n")
+	b.WriteString("except ImportError:\n")
+	b.WriteString("    from typing_extensions import Self\n\n")
+	b.WriteString("T = TypeVar(\"T\")\n\n")
 
 	if g.isV2() {
 		b.WriteString("from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field\n\n\n")
@@ -231,6 +237,8 @@ func (g *PythonPydanticGenerator) GenerateBaseModel(opts GenerateOptions) (Gener
 		b.WriteString("    model_config = ConfigDict(\n")
 		b.WriteString("        from_attributes=True,\n")
 		b.WriteString("        populate_by_name=True,\n")
+		b.WriteString("        arbitrary_types_allowed=True,\n")
+		b.WriteString("        extra=\"forbid\",\n")
 		b.WriteString("        json_schema_extra={\"generator\": \"buffalo-models\"},\n")
 		b.WriteString("    )\n\n")
 	} else {
@@ -246,6 +254,69 @@ func (g *PythonPydanticGenerator) GenerateBaseModel(opts GenerateOptions) (Gener
 	b.WriteString("    created_at: datetime = Field(default_factory=datetime.utcnow)\n")
 	b.WriteString("    updated_at: datetime = Field(default_factory=datetime.utcnow)\n")
 	b.WriteString("    deleted_at: Optional[datetime] = None\n")
+	b.WriteString("\n\n")
+
+	if g.isV2() {
+		b.WriteString("class ProtoBaseModel(BaseModel):\n")
+		b.WriteString("    \"\"\"Базовая модель с поддержкой автоматической конвертации Protobuf.\"\"\"\n\n")
+		b.WriteString("    proto_class: ClassVar[Type[Any] | None] = None\n\n")
+		b.WriteString("    @classmethod\n")
+		b.WriteString("    def from_proto(cls, proto_msg: Any) -> Self:\n")
+		b.WriteString("        \"\"\"Конвертирует Protobuf сообщение в Pydantic модель.\"\"\"\n")
+		b.WriteString("        try:\n")
+		b.WriteString("            dict_obj = MessageToDict(\n")
+		b.WriteString("                proto_msg,\n")
+		b.WriteString("                preserving_proto_field_name=True,\n")
+		b.WriteString("                use_integers_for_enums=True,\n")
+		b.WriteString("                including_default_value_fields=True,\n")
+		b.WriteString("            )\n")
+		b.WriteString("        except TypeError:\n")
+		b.WriteString("            dict_obj = MessageToDict(\n")
+		b.WriteString("                proto_msg,\n")
+		b.WriteString("                preserving_proto_field_name=True,\n")
+		b.WriteString("                use_integers_for_enums=True,\n")
+		b.WriteString("            )\n")
+		b.WriteString("        return cls.model_validate(dict_obj)\n\n")
+		b.WriteString("    def to_proto(self, proto_class: Type[T] | None = None) -> Any:\n")
+		b.WriteString("        \"\"\"Конвертирует Pydantic модель в Protobuf сообщение.\"\"\"\n")
+		b.WriteString("        target_proto_class = proto_class or self.proto_class\n")
+		b.WriteString("        if target_proto_class is None:\n")
+		b.WriteString("            raise NotImplementedError(\n")
+		b.WriteString("                \"Subclasses must define proto_class or pass proto_class to to_proto\"\n")
+		b.WriteString("            )\n")
+		b.WriteString("        # mode=\"json\" гарантирует, что datetime/timedelta станут строками/числами\n")
+		b.WriteString("        # которые ParseDict умеет превращать в Timestamp/Duration.\n")
+		b.WriteString("        dict_obj = self.model_dump(mode=\"json\", exclude_none=True, by_alias=True)\n")
+		b.WriteString("        return ParseDict(dict_obj, target_proto_class())\n")
+	} else {
+		b.WriteString("class ProtoBaseModel(BaseModel):\n")
+		b.WriteString("    \"\"\"Base model with protobuf conversion support (pydantic v1).\"\"\"\n\n")
+		b.WriteString("    proto_class: ClassVar[Type[Any] | None] = None\n\n")
+		b.WriteString("    @classmethod\n")
+		b.WriteString("    def from_proto(cls, proto_msg: Any) -> \"ProtoBaseModel\":\n")
+		b.WriteString("        try:\n")
+		b.WriteString("            dict_obj = MessageToDict(\n")
+		b.WriteString("                proto_msg,\n")
+		b.WriteString("                preserving_proto_field_name=True,\n")
+		b.WriteString("                use_integers_for_enums=True,\n")
+		b.WriteString("                including_default_value_fields=True,\n")
+		b.WriteString("            )\n")
+		b.WriteString("        except TypeError:\n")
+		b.WriteString("            dict_obj = MessageToDict(\n")
+		b.WriteString("                proto_msg,\n")
+		b.WriteString("                preserving_proto_field_name=True,\n")
+		b.WriteString("                use_integers_for_enums=True,\n")
+		b.WriteString("            )\n")
+		b.WriteString("        return cls.parse_obj(dict_obj)\n\n")
+		b.WriteString("    def to_proto(self, proto_class: Type[T] | None = None) -> Any:\n")
+		b.WriteString("        target_proto_class = proto_class or self.proto_class\n")
+		b.WriteString("        if target_proto_class is None:\n")
+		b.WriteString("            raise NotImplementedError(\n")
+		b.WriteString("                \"Subclasses must define proto_class or pass proto_class to to_proto\"\n")
+		b.WriteString("            )\n")
+		b.WriteString("        dict_obj = self.dict(exclude_none=True, by_alias=True)\n")
+		b.WriteString("        return ParseDict(dict_obj, target_proto_class())\n")
+	}
 
 	return GeneratedFile{Path: "base_model.py", Content: b.String()}, nil
 }
@@ -254,14 +325,19 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
-	b.WriteString("from typing import List, Optional\n\n")
+	b.WriteString("from typing import Any, ClassVar, List, Optional, Type, TypeVar\n\n")
+	b.WriteString("try:\n")
+	b.WriteString("    from typing import Self\n")
+	b.WriteString("except ImportError:\n")
+	b.WriteString("    from typing_extensions import Self\n\n")
+	b.WriteString("T = TypeVar(\"T\")\n\n")
 
 	if g.isV2() {
 		b.WriteString("from pydantic import ConfigDict, Field\n\n")
 	} else {
 		b.WriteString("from pydantic import Field\n\n")
 	}
-	b.WriteString("from .base_model import BaseModel\n\n\n")
+	b.WriteString("from .base_model import ProtoBaseModel\n\n\n")
 
 	className := model.EffectiveName()
 
@@ -269,7 +345,7 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 		b.WriteString(fmt.Sprintf("# DEPRECATED: %s\n", deprecatedComment(true, model.DeprecatedMessage)))
 	}
 
-	parentClass := "BaseModel"
+	parentClass := "ProtoBaseModel"
 	if model.Extends != "" {
 		parentClass = model.Extends
 	}
@@ -315,6 +391,17 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	if !hasFields {
 		b.WriteString("    pass\n")
 	}
+
+	b.WriteString("\n")
+	b.WriteString("    # Default proto binding. Override in generated subclasses if needed.\n")
+	b.WriteString("    proto_class: ClassVar[Type[Any] | None] = None\n\n")
+	b.WriteString("    @classmethod\n")
+	b.WriteString("    def from_proto(cls, proto_msg: Any) -> Self:\n")
+	b.WriteString("        \"\"\"Override-friendly protobuf -> model conversion.\"\"\"\n")
+	b.WriteString("        return super().from_proto(proto_msg)\n\n")
+	b.WriteString("    def to_proto(self, proto_class: Type[T] | None = None) -> Any:\n")
+	b.WriteString("        \"\"\"Override-friendly model -> protobuf conversion.\"\"\"\n")
+	b.WriteString("        return super().to_proto(proto_class=proto_class)\n")
 
 	fileName := toSnakeCase(model.MessageName) + ".py"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
@@ -421,9 +508,23 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 }
 
 func (g *PythonPydanticGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
-	// Reuse the None generator's init
-	none := &PythonNoneGenerator{}
-	return none.GenerateInit(models, opts)
+	var b strings.Builder
+	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
+	b.WriteString("\nfrom .base_model import BaseModel, ProtoBaseModel\n")
+	for _, m := range models {
+		className := m.EffectiveName()
+		fileName := toSnakeCase(m.MessageName)
+		b.WriteString(fmt.Sprintf("from .%s import %s\n", fileName, className))
+	}
+	b.WriteString("\n__all__ = [\n")
+	b.WriteString("    \"BaseModel\",\n")
+	b.WriteString("    \"ProtoBaseModel\",\n")
+	for _, m := range models {
+		b.WriteString(fmt.Sprintf("    \"%s\",\n", m.EffectiveName()))
+	}
+	b.WriteString("]\n")
+
+	return GeneratedFile{Path: "__init__.py", Content: b.String()}, nil
 }
 
 // ──────────────────────────────────────────────────────────────────
