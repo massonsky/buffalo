@@ -161,6 +161,26 @@ func TestPythonPydanticGenerator_Model(t *testing.T) {
 	assertContains(t, content, "def to_proto")
 }
 
+func TestPythonPydanticGenerator_Model_EscapesQuotedDescription(t *testing.T) {
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	m := testModel()
+	m.Fields = []FieldDef{
+		{
+			Name:        "label",
+			ProtoType:   "string",
+			Description: "Например: \"Нижнее\", \"Троллинг\", \"Переходный режим\"",
+		},
+	}
+
+	files, err := gen.GenerateModel(m, testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := files[0].Content
+	assertContains(t, content, "description=\"Например: \\\"Нижнее\\\", \\\"Троллинг\\\", \\\"Переходный режим\\\"\"")
+}
+
 func TestPythonPydanticGenerator_BaseModel_ProtoConversion(t *testing.T) {
 	gen := &PythonPydanticGenerator{version: "2.0"}
 	f, err := gen.GenerateBaseModel(testOpts())

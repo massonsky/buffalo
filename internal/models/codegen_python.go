@@ -2,8 +2,13 @@ package models
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
+
+func pythonStringLiteral(s string) string {
+	return strconv.Quote(s)
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  Python generators: None, pydantic, sqlalchemy
@@ -606,7 +611,7 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 		fieldArgs = append(fieldArgs, "default_factory=list")
 	} else if f.DefaultValue != "" {
 		if f.ProtoType == "string" {
-			fieldArgs = append(fieldArgs, fmt.Sprintf("default=\"%s\"", f.DefaultValue))
+			fieldArgs = append(fieldArgs, fmt.Sprintf("default=%s", pythonStringLiteral(f.DefaultValue)))
 		} else if f.ProtoType == "bool" {
 			fieldArgs = append(fieldArgs, fmt.Sprintf("default=%s", pythonBool(f.DefaultValue)))
 		} else {
@@ -643,20 +648,20 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 		fieldArgs = append(fieldArgs, fmt.Sprintf("min_length=%d", f.MinLength))
 	}
 	if f.Description != "" {
-		fieldArgs = append(fieldArgs, fmt.Sprintf("description=\"%s\"", f.Description))
+		fieldArgs = append(fieldArgs, fmt.Sprintf("description=%s", pythonStringLiteral(f.Description)))
 	}
 	if f.Example != "" {
 		if g.isV2() {
-			fieldArgs = append(fieldArgs, fmt.Sprintf("examples=[\"%s\"]", f.Example))
+			fieldArgs = append(fieldArgs, fmt.Sprintf("examples=[%s]", pythonStringLiteral(f.Example)))
 		} else {
-			fieldArgs = append(fieldArgs, fmt.Sprintf("example=\"%s\"", f.Example))
+			fieldArgs = append(fieldArgs, fmt.Sprintf("example=%s", pythonStringLiteral(f.Example)))
 		}
 	}
 	if f.Alias != "" {
-		fieldArgs = append(fieldArgs, fmt.Sprintf("alias=\"%s\"", f.Alias))
+		fieldArgs = append(fieldArgs, fmt.Sprintf("alias=%s", pythonStringLiteral(f.Alias)))
 	}
 	if f.JSONName != "" && f.JSONName != f.Name {
-		fieldArgs = append(fieldArgs, fmt.Sprintf("serialization_alias=\"%s\"", f.JSONName))
+		fieldArgs = append(fieldArgs, fmt.Sprintf("serialization_alias=%s", pythonStringLiteral(f.JSONName)))
 	}
 
 	// json_schema_extra for metadata
