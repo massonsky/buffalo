@@ -10,6 +10,43 @@ func pythonStringLiteral(s string) string {
 	return strconv.Quote(s)
 }
 
+// pythonModuleFromPath converts a filesystem path to a dotted Python module path.
+// Examples:
+//
+//	"./araviec_apis/generated/python" -> "araviec_apis.generated.python"
+//	"generated/python/models"         -> "generated.python.models"
+func pythonModuleFromPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	normalized := strings.ReplaceAll(path, "\\", "/")
+	normalized = strings.TrimSpace(normalized)
+	normalized = strings.TrimPrefix(normalized, "./")
+	normalized = strings.TrimPrefix(normalized, "/")
+	normalized = strings.TrimSuffix(normalized, "/")
+	if normalized == "" {
+		return ""
+	}
+	return strings.ReplaceAll(normalized, "/", ".")
+}
+
+// pythonModelsBaseModule derives a package prefix from models output dir.
+// If output dir ends with "/models", it is stripped because pb2 files
+// usually live under the language output root, not inside models package.
+func pythonModelsBaseModule(outputDir string) string {
+	module := pythonModuleFromPath(outputDir)
+	if module == "" {
+		return ""
+	}
+	if strings.HasSuffix(module, ".models") {
+		return strings.TrimSuffix(module, ".models")
+	}
+	if module == "models" {
+		return ""
+	}
+	return module
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  Python generators: None, pydantic, sqlalchemy
 // ══════════════════════════════════════════════════════════════════
@@ -493,9 +530,17 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 		dir := strings.TrimPrefix(protoFilePath[:lastSlash], "./")
 		base := strings.TrimSuffix(protoFilePath[lastSlash+1:], ".proto")
 		dotPath := strings.ReplaceAll(dir, "/", ".")
-		pb2Module = dotPath + "." + base + "_pb2"
+		if dotPath != "" {
+			pb2Module = dotPath + "." + base + "_pb2"
+		} else {
+			pb2Module = base + "_pb2"
+		}
 	} else {
 		pb2Module = strings.TrimSuffix(protoFilePath, ".proto") + "_pb2"
+	}
+
+	if baseModule := pythonModelsBaseModule(opts.OutputDir); baseModule != "" {
+		pb2Module = baseModule + "." + pb2Module
 	}
 	b.WriteString(fmt.Sprintf("\ntry:\n    from %s import %s as _ProtoClass\nexcept ImportError:\n    _ProtoClass = None  # type: ignore[assignment]\n", pb2Module, model.MessageName))
 	b.WriteString("\n\n")
