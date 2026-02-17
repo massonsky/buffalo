@@ -10,41 +10,22 @@ func pythonStringLiteral(s string) string {
 	return strconv.Quote(s)
 }
 
-// pythonModuleFromPath converts a filesystem path to a dotted Python module path.
-// Examples:
-//
-//	"./araviec_apis/generated/python" -> "araviec_apis.generated.python"
-//	"generated/python/models"         -> "generated.python.models"
-func pythonModuleFromPath(path string) string {
-	if path == "" {
-		return ""
-	}
-	normalized := strings.ReplaceAll(path, "\\", "/")
-	normalized = strings.TrimSpace(normalized)
-	normalized = strings.TrimPrefix(normalized, "./")
-	normalized = strings.TrimPrefix(normalized, "/")
-	normalized = strings.TrimSuffix(normalized, "/")
-	if normalized == "" {
-		return ""
-	}
-	return strings.ReplaceAll(normalized, "/", ".")
+// protoPb2Module converts a .proto file path to a dotted Python pb2 module path.
+// Example: "araviec/common/v1/resolution.proto" -> "araviec.common.v1.resolution_pb2"
+func protoPb2Module(protoPath string) string {
+	p := strings.ReplaceAll(protoPath, "\\", "/")
+	p = strings.TrimPrefix(p, "./")
+	p = strings.TrimPrefix(p, "/")
+	p = strings.TrimSuffix(p, ".proto")
+	parts := strings.Split(p, "/")
+	return strings.Join(parts, ".") + "_pb2"
 }
 
-// pythonModelsBaseModule derives a package prefix from models output dir.
-// If output dir ends with "/models", it is stripped because pb2 files
-// usually live under the language output root, not inside models package.
-func pythonModelsBaseModule(outputDir string) string {
-	module := pythonModuleFromPath(outputDir)
-	if module == "" {
-		return ""
-	}
-	if strings.HasSuffix(module, ".models") {
-		return strings.TrimSuffix(module, ".models")
-	}
-	if module == "models" {
-		return ""
-	}
-	return module
+// pb2ImportPrefix returns the pb2 module prefix to use.
+// If opts.Pb2ImportPrefix is set explicitly, it is used as-is.
+// Otherwise returns empty string (proto file path used as-is).
+func pb2ImportPrefix(opts GenerateOptions) string {
+	return strings.TrimSuffix(strings.TrimSpace(opts.Pb2ImportPrefix), ".")
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -523,24 +504,9 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	}
 
 	// Derive pb2 import path from proto file path
-	protoFilePath := strings.ReplaceAll(model.FilePath, "\\", "/")
-	lastSlash := strings.LastIndex(protoFilePath, "/")
-	var pb2Module string
-	if lastSlash >= 0 {
-		dir := strings.TrimPrefix(protoFilePath[:lastSlash], "./")
-		base := strings.TrimSuffix(protoFilePath[lastSlash+1:], ".proto")
-		dotPath := strings.ReplaceAll(dir, "/", ".")
-		if dotPath != "" {
-			pb2Module = dotPath + "." + base + "_pb2"
-		} else {
-			pb2Module = base + "_pb2"
-		}
-	} else {
-		pb2Module = strings.TrimSuffix(protoFilePath, ".proto") + "_pb2"
-	}
-
-	if baseModule := pythonModelsBaseModule(opts.OutputDir); baseModule != "" {
-		pb2Module = baseModule + "." + pb2Module
+	pb2Module := protoPb2Module(model.FilePath)
+	if prefix := pb2ImportPrefix(opts); prefix != "" {
+		pb2Module = prefix + "." + pb2Module
 	}
 	b.WriteString(fmt.Sprintf("\ntry:\n    from %s import %s as _ProtoClass\nexcept ImportError:\n    _ProtoClass = None  # type: ignore[assignment]\n", pb2Module, model.MessageName))
 	b.WriteString("\n\n")

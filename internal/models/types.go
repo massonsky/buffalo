@@ -428,6 +428,12 @@ type GenerateOptions struct {
 	// Package / module name.
 	Package string
 
+	// Pb2ImportPrefix is the dotted Python module prefix prepended to pb2 imports.
+	// Example: "araviec_apis.generated.python" produces
+	//   from araviec_apis.generated.python.araviec.common.v1.msg_pb2 import ...
+	// When empty, proto file paths are used as-is (no prefix).
+	Pb2ImportPrefix string
+
 	// BaseModelFields — extra fields injected into BaseModel.
 	BaseModelFields []FieldDef
 

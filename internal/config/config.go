@@ -73,14 +73,15 @@ type LanguagesConfig struct {
 
 // PythonConfig contains Python-specific settings
 type PythonConfig struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	Package        string   `mapstructure:"package"`
-	Generator      string   `mapstructure:"generator"`
-	WorkDir        string   `mapstructure:"workdir"`
-	ExcludeImports []string `mapstructure:"exclude_imports"`
-	ORM            bool     `mapstructure:"orm"`
-	ORMPlugin      string   `mapstructure:"orm_plugin"`
-	ModelsOutput   string   `mapstructure:"models_output"`
+	Enabled         bool     `mapstructure:"enabled"`
+	Package         string   `mapstructure:"package"`
+	Generator       string   `mapstructure:"generator"`
+	WorkDir         string   `mapstructure:"workdir"`
+	ExcludeImports  []string `mapstructure:"exclude_imports"`
+	ORM             bool     `mapstructure:"orm"`
+	ORMPlugin       string   `mapstructure:"orm_plugin"`
+	ModelsOutput    string   `mapstructure:"models_output"`
+	Pb2ImportPrefix string   `mapstructure:"pb2_import_prefix"`
 }
 
 // GoConfig contains Go-specific settings
@@ -335,4 +336,15 @@ func (c *Config) GetORMPlugin(language string) string {
 // (without buffalo.models annotations) should also produce model code.
 func (c *Config) IsGenerateModelsFromProto() bool {
 	return c.Models.GenerateModelsFromProto
+}
+
+// GetPb2ImportPrefix returns the pb2 import prefix for Python.
+// Only relevant for Python language.
+func (c *Config) GetPb2ImportPrefix(language string) string {
+	switch language {
+	case "python":
+		return c.Languages.Python.Pb2ImportPrefix
+	default:
+		return ""
+	}
 }
