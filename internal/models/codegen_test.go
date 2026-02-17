@@ -654,3 +654,120 @@ func truncate(s string, max int) string {
 	}
 	return s[:max] + "..."
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  Enum codegen tests
+// ══════════════════════════════════════════════════════════════════
+
+func testEnum() EnumDef {
+	return EnumDef{
+		Name:    "DeviceType",
+		Comment: "Тип устройства",
+		Values: []EnumValue{
+			{Name: "DEVICE_TYPE_UNSPECIFIED", Number: 0, Comment: "Не указан"},
+			{Name: "DEVICE_TYPE_CAMERA", Number: 1, Comment: "Камера"},
+			{Name: "DEVICE_TYPE_SENSOR", Number: 2},
+			{Name: "DEVICE_TYPE_GATEWAY", Number: 3},
+		},
+	}
+}
+
+func TestGenerateEnum_AllLanguages(t *testing.T) {
+	enum := testEnum()
+	opts := testOpts()
+
+	cases := []struct {
+		lang     string
+		orm      string
+		contains []string
+	}{
+		{"python", "pydantic", []string{"class DeviceType(int, Enum)", "DEVICE_TYPE_CAMERA = 1"}},
+		{"python", "None", []string{"class DeviceType(int, Enum)", "DEVICE_TYPE_UNSPECIFIED = 0"}},
+		{"go", "None", []string{"type DeviceType int32", "DeviceType_DEVICE_TYPE_CAMERA DeviceType = 1"}},
+		{"go", "gorm", []string{"type DeviceType int32"}},
+		{"rust", "None", []string{"pub enum DeviceType", "#[repr(i32)]"}},
+		{"rust", "diesel", []string{"pub enum DeviceType"}},
+		{"cpp", "None", []string{"enum class DeviceType : int32_t", "DEVICE_TYPE_CAMERA = 1"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.lang+"/"+tc.orm, func(t *testing.T) {
+			orm := ParseORMPlugin(tc.orm)
+			gen, err := NewModelCodeGenerator(tc.lang, orm)
+			if err != nil {
+				t.Fatalf("NewModelCodeGenerator: %v", err)
+			}
+			opts.Language = tc.lang
+			f, err := gen.GenerateEnum(enum, opts)
+			if err != nil {
+				t.Fatalf("GenerateEnum: %v", err)
+			}
+			for _, substr := range tc.contains {
+				assertContains(t, f.Content, substr)
+			}
+		})
+	}
+}
+
+func TestModelWithNestedEnums_Python(t *testing.T) {
+	model := ModelDef{
+		MessageName: "MultimediaSource",
+		Package:     "test",
+		Fields: []FieldDef{
+			{Name: "source_id", ProtoType: "string", Number: 1},
+			{Name: "status", ProtoType: "SourceStatus", Number: 2, IsEnum: true, EnumTypeName: "SourceStatus"},
+		},
+		Enums: []EnumDef{
+			{
+				Name: "SourceStatus",
+				Values: []EnumValue{
+					{Name: "SOURCE_STATUS_UNSPECIFIED", Number: 0},
+					{Name: "SOURCE_STATUS_ACTIVE", Number: 1},
+					{Name: "SOURCE_STATUS_INACTIVE", Number: 2},
+				},
+			},
+		},
+	}
+	opts := testOpts()
+
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	files, err := gen.GenerateModel(model, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "class SourceStatus(int, Enum)")
+	assertContains(t, content, "SOURCE_STATUS_ACTIVE = 1")
+	assertContains(t, content, "class MultimediaSource")
+}
+
+func TestModelWithOneofs_Python(t *testing.T) {
+	model := ModelDef{
+		MessageName: "Event",
+		Package:     "test",
+		Fields: []FieldDef{
+			{Name: "id", ProtoType: "string", Number: 1},
+			{Name: "text_data", ProtoType: "string", Number: 10, OneofGroup: "payload", Nullable: true},
+			{Name: "numeric_data", ProtoType: "int64", Number: 11, OneofGroup: "payload", Nullable: true},
+		},
+		Oneofs: []OneofDef{
+			{
+				Name: "payload",
+				Fields: []FieldDef{
+					{Name: "text_data", ProtoType: "string", Number: 10},
+					{Name: "numeric_data", ProtoType: "int64", Number: 11},
+				},
+			},
+		},
+	}
+	opts := testOpts()
+
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	files, err := gen.GenerateModel(model, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "PayloadType = Union[")
+	assertContains(t, content, "class Event")
+}

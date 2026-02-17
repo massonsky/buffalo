@@ -195,6 +195,12 @@ type ModelDef struct {
 	// Nested enums within this message
 	Enums []EnumDef
 
+	// Oneof groups within this message
+	Oneofs []OneofDef
+
+	// Nested messages (sub-structs) within this message
+	NestedMessages []ModelDef
+
 	// Fields (ordered)
 	Fields []FieldDef
 }
@@ -207,16 +213,25 @@ func (m *ModelDef) EffectiveName() string {
 	return m.MessageName
 }
 
-// EnumDef describes a proto enum extracted from a message.
+// EnumDef describes a proto enum extracted from a message or top-level scope.
 type EnumDef struct {
-	Name   string      // enum type name
-	Values []EnumValue // enum constants
+	Name    string      // enum type name
+	Comment string      // leading comment / docstring
+	Values  []EnumValue // enum constants
 }
 
 // EnumValue describes a single enum constant.
 type EnumValue struct {
-	Name   string
-	Number int32
+	Name    string
+	Number  int32
+	Comment string // inline or leading comment
+}
+
+// OneofDef describes a proto oneof group within a message.
+type OneofDef struct {
+	Name    string     // oneof group name
+	Comment string     // leading comment / docstring
+	Fields  []FieldDef // fields within the oneof
 }
 
 // FieldDef represents a parsed field within a model.
@@ -234,6 +249,10 @@ type FieldDef struct {
 
 	// Oneof support
 	OneofGroup string // name of the oneof group this field belongs to
+
+	// Enum support
+	IsEnum       bool   // true when the field type is a proto enum
+	EnumTypeName string // original enum type name (e.g. "SourceStatus")
 
 	// From [(buffalo.models.field)]
 	Alias             string

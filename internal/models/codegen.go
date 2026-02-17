@@ -23,6 +23,10 @@ type ModelCodeGenerator interface {
 	// GenerateModel produces a single model file from a ModelDef.
 	GenerateModel(model ModelDef, opts GenerateOptions) ([]GeneratedFile, error)
 
+	// GenerateEnum produces source for a standalone enum definition.
+	// Returns empty file if enums are emitted inline within GenerateModel.
+	GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error)
+
 	// GenerateInit produces __init__.py or mod.rs or similar index file.
 	// May return empty file if not applicable for the language.
 	GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error)
@@ -428,6 +432,126 @@ func pythonDefaultForField(f FieldDef) string {
 func stripPackagePrefix(protoType string) string {
 	parts := strings.Split(protoType, ".")
 	return parts[len(parts)-1]
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Enum codegen helpers (shared across languages)
+// ══════════════════════════════════════════════════════════════════
+
+// generatePythonEnum produces a Python IntEnum class from an EnumDef.
+func generatePythonEnum(e EnumDef) string {
+	var b strings.Builder
+
+	if e.Comment != "" {
+		b.WriteString(fmt.Sprintf("# %s\n", e.Comment))
+	}
+	b.WriteString(fmt.Sprintf("class %s(int, Enum):\n", e.Name))
+	if e.Comment != "" {
+		b.WriteString(fmt.Sprintf("    \"\"\"%s\"\"\"\n\n", e.Comment))
+	}
+
+	for _, v := range e.Values {
+		if v.Comment != "" {
+			b.WriteString(fmt.Sprintf("    # %s\n", v.Comment))
+		}
+		b.WriteString(fmt.Sprintf("    %s = %d\n", v.Name, v.Number))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// generateGoEnum produces a Go const block with typed int32 constants.
+func generateGoEnum(e EnumDef, pkg string) string {
+	var b strings.Builder
+
+	if e.Comment != "" {
+		b.WriteString(fmt.Sprintf("// %s — %s\n", e.Name, e.Comment))
+	} else {
+		b.WriteString(fmt.Sprintf("// %s enum.\n", e.Name))
+	}
+	b.WriteString(fmt.Sprintf("type %s int32\n\n", e.Name))
+	b.WriteString("const (\n")
+	for _, v := range e.Values {
+		if v.Comment != "" {
+			b.WriteString(fmt.Sprintf("\t// %s\n", v.Comment))
+		}
+		b.WriteString(fmt.Sprintf("\t%s_%s %s = %d\n", e.Name, v.Name, e.Name, v.Number))
+	}
+	b.WriteString(")\n\n")
+
+	// String method
+	b.WriteString(fmt.Sprintf("func (x %s) String() string {\n", e.Name))
+	b.WriteString("\tswitch x {\n")
+	for _, v := range e.Values {
+		b.WriteString(fmt.Sprintf("\tcase %s_%s:\n\t\treturn \"%s\"\n", e.Name, v.Name, v.Name))
+	}
+	b.WriteString("\tdefault:\n\t\treturn fmt.Sprintf(\"%s(%d)\", x)\n")
+	b.WriteString("\t}\n}\n")
+	return b.String()
+}
+
+// generateRustEnum produces a Rust enum with serde support.
+func generateRustEnum(e EnumDef) string {
+	var b strings.Builder
+
+	if e.Comment != "" {
+		b.WriteString(fmt.Sprintf("/// %s\n", e.Comment))
+	}
+	b.WriteString("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]\n")
+	b.WriteString("#[repr(i32)]\n")
+	b.WriteString(fmt.Sprintf("pub enum %s {\n", e.Name))
+	for _, v := range e.Values {
+		if v.Comment != "" {
+			b.WriteString(fmt.Sprintf("    /// %s\n", v.Comment))
+		}
+		b.WriteString(fmt.Sprintf("    %s = %d,\n", toPascalCase(strings.ToLower(v.Name)), v.Number))
+	}
+	b.WriteString("}\n\n")
+
+	// FromI32 impl
+	b.WriteString(fmt.Sprintf("impl %s {\n", e.Name))
+	b.WriteString("    pub fn from_i32(value: i32) -> Option<Self> {\n")
+	b.WriteString("        match value {\n")
+	for _, v := range e.Values {
+		b.WriteString(fmt.Sprintf("            %d => Some(%s::%s),\n", v.Number, e.Name, toPascalCase(strings.ToLower(v.Name))))
+	}
+	b.WriteString("            _ => None,\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n")
+	b.WriteString("}\n")
+	return b.String()
+}
+
+// generateCppEnum produces a C++ enum class.
+func generateCppEnum(e EnumDef) string {
+	var b strings.Builder
+
+	if e.Comment != "" {
+		b.WriteString(fmt.Sprintf("/// %s\n", e.Comment))
+	}
+	b.WriteString(fmt.Sprintf("enum class %s : int32_t {\n", e.Name))
+	for i, v := range e.Values {
+		if v.Comment != "" {
+			b.WriteString(fmt.Sprintf("    /// %s\n", v.Comment))
+		}
+		comma := ","
+		if i == len(e.Values)-1 {
+			comma = ""
+		}
+		b.WriteString(fmt.Sprintf("    %s = %d%s\n", v.Name, v.Number, comma))
+	}
+	b.WriteString("};\n")
+	return b.String()
+}
+
+// generatePythonOneofType produces a Python Union type alias for a oneof group.
+func generatePythonOneofType(o OneofDef) string {
+	var types []string
+	for _, f := range o.Fields {
+		types = append(types, protoTypeToPython(f.ProtoType, false))
+	}
+	return fmt.Sprintf("# oneof %s\n%sType = Union[%s]\n\n",
+		o.Name, toPascalCase(o.Name), strings.Join(types, ", "))
 }
 
 // ══════════════════════════════════════════════════════════════════

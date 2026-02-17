@@ -167,7 +167,8 @@ func (g *PythonNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	if extra := pythonExtraImports(model); extra != "" {
 		b.WriteString(extra)
 	}
-	b.WriteString("from typing import Dict, List, Optional\n\n")
+	b.WriteString("from enum import Enum\n")
+	b.WriteString("from typing import Dict, List, Optional, Union\n\n")
 	b.WriteString("from .base_model import BaseModel\n")
 
 	// Cross-package / custom type imports
@@ -176,6 +177,18 @@ func (g *PythonNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 		b.WriteString(customImports)
 	}
 	b.WriteString("\n\n")
+
+	// Nested enums
+	for _, e := range model.Enums {
+		b.WriteString(generatePythonEnum(e))
+		b.WriteString("\n")
+	}
+
+	// Oneof type aliases
+	for _, o := range model.Oneofs {
+		b.WriteString(generatePythonOneofType(o))
+	}
+
 	if model.Extends != "" {
 		extendsModule := toSnakeCase(model.Extends)
 		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = BaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
@@ -291,6 +304,17 @@ func (g *PythonNoneGenerator) GenerateInit(models []ModelDef, opts GenerateOptio
 	b.WriteString("]\n")
 
 	return GeneratedFile{Path: "__init__.py", Content: b.String()}, nil
+}
+
+func (g *PythonNoneGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	var b strings.Builder
+	b.WriteString(pythonHeader("buffalo-models"))
+	b.WriteString("\nfrom __future__ import annotations\n\n")
+	b.WriteString("from enum import Enum\n\n\n")
+	b.WriteString(generatePythonEnum(enum))
+
+	fileName := toSnakeCase(enum.Name) + ".py"
+	return GeneratedFile{Path: fileName, Content: b.String()}, nil
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -418,7 +442,8 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
 	b.WriteString("\nfrom __future__ import annotations\n\n")
-	b.WriteString("from typing import Any, ClassVar, Dict, List, Optional, Type\n\n")
+	b.WriteString("from enum import Enum\n")
+	b.WriteString("from typing import Any, ClassVar, Dict, List, Optional, Type, Union\n\n")
 	b.WriteString("try:\n")
 	b.WriteString("    from typing import Self, override\n")
 	b.WriteString("except ImportError:\n")
@@ -458,6 +483,18 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 	}
 	b.WriteString(fmt.Sprintf("\ntry:\n    from %s import %s as _ProtoClass\nexcept ImportError:\n    _ProtoClass = None  # type: ignore[assignment]\n", pb2Module, model.MessageName))
 	b.WriteString("\n\n")
+
+	// Nested enums
+	for _, e := range model.Enums {
+		b.WriteString(generatePythonEnum(e))
+		b.WriteString("\n")
+	}
+
+	// Oneof type aliases
+	for _, o := range model.Oneofs {
+		b.WriteString(generatePythonOneofType(o))
+	}
+
 	if model.Extends != "" {
 		extendsModule := toSnakeCase(model.Extends)
 		b.WriteString(fmt.Sprintf("try:\n    from .%s import %s\nexcept ImportError:\n    %s = ProtoBaseModel\n\n\n", extendsModule, model.Extends, model.Extends))
@@ -645,6 +682,17 @@ func (g *PythonPydanticGenerator) GenerateInit(models []ModelDef, opts GenerateO
 	b.WriteString("]\n")
 
 	return GeneratedFile{Path: "__init__.py", Content: b.String()}, nil
+}
+
+func (g *PythonPydanticGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	var b strings.Builder
+	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
+	b.WriteString("\nfrom __future__ import annotations\n\n")
+	b.WriteString("from enum import Enum\n\n\n")
+	b.WriteString(generatePythonEnum(enum))
+
+	fileName := toSnakeCase(enum.Name) + ".py"
+	return GeneratedFile{Path: fileName, Content: b.String()}, nil
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -891,4 +939,9 @@ func (g *PythonSQLAlchemyGenerator) protoToSAType(f FieldDef) string {
 func (g *PythonSQLAlchemyGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
 	none := &PythonNoneGenerator{}
 	return none.GenerateInit(models, opts)
+}
+
+func (g *PythonSQLAlchemyGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	none := &PythonNoneGenerator{}
+	return none.GenerateEnum(enum, opts)
 }

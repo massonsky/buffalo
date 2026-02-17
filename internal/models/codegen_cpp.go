@@ -253,6 +253,21 @@ func (g *CppNoneGenerator) GenerateInit(models []ModelDef, opts GenerateOptions)
 	return GeneratedFile{Path: "CMakeLists.txt", Content: b.String()}, nil
 }
 
+func (g *CppNoneGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	ns := cppNamespace(opts.Package)
+
+	var b strings.Builder
+	b.WriteString(cppHeader("buffalo-models"))
+	b.WriteString("#pragma once\n\n")
+	b.WriteString("#include <cstdint>\n\n")
+	b.WriteString(fmt.Sprintf("namespace %s {\n\n", ns))
+	b.WriteString(generateCppEnum(enum))
+	b.WriteString(fmt.Sprintf("\n}  // namespace %s\n", ns))
+
+	fileName := toSnakeCase(enum.Name) + ".h"
+	return GeneratedFile{Path: fileName, Content: b.String()}, nil
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  Shared C++ helpers
 // ══════════════════════════════════════════════════════════════════
