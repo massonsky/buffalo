@@ -2,8 +2,50 @@ package models
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
+
+func pythonStringLiteral(s string) string {
+	return strconv.Quote(s)
+}
+
+// pythonModuleFromPath converts a filesystem path to a dotted Python module path.
+// Examples:
+//
+//	"./araviec_apis/generated/python" -> "araviec_apis.generated.python"
+//	"generated/python/models"         -> "generated.python.models"
+func pythonModuleFromPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	normalized := strings.ReplaceAll(path, "\\", "/")
+	normalized = strings.TrimSpace(normalized)
+	normalized = strings.TrimPrefix(normalized, "./")
+	normalized = strings.TrimPrefix(normalized, "/")
+	normalized = strings.TrimSuffix(normalized, "/")
+	if normalized == "" {
+		return ""
+	}
+	return strings.ReplaceAll(normalized, "/", ".")
+}
+
+// pythonModelsBaseModule derives a package prefix from models output dir.
+// If output dir ends with "/models", it is stripped because pb2 files
+// usually live under the language output root, not inside models package.
+func pythonModelsBaseModule(outputDir string) string {
+	module := pythonModuleFromPath(outputDir)
+	if module == "" {
+		return ""
+	}
+	if strings.HasSuffix(module, ".models") {
+		return strings.TrimSuffix(module, ".models")
+	}
+	if module == "models" {
+		return ""
+	}
+	return module
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  Python generators: None, pydantic, sqlalchemy
@@ -488,9 +530,17 @@ func (g *PythonPydanticGenerator) GenerateModel(model ModelDef, opts GenerateOpt
 		dir := strings.TrimPrefix(protoFilePath[:lastSlash], "./")
 		base := strings.TrimSuffix(protoFilePath[lastSlash+1:], ".proto")
 		dotPath := strings.ReplaceAll(dir, "/", ".")
-		pb2Module = dotPath + "." + base + "_pb2"
+		if dotPath != "" {
+			pb2Module = dotPath + "." + base + "_pb2"
+		} else {
+			pb2Module = base + "_pb2"
+		}
 	} else {
 		pb2Module = strings.TrimSuffix(protoFilePath, ".proto") + "_pb2"
+	}
+
+	if baseModule := pythonModelsBaseModule(opts.OutputDir); baseModule != "" {
+		pb2Module = baseModule + "." + pb2Module
 	}
 	b.WriteString(fmt.Sprintf("\ntry:\n    from %s import %s as _ProtoClass\nexcept ImportError:\n    _ProtoClass = None  # type: ignore[assignment]\n", pb2Module, model.MessageName))
 	b.WriteString("\n\n")
@@ -606,7 +656,7 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 		fieldArgs = append(fieldArgs, "default_factory=list")
 	} else if f.DefaultValue != "" {
 		if f.ProtoType == "string" {
-			fieldArgs = append(fieldArgs, fmt.Sprintf("default=\"%s\"", f.DefaultValue))
+			fieldArgs = append(fieldArgs, fmt.Sprintf("default=%s", pythonStringLiteral(f.DefaultValue)))
 		} else if f.ProtoType == "bool" {
 			fieldArgs = append(fieldArgs, fmt.Sprintf("default=%s", pythonBool(f.DefaultValue)))
 		} else {
@@ -643,20 +693,20 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 		fieldArgs = append(fieldArgs, fmt.Sprintf("min_length=%d", f.MinLength))
 	}
 	if f.Description != "" {
-		fieldArgs = append(fieldArgs, fmt.Sprintf("description=\"%s\"", f.Description))
+		fieldArgs = append(fieldArgs, fmt.Sprintf("description=%s", pythonStringLiteral(f.Description)))
 	}
 	if f.Example != "" {
 		if g.isV2() {
-			fieldArgs = append(fieldArgs, fmt.Sprintf("examples=[\"%s\"]", f.Example))
+			fieldArgs = append(fieldArgs, fmt.Sprintf("examples=[%s]", pythonStringLiteral(f.Example)))
 		} else {
-			fieldArgs = append(fieldArgs, fmt.Sprintf("example=\"%s\"", f.Example))
+			fieldArgs = append(fieldArgs, fmt.Sprintf("example=%s", pythonStringLiteral(f.Example)))
 		}
 	}
 	if f.Alias != "" {
-		fieldArgs = append(fieldArgs, fmt.Sprintf("alias=\"%s\"", f.Alias))
+		fieldArgs = append(fieldArgs, fmt.Sprintf("alias=%s", pythonStringLiteral(f.Alias)))
 	}
 	if f.JSONName != "" && f.JSONName != f.Name {
-		fieldArgs = append(fieldArgs, fmt.Sprintf("serialization_alias=\"%s\"", f.JSONName))
+		fieldArgs = append(fieldArgs, fmt.Sprintf("serialization_alias=%s", pythonStringLiteral(f.JSONName)))
 	}
 
 	// json_schema_extra for metadata

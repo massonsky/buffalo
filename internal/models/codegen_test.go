@@ -149,7 +149,9 @@ func testOpts() GenerateOptions {
 
 func TestPythonPydanticGenerator_Model(t *testing.T) {
 	gen := &PythonPydanticGenerator{version: "2.0"}
-	files, err := gen.GenerateModel(testModel(), testOpts())
+	m := testModel()
+	m.FilePath = "araviec/common/v1/resolution.proto"
+	files, err := gen.GenerateModel(m, testOpts())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,6 +161,43 @@ func TestPythonPydanticGenerator_Model(t *testing.T) {
 	assertContains(t, content, "Field(")
 	assertContains(t, content, "def from_proto")
 	assertContains(t, content, "def to_proto")
+	assertContains(t, content, "from araviec.common.v1.resolution_pb2 import UserProfile as _ProtoClass")
+}
+
+func TestPythonPydanticGenerator_Model_Pb2Import_UsesBaseDirPrefix(t *testing.T) {
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	m := testModel()
+	m.FilePath = "araviec/common/v1/resolution.proto"
+
+	opts := testOpts()
+	opts.OutputDir = "./araviec_apis/generated/python/models"
+
+	files, err := gen.GenerateModel(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "from araviec_apis.generated.python.araviec.common.v1.resolution_pb2 import UserProfile as _ProtoClass")
+}
+
+func TestPythonPydanticGenerator_Model_EscapesQuotedDescription(t *testing.T) {
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	m := testModel()
+	m.Fields = []FieldDef{
+		{
+			Name:        "label",
+			ProtoType:   "string",
+			Description: "Например: \"Нижнее\", \"Троллинг\", \"Переходный режим\"",
+		},
+	}
+
+	files, err := gen.GenerateModel(m, testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := files[0].Content
+	assertContains(t, content, "description=\"Например: \\\"Нижнее\\\", \\\"Троллинг\\\", \\\"Переходный режим\\\"\"")
 }
 
 func TestPythonPydanticGenerator_BaseModel_ProtoConversion(t *testing.T) {

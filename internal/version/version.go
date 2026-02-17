@@ -8,7 +8,7 @@ import (
 
 var (
 	// Version is the current version of Buffalo.
-	Version = "1.21.4"
+	Version = "1.21.6"
 
 	// GitCommit is the git commit hash.
 	GitCommit = "unknown"
