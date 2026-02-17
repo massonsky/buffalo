@@ -98,6 +98,12 @@ model source files for the specified language and ORM framework.`,
 			}
 		}
 
+		// Resolve pb2 import prefix from config
+		var pb2Prefix string
+		if cfg, cfgErr := loadModelsConfig(); cfgErr == nil {
+			pb2Prefix = cfg.GetPb2ImportPrefix(lang)
+		}
+
 		mode := "annotations"
 		if fromProto {
 			mode = "all-messages"
@@ -111,7 +117,7 @@ model source files for the specified language and ORM framework.`,
 			logger.Int("protos", len(protoFiles)),
 		)
 
-		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, pkg, fromProto)
+		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, pkg, pb2Prefix, fromProto)
 		if err != nil {
 			return fmt.Errorf("generation failed: %w", err)
 		}
@@ -164,6 +170,11 @@ func runGenerateAll(protoDir string) error {
 			continue
 		}
 
+		pb2Prefix := ""
+		if cfg != nil {
+			pb2Prefix = cfg.GetPb2ImportPrefix(lang)
+		}
+
 		mode := "annotations"
 		if fromProto {
 			mode = "all-messages"
@@ -176,7 +187,7 @@ func runGenerateAll(protoDir string) error {
 			logger.String("mode", mode),
 		)
 
-		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, "", fromProto)
+		paths, err := models.GenerateModels(protoFiles, lang, ormPlugin, outputDir, "", pb2Prefix, fromProto)
 		if err != nil {
 			log.Error("Generation failed", logger.String("lang", lang), logger.Any("error", err))
 			continue
@@ -431,9 +442,10 @@ type modelsConfigWrapper struct {
 }
 
 type modelsLangCfg struct {
-	orm          bool
-	ormPlugin    string
-	modelsOutput string
+	orm             bool
+	ormPlugin       string
+	modelsOutput    string
+	pb2ImportPrefix string
 }
 
 func (w *modelsConfigWrapper) IsORMEnabled(lang string) bool {
@@ -478,6 +490,15 @@ func (w *modelsConfigWrapper) GetModelsOutputDir(lang string) string {
 	return ""
 }
 
+func (w *modelsConfigWrapper) GetPb2ImportPrefix(lang string) string {
+	switch lang {
+	case "python":
+		return w.python.pb2ImportPrefix
+	default:
+		return ""
+	}
+}
+
 func loadBuffaloConfigForModels(path string) (*modelsConfigWrapper, error) {
 	// Use the config loader
 	cfg, err := configLoad(path)
@@ -486,9 +507,10 @@ func loadBuffaloConfigForModels(path string) (*modelsConfigWrapper, error) {
 	}
 	w := &modelsConfigWrapper{
 		python: modelsLangCfg{
-			orm:          cfg.IsORMEnabled("python"),
-			ormPlugin:    cfg.GetORMPlugin("python"),
-			modelsOutput: cfg.GetModelsOutputDir("python"),
+			orm:             cfg.IsORMEnabled("python"),
+			ormPlugin:       cfg.GetORMPlugin("python"),
+			modelsOutput:    cfg.GetModelsOutputDir("python"),
+			pb2ImportPrefix: cfg.GetPb2ImportPrefix("python"),
 		},
 		golang: modelsLangCfg{
 			orm:          cfg.IsORMEnabled("go"),
@@ -516,6 +538,7 @@ type configInterface interface {
 	GetORMPlugin(lang string) string
 	GetModelsOutputDir(lang string) string
 	IsGenerateModelsFromProto() bool
+	GetPb2ImportPrefix(lang string) string
 }
 
 // configLoad loads config from a file path and returns configInterface.

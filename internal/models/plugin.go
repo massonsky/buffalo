@@ -102,7 +102,8 @@ func (p *ModelsPlugin) Execute(ctx context.Context, input *plugin.Input) (*plugi
 		orm := cfg.getORM(lang)
 		outputDir := cfg.getOutputDir(lang, input.OutputDir)
 
-		generated, err := p.generateForLanguage(lang, orm, outputDir, allModels, input)
+		pb2Prefix := cfg.getPb2ImportPrefix(lang)
+		generated, err := p.generateForLanguage(lang, orm, outputDir, pb2Prefix, allModels, input)
 		if err != nil {
 			output.Errors = append(output.Errors,
 				fmt.Sprintf("buffalo-models [%s]: %v", lang, err))
@@ -131,9 +132,10 @@ type pluginModelsConfig struct {
 }
 
 type langORMCfg struct {
-	enabled   bool
-	ormPlugin string
-	outputDir string
+	enabled         bool
+	ormPlugin       string
+	outputDir       string
+	pb2ImportPrefix string
 }
 
 func (p *ModelsPlugin) buildConfig() *pluginModelsConfig {
@@ -158,6 +160,9 @@ func (p *ModelsPlugin) buildConfig() *pluginModelsConfig {
 				}
 				if dir, ok := p.config.Options[lang+"_models_output"].(string); ok {
 					cfg.outputDir = dir
+				}
+				if prefix, ok := p.config.Options[lang+"_pb2_import_prefix"].(string); ok {
+					cfg.pb2ImportPrefix = prefix
 				}
 				c.langs[lang] = cfg
 			}
@@ -187,10 +192,18 @@ func (c *pluginModelsConfig) getOutputDir(lang, fallback string) string {
 	return filepath.Join(fallback, "models")
 }
 
+func (c *pluginModelsConfig) getPb2ImportPrefix(lang string) string {
+	if l, ok := c.langs[lang]; ok {
+		return l.pb2ImportPrefix
+	}
+	return ""
+}
+
 func (p *ModelsPlugin) generateForLanguage(
 	lang string,
 	orm ORMPlugin,
 	outputDir string,
+	pb2ImportPrefix string,
 	models []ModelDef,
 	input *plugin.Input,
 ) ([]string, error) {
@@ -205,9 +218,10 @@ func (p *ModelsPlugin) generateForLanguage(
 	}
 
 	opts := GenerateOptions{
-		Language:  lang,
-		ORM:       orm,
-		OutputDir: outputDir,
+		Language:        lang,
+		ORM:             orm,
+		OutputDir:       outputDir,
+		Pb2ImportPrefix: pb2ImportPrefix,
 	}
 	// Derive package from first model
 	if len(models) > 0 {
@@ -294,7 +308,8 @@ func shouldGenerateModel(m ModelDef) bool {
 // GenerateModels is a standalone entry point for the CLI.
 // It reads proto files, parses models, and generates code for the specified language.
 // When fromProto is true, ALL messages are extracted (not just annotated ones).
-func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string, fromProto ...bool) ([]string, error) {
+// pb2ImportPrefix is an optional dotted prefix prepended to pb2 imports (Python only).
+func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg, pb2ImportPrefix string, fromProto ...bool) ([]string, error) {
 	orm := ParseORMPlugin(ormRaw)
 
 	gen, err := NewModelCodeGenerator(lang, orm)
@@ -353,10 +368,11 @@ func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string, fr
 	}
 
 	opts := GenerateOptions{
-		Language:  lang,
-		ORM:       orm,
-		OutputDir: outputDir,
-		Package:   pkg,
+		Language:        lang,
+		ORM:             orm,
+		OutputDir:       outputDir,
+		Package:         pkg,
+		Pb2ImportPrefix: pb2ImportPrefix,
 	}
 
 	var paths []string

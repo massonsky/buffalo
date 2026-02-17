@@ -170,7 +170,7 @@ func TestPythonPydanticGenerator_Model_Pb2Import_UsesBaseDirPrefix(t *testing.T)
 	m.FilePath = "araviec/common/v1/resolution.proto"
 
 	opts := testOpts()
-	opts.OutputDir = "./araviec_apis/generated/python/models"
+	opts.Pb2ImportPrefix = "araviec_apis.generated.python"
 
 	files, err := gen.GenerateModel(m, opts)
 	if err != nil {
@@ -178,6 +178,23 @@ func TestPythonPydanticGenerator_Model_Pb2Import_UsesBaseDirPrefix(t *testing.T)
 	}
 	content := files[0].Content
 	assertContains(t, content, "from araviec_apis.generated.python.araviec.common.v1.resolution_pb2 import UserProfile as _ProtoClass")
+}
+
+func TestPythonPydanticGenerator_Model_Pb2Import_NoPrefixWhenEmpty(t *testing.T) {
+	gen := &PythonPydanticGenerator{version: "2.0"}
+	m := testModel()
+	m.FilePath = "araviec/common/v1/resolution.proto"
+
+	opts := testOpts()
+	// Pb2ImportPrefix is empty — no prefix should be added
+	opts.Pb2ImportPrefix = ""
+
+	files, err := gen.GenerateModel(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "from araviec.common.v1.resolution_pb2 import UserProfile as _ProtoClass")
 }
 
 func TestPythonPydanticGenerator_Model_EscapesQuotedDescription(t *testing.T) {
