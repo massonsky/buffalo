@@ -98,10 +98,12 @@ model source files for the specified language and ORM framework.`,
 			}
 		}
 
-		// Resolve pb2 import prefix from config
-		var pb2Prefix string
-		if cfg, cfgErr := loadModelsConfig(); cfgErr == nil {
-			pb2Prefix = cfg.GetPb2ImportPrefix(lang)
+		// Resolve pb2 import prefix: CLI flag > config > empty
+		pb2Prefix, _ := cmd.Flags().GetString("pb2-prefix")
+		if pb2Prefix == "" {
+			if cfg, cfgErr := loadModelsConfig(); cfgErr == nil {
+				pb2Prefix = cfg.GetPb2ImportPrefix(lang)
+			}
 		}
 
 		mode := "annotations"
@@ -570,6 +572,7 @@ func init() {
 	modelsGenerateCmd.Flags().String("package", "", "Package name for generated code")
 	modelsGenerateCmd.Flags().Bool("all", false, "Generate for all configured languages from buffalo.yaml")
 	modelsGenerateCmd.Flags().Bool("from-proto", false, "Generate models from ALL proto messages (not just annotated)")
+	modelsGenerateCmd.Flags().String("pb2-prefix", "", "Dotted prefix prepended to pb2 imports (e.g. python)")
 
 	// Check-deps flags
 	modelsCheckDepsCmd.Flags().StringP("lang", "l", "", "Target language")

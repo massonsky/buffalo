@@ -11,7 +11,6 @@ func pythonStringLiteral(s string) string {
 }
 
 // protoPb2Module converts a .proto file path to a dotted Python pb2 module path.
-// Example: "araviec/common/v1/resolution.proto" -> "araviec.common.v1.resolution_pb2"
 func protoPb2Module(protoPath string) string {
 	p := strings.ReplaceAll(protoPath, "\\", "/")
 	p = strings.TrimPrefix(p, "./")
@@ -26,6 +25,37 @@ func protoPb2Module(protoPath string) string {
 // Otherwise returns empty string (proto file path used as-is).
 func pb2ImportPrefix(opts GenerateOptions) string {
 	return strings.TrimSuffix(strings.TrimSpace(opts.Pb2ImportPrefix), ".")
+}
+
+// pythonSysPathSetup generates Python code that adds the parent of the models
+// output directory (relative to cwd) to sys.path so that pb2 imports resolve.
+//
+// Given outputDir="./generated/models", the parent is "generated".
+// The generated code does: sys.path.insert(0, os.path.join(os.getcwd(), "generated"))
+func pythonSysPathSetup(outputDir, prefix string) string {
+	// Normalise outputDir and take its parent directory
+	norm := strings.ReplaceAll(outputDir, "\\", "/")
+	norm = strings.TrimPrefix(norm, "./")
+	norm = strings.TrimSuffix(norm, "/")
+	parent := ""
+	if idx := strings.LastIndex(norm, "/"); idx >= 0 {
+		parent = norm[:idx]
+	}
+	// parent is e.g. "generated" — the folder containing both models/ and python/
+
+	var b strings.Builder
+	b.WriteString("\nimport os as _os\n")
+	b.WriteString("import sys as _sys\n\n")
+	b.WriteString("# Auto-configure sys.path so that pb2 imports resolve correctly.\n")
+	b.WriteString("# Uses working directory as base (not __file__).\n")
+	if parent != "" {
+		b.WriteString(fmt.Sprintf("_pb2_root = _os.path.join(_os.getcwd(), %q)\n", parent))
+	} else {
+		b.WriteString("_pb2_root = _os.getcwd()\n")
+	}
+	b.WriteString("if _pb2_root not in _sys.path:\n")
+	b.WriteString("    _sys.path.insert(0, _pb2_root)\n")
+	return b.String()
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -324,6 +354,12 @@ func (g *PythonNoneGenerator) fieldToDataclass(f FieldDef) string {
 func (g *PythonNoneGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models"))
+
+	// If pb2ImportPrefix is set, add sys.path setup
+	if prefix := pb2ImportPrefix(opts); prefix != "" {
+		b.WriteString(pythonSysPathSetup(opts.OutputDir, prefix))
+	}
+
 	b.WriteString("\nfrom .base_model import BaseModel\n")
 	for _, m := range models {
 		className := m.EffectiveName()
@@ -700,6 +736,13 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 func (g *PythonPydanticGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
 	var b strings.Builder
 	b.WriteString(pythonHeader("buffalo-models (pydantic)"))
+
+	// If pb2ImportPrefix is set, add sys.path setup so that
+	// pb2 imports like "from <prefix>.<proto_module>_pb2 import ..." resolve correctly.
+	if prefix := pb2ImportPrefix(opts); prefix != "" {
+		b.WriteString(pythonSysPathSetup(opts.OutputDir, prefix))
+	}
+
 	b.WriteString("\nfrom .base_model import BaseModel, ProtoBaseModel\n")
 	for _, m := range models {
 		className := m.EffectiveName()
