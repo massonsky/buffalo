@@ -306,6 +306,7 @@ func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string, fr
 
 	// Parse all models
 	var allModels []ModelDef
+	var allTopLevelEnums []EnumDef
 	for _, pf := range protoFiles {
 		content, err := os.ReadFile(pf)
 		if err != nil {
@@ -321,10 +322,30 @@ func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string, fr
 			return nil, fmt.Errorf("parse %s: %w", pf, err)
 		}
 		allModels = append(allModels, models...)
+
+		// Extract top-level enums (outside of message blocks)
+		topEnums := ExtractTopLevelEnums(string(content), pf)
+		allTopLevelEnums = append(allTopLevelEnums, topEnums...)
 	}
 
 	if len(allModels) == 0 {
 		return nil, nil
+	}
+
+	// ── Detect file name collisions across packages ──
+	fileNameSources := map[string][]string{} // snake_case name → proto files
+	for _, m := range allModels {
+		if m.Abstract || !shouldGenerateModel(m) {
+			continue
+		}
+		sn := toSnakeCase(m.MessageName)
+		fileNameSources[sn] = append(fileNameSources[sn], m.FilePath)
+	}
+	for name, sources := range fileNameSources {
+		if len(sources) > 1 {
+			fmt.Fprintf(os.Stderr, "WARNING: file name collision for '%s' from: %s (last one wins)\n",
+				name, strings.Join(sources, ", "))
+		}
 	}
 
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
@@ -365,6 +386,21 @@ func GenerateModels(protoFiles []string, lang, ormRaw, outputDir, pkg string, fr
 		for _, f := range files {
 			fp := filepath.Join(outputDir, f.Path)
 			if err := writeFile(fp, f.Content); err != nil {
+				return nil, err
+			}
+			paths = append(paths, fp)
+		}
+	}
+
+	// Top-level enums (standalone enum files)
+	for _, e := range allTopLevelEnums {
+		ef, err := gen.GenerateEnum(e, opts)
+		if err != nil {
+			return nil, err
+		}
+		if ef.Content != "" {
+			fp := filepath.Join(outputDir, ef.Path)
+			if err := writeFile(fp, ef.Content); err != nil {
 				return nil, err
 			}
 			paths = append(paths, fp)

@@ -59,7 +59,14 @@ func isCustomProtoType(protoType string) bool {
 
 // pythonCustomTypeImports generates from-import lines for custom message types
 // referenced in the model's fields (cross-package or same-package forward refs).
+// Nested enums (defined inline in the model) are skipped — they have no standalone file.
 func pythonCustomTypeImports(model ModelDef, ownClassName string) string {
+	// Build a set of nested enum names so we don't import them from non-existent files.
+	nestedEnumNames := map[string]bool{}
+	for _, e := range model.Enums {
+		nestedEnumNames[e.Name] = true
+	}
+
 	seen := map[string]bool{}
 	var lines []string
 
@@ -69,6 +76,10 @@ func pythonCustomTypeImports(model ModelDef, ownClassName string) string {
 		}
 		className := toPascalCase(stripPackagePrefix(protoType))
 		if className == ownClassName || seen[className] {
+			return
+		}
+		// Skip nested enums — they are rendered inline, not in separate files.
+		if nestedEnumNames[className] {
 			return
 		}
 		seen[className] = true
@@ -609,12 +620,18 @@ func (g *PythonPydanticGenerator) fieldToPydantic(f FieldDef) string {
 			fieldArgs = append(fieldArgs, "default=\"\"")
 		case "bool":
 			fieldArgs = append(fieldArgs, "default=False")
+		case "int32", "int64", "uint32", "uint64", "sint32", "sint64",
+			"fixed32", "fixed64", "sfixed32", "sfixed64":
+			fieldArgs = append(fieldArgs, "default=0")
+		case "float", "double":
+			fieldArgs = append(fieldArgs, "default=0.0")
 		default:
-			// numeric defaults
-			if strings.Contains(f.ProtoType, "int") || strings.Contains(f.ProtoType, "fixed") {
+			if f.IsEnum {
+				// Enum fields default to first value (0)
 				fieldArgs = append(fieldArgs, "default=0")
-			} else if f.ProtoType == "float" || f.ProtoType == "double" {
-				fieldArgs = append(fieldArgs, "default=0.0")
+			} else if isCustomProtoType(f.ProtoType) {
+				// Message-type fields default to None (proto3 semantics)
+				fieldArgs = append(fieldArgs, "default=None")
 			}
 		}
 	}

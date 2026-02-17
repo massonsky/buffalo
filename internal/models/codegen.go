@@ -366,7 +366,13 @@ func fieldTypePython(f FieldDef) string {
 		}
 		return base
 	}
-	return protoTypeToPython(f.ProtoType, f.Nullable)
+	// Proto3 semantics: message-type fields are always nullable (can be absent).
+	// Enum and primitive fields keep their explicit nullable flag.
+	nullable := f.Nullable
+	if !nullable && !f.IsEnum && isCustomProtoType(f.ProtoType) {
+		nullable = true
+	}
+	return protoTypeToPython(f.ProtoType, nullable)
 }
 
 // fieldTypeRust returns the full Rust type for a field.
