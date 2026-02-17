@@ -168,6 +168,10 @@ func (g *RustNoneGenerator) GenerateInit(models []ModelDef, _ GenerateOptions) (
 	return GeneratedFile{Path: "mod.rs", Content: b.String()}, nil
 }
 
+func (g *RustNoneGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateRustEnumFile(enum)
+}
+
 // ──────────────────────────────────────────────────────────────────
 //  Rust Diesel
 // ──────────────────────────────────────────────────────────────────
@@ -323,6 +327,21 @@ func (g *RustDieselGenerator) GenerateInit(models []ModelDef, _ GenerateOptions)
 		b.WriteString(fmt.Sprintf("pub mod %s;\n", toSnakeCase(m.MessageName)))
 	}
 	return GeneratedFile{Path: "mod.rs", Content: b.String()}, nil
+}
+
+func (g *RustDieselGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateRustEnumFile(enum)
+}
+
+// generateRustEnumFile creates a standalone Rust file with an enum.
+func generateRustEnumFile(enum EnumDef) (GeneratedFile, error) {
+	var b strings.Builder
+	b.WriteString(rustHeader("buffalo-models"))
+	b.WriteString("use serde::{Deserialize, Serialize};\n\n")
+	b.WriteString(generateRustEnum(enum))
+
+	fileName := toSnakeCase(enum.Name) + ".rs"
+	return GeneratedFile{Path: fileName, Content: b.String()}, nil
 }
 
 // ══════════════════════════════════════════════════════════════════

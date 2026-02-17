@@ -183,6 +183,10 @@ func (g *GoNoneGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) 
 	return generateGoMod(models, opts)
 }
 
+func (g *GoNoneGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateGoEnumFile(enum, opts)
+}
+
 // generateGoMod creates a go.mod file for the generated models package.
 func generateGoMod(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
 	moduleName := opts.Package
@@ -422,6 +426,10 @@ func (g *GoGORMGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) 
 	return generateGoMod(models, opts)
 }
 
+func (g *GoGORMGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateGoEnumFile(enum, opts)
+}
+
 // ──────────────────────────────────────────────────────────────────
 //  Go sqlx
 // ──────────────────────────────────────────────────────────────────
@@ -546,4 +554,25 @@ func (g *GoSQLXGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 
 func (g *GoSQLXGenerator) GenerateInit(models []ModelDef, opts GenerateOptions) (GeneratedFile, error) {
 	return generateGoMod(models, opts)
+}
+
+func (g *GoSQLXGenerator) GenerateEnum(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	return generateGoEnumFile(enum, opts)
+}
+
+// generateGoEnumFile creates a Go file with a typed int32 enum and String() method.
+func generateGoEnumFile(enum EnumDef, opts GenerateOptions) (GeneratedFile, error) {
+	pkg := goPackageName(opts.Package)
+	if pkg == "" {
+		pkg = "models"
+	}
+
+	var b strings.Builder
+	b.WriteString(header("buffalo-models"))
+	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
+	b.WriteString("import \"fmt\"\n\n")
+	b.WriteString(generateGoEnum(enum, pkg))
+
+	fileName := toSnakeCase(enum.Name) + ".go"
+	return GeneratedFile{Path: fileName, Content: b.String()}, nil
 }

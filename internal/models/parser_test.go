@@ -486,7 +486,7 @@ message MultimediaSource {
 		t.Errorf("expected 4 enum values, got %d", len(m.Enums[0].Values))
 	}
 
-	// Enum field should be resolved to int32
+	// Enum field should be marked as enum with original type preserved
 	var statusField FieldDef
 	for _, f := range m.Fields {
 		if f.Name == "status" {
@@ -494,8 +494,14 @@ message MultimediaSource {
 			break
 		}
 	}
-	if statusField.ProtoType != "int32" {
-		t.Errorf("status field type = %q, want %q (enum -> int32)", statusField.ProtoType, "int32")
+	if !statusField.IsEnum {
+		t.Errorf("status field IsEnum = false, want true")
+	}
+	if statusField.EnumTypeName != "SourceStatus" {
+		t.Errorf("status field EnumTypeName = %q, want %q", statusField.EnumTypeName, "SourceStatus")
+	}
+	if statusField.ProtoType != "SourceStatus" {
+		t.Errorf("status field ProtoType = %q, want %q (preserved enum type)", statusField.ProtoType, "SourceStatus")
 	}
 }
 
@@ -814,5 +820,221 @@ message ErrorEntry {
 	}
 	if sysMetrics.Description == "" {
 		t.Error("SystemMetrics should have description from comment")
+	}
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Top-level enum extraction tests
+// ══════════════════════════════════════════════════════════════════
+
+func TestExtractTopLevelEnums(t *testing.T) {
+	proto := `
+syntax = "proto3";
+package test;
+
+// Тип устройства
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  // Камера видеонаблюдения
+  DEVICE_TYPE_CAMERA = 1;
+  DEVICE_TYPE_SENSOR = 2; // Датчик
+  DEVICE_TYPE_GATEWAY = 3;
+}
+
+// Статус
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_ACTIVE = 1;
+  STATUS_INACTIVE = 2;
+}
+
+message Device {
+  string id = 1;
+  DeviceType type = 2;
+  Status status = 3;
+}
+`
+	enums := ExtractTopLevelEnums(proto, "device.proto")
+
+	if len(enums) != 2 {
+		t.Fatalf("expected 2 top-level enums, got %d", len(enums))
+	}
+
+	// DeviceType
+	var dt EnumDef
+	for _, e := range enums {
+		if e.Name == "DeviceType" {
+			dt = e
+		}
+	}
+	if dt.Name == "" {
+		t.Fatal("DeviceType enum not found")
+	}
+	if dt.Comment == "" {
+		t.Error("DeviceType should have a comment")
+	}
+	if len(dt.Values) != 4 {
+		t.Errorf("DeviceType: expected 4 values, got %d", len(dt.Values))
+	}
+	// Check value comment
+	if dt.Values[1].Comment == "" {
+		t.Error("DEVICE_TYPE_CAMERA should have a comment")
+	}
+}
+
+func TestExtractTopLevelEnums_NoEnums(t *testing.T) {
+	proto := `
+syntax = "proto3";
+package test;
+
+message Foo {
+  string name = 1;
+  enum Nested {
+    X = 0;
+  }
+}
+`
+	enums := ExtractTopLevelEnums(proto, "foo.proto")
+	if len(enums) != 0 {
+		t.Errorf("expected 0 top-level enums, got %d", len(enums))
+	}
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Nested messages + oneofs tests
+// ══════════════════════════════════════════════════════════════════
+
+func TestExtractAllMessages_NestedMessages(t *testing.T) {
+	proto := `
+syntax = "proto3";
+package test;
+
+// Настройки камеры
+message CameraConfig {
+  string camera_id = 1;
+
+  // Параметры потока
+  message StreamParams {
+    int32 width = 1;
+    int32 height = 2;
+    int32 fps = 3;
+  }
+
+  StreamParams main_stream = 2;
+  StreamParams sub_stream = 3;
+}
+`
+	models, err := ExtractAllMessages(proto, "camera.proto")
+	if err != nil {
+		t.Fatalf("ExtractAllMessages failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+
+	m := models[0]
+	if len(m.NestedMessages) != 1 {
+		t.Fatalf("expected 1 nested message, got %d", len(m.NestedMessages))
+	}
+	nm := m.NestedMessages[0]
+	if nm.MessageName != "StreamParams" {
+		t.Errorf("nested message name = %q, want %q", nm.MessageName, "StreamParams")
+	}
+	if len(nm.Fields) != 3 {
+		t.Errorf("StreamParams: expected 3 fields, got %d", len(nm.Fields))
+	}
+}
+
+func TestExtractAllMessages_OneofDefs(t *testing.T) {
+	proto := `
+syntax = "proto3";
+package test;
+
+message Event {
+  string id = 1;
+
+  // Тип события
+  oneof payload {
+    string text_data = 10;
+    int64 numeric_data = 11;
+    bytes binary_data = 12;
+  }
+}
+`
+	models, err := ExtractAllMessages(proto, "event.proto")
+	if err != nil {
+		t.Fatalf("ExtractAllMessages failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+
+	m := models[0]
+	if len(m.Oneofs) != 1 {
+		t.Fatalf("expected 1 oneof, got %d", len(m.Oneofs))
+	}
+	od := m.Oneofs[0]
+	if od.Name != "payload" {
+		t.Errorf("oneof name = %q, want %q", od.Name, "payload")
+	}
+	if len(od.Fields) != 3 {
+		t.Errorf("oneof should have 3 fields, got %d", len(od.Fields))
+	}
+	// Check oneof fields are marked nullable
+	for _, f := range od.Fields {
+		if !f.Nullable {
+			t.Errorf("oneof field %q should be nullable", f.Name)
+		}
+		if f.OneofGroup != "payload" {
+			t.Errorf("field %q OneofGroup = %q, want %q", f.Name, f.OneofGroup, "payload")
+		}
+	}
+}
+
+func TestExtractAllMessages_EnumFieldPreservesType(t *testing.T) {
+	proto := `
+syntax = "proto3";
+package test;
+
+message Vehicle {
+  string id = 1;
+
+  enum FuelType {
+    FUEL_UNSPECIFIED = 0;
+    FUEL_GASOLINE = 1;
+    FUEL_DIESEL = 2;
+    FUEL_ELECTRIC = 3;
+  }
+
+  FuelType fuel = 2;
+  string model = 3;
+}
+`
+	models, err := ExtractAllMessages(proto, "vehicle.proto")
+	if err != nil {
+		t.Fatalf("ExtractAllMessages failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+
+	m := models[0]
+
+	// Find fuel field
+	var fuelField FieldDef
+	for _, f := range m.Fields {
+		if f.Name == "fuel" {
+			fuelField = f
+			break
+		}
+	}
+	if !fuelField.IsEnum {
+		t.Error("fuel field should be marked as enum")
+	}
+	if fuelField.EnumTypeName != "FuelType" {
+		t.Errorf("fuel field EnumTypeName = %q, want %q", fuelField.EnumTypeName, "FuelType")
+	}
+	if fuelField.ProtoType != "FuelType" {
+		t.Errorf("fuel field ProtoType = %q, want %q (should preserve original type)", fuelField.ProtoType, "FuelType")
 	}
 }

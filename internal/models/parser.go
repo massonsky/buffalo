@@ -62,11 +62,29 @@ var enumBlockRe = regexp.MustCompile(`(?m)^\s*enum\s+(\w+)\s*\{`)
 // enumValueRe matches enum value lines: NAME = N;
 var enumValueRe = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*(-?\d+)\s*;`)
 
+// nestedMessageRe matches nested message blocks: message Name { ... }
+var nestedMessageRe = regexp.MustCompile(`(?m)^\s*message\s+(\w+)\s*\{`)
+
 // commentRe matches single-line comments.
 var commentRe = regexp.MustCompile(`(?m)^\s*//\s*(.*)$`)
 
 // serviceBlockRe matches service blocks (to skip them).
 var serviceBlockRe = regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
+
+// extendBlockRe matches extend blocks (to skip them).
+var extendBlockRe = regexp.MustCompile(`(?m)^\s*extend\s+[\w.]+\s*\{`)
+
+// reservedLineRe matches reserved field declarations inside messages.
+var reservedLineRe = regexp.MustCompile(`(?m)^\s*reserved\s+[^;]+;`)
+
+// syntaxRe matches the syntax declaration.
+var syntaxRe = regexp.MustCompile(`(?m)^\s*syntax\s*=\s*"([^"]+)"\s*;`)
+
+// importRe matches import statements.
+var importRe = regexp.MustCompile(`(?m)^\s*import\s+(?:(weak|public)\s+)?"([^"]+)"\s*;`)
+
+// fileOptionRe matches file-level option declarations.
+var fileOptionRe = regexp.MustCompile(`(?m)^\s*option\s+(\w[\w.]*)\s*=\s*"?([^";]+)"?\s*;`)
 
 // ──────────────────────────────────────────────────────────────────
 // Public API
@@ -145,17 +163,168 @@ func ExtractModels(content, filePath string) ([]ModelDef, error) {
 			md.Fields = append(md.Fields, fd)
 		}
 
+		// Extract nested messages (sub-structs)
+		md.NestedMessages = extractNestedMessages(msg.body, pkg, filePath)
+
+		// Build oneof groups from fields
+		md.Oneofs = extractOneofDefs(msg.body)
+
 		results = append(results, md)
 	}
 
 	return results, nil
 }
 
-// ExtractAllMessages scans a full proto file and returns ModelDefs for EVERY
-// message, regardless of whether it has buffalo.models annotations.
-// This is the "generate_models_from_proto" mode:  plain proto messages
-// become models with auto-derived settings.  Annotated messages get their
-// annotations applied on top.
+// ExtractTopLevelEnums scans a proto file and extracts top-level enum
+// definitions (those outside of any message block).
+func ExtractTopLevelEnums(content, filePath string) []EnumDef {
+	// Remove all message blocks to isolate top-level enums
+	clean := removeMessageBlocks(content)
+	// Remove service blocks too
+	clean = removeServiceBlocks(clean)
+	// Remove extend blocks too
+	clean = removeExtendBlocks(clean)
+	return extractEnumsWithComments(clean)
+}
+
+// ExtractSyntax returns the syntax version declared in the proto file (e.g. "proto3").
+// Returns an empty string if no syntax declaration is found.
+func ExtractSyntax(content string) string {
+	m := syntaxRe.FindStringSubmatch(content)
+	if m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// ProtoImport represents a single import statement in a proto file.
+type ProtoImport struct {
+	Path     string // e.g. "google/protobuf/any.proto"
+	Modifier string // "weak", "public", or ""
+}
+
+// ExtractImports returns all import statements found in the proto file.
+func ExtractImports(content string) []ProtoImport {
+	matches := importRe.FindAllStringSubmatch(content, -1)
+	var imports []ProtoImport
+	for _, m := range matches {
+		imports = append(imports, ProtoImport{
+			Path:     m[2],
+			Modifier: m[1],
+		})
+	}
+	return imports
+}
+
+// ProtoFileOption represents a file-level option (e.g. option go_package = "...";).
+type ProtoFileOption struct {
+	Name  string
+	Value string
+}
+
+// ExtractFileOptions returns all file-level option declarations.
+func ExtractFileOptions(content string) []ProtoFileOption {
+	// Remove model annotations to avoid matching them as file options
+	clean := modelAnnotationRe.ReplaceAllString(content, "")
+	matches := fileOptionRe.FindAllStringSubmatch(clean, -1)
+	var opts []ProtoFileOption
+	for _, m := range matches {
+		opts = append(opts, ProtoFileOption{
+			Name:  m[1],
+			Value: strings.TrimSpace(m[2]),
+		})
+	}
+	return opts
+}
+
+// removeMessageBlocks removes all message { ... } blocks from content,
+// leaving only top-level declarations.
+func removeMessageBlocks(content string) string {
+	result := content
+	for {
+		loc := messageBlockRe.FindStringIndex(result)
+		if loc == nil {
+			break
+		}
+		// Find matching }
+		depth := 1
+		pos := loc[1]
+		for pos < len(result) && depth > 0 {
+			switch result[pos] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			pos++
+		}
+		if depth == 0 {
+			result = result[:loc[0]] + result[pos:]
+		} else {
+			break
+		}
+	}
+	return result
+}
+
+// removeServiceBlocks removes all service { ... } blocks from content.
+func removeServiceBlocks(content string) string {
+	result := content
+	for {
+		loc := serviceBlockRe.FindStringIndex(result)
+		if loc == nil {
+			break
+		}
+		depth := 1
+		pos := loc[1]
+		for pos < len(result) && depth > 0 {
+			switch result[pos] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			pos++
+		}
+		if depth == 0 {
+			result = result[:loc[0]] + result[pos:]
+		} else {
+			break
+		}
+	}
+	return result
+}
+
+// removeExtendBlocks removes all extend { ... } blocks from content.
+func removeExtendBlocks(content string) string {
+	result := content
+	for {
+		loc := extendBlockRe.FindStringIndex(result)
+		if loc == nil {
+			break
+		}
+		depth := 1
+		pos := loc[1]
+		for pos < len(result) && depth > 0 {
+			switch result[pos] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			pos++
+		}
+		if depth == 0 {
+			result = result[:loc[0]] + result[pos:]
+		} else {
+			break
+		}
+	}
+	return result
+}
+
+// ExtractAllMessages scans a full proto file text and returns ModelDefs
+// for every message found.  Non-annotated messages automatically
 //
 // Service definitions are skipped.  Nested enums are extracted into ModelDef.Enums.
 // map<K,V> fields are represented with IsMap=true, MapKeyType, MapValueType.
@@ -190,6 +359,10 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 		// Extract nested enums
 		md.Enums = extractEnums(msg.body)
 
+		// Remove extend blocks from the body before field parsing, so that
+		// fields defined inside extend blocks are not captured.
+		bodyForFields := removeExtendBlocks(msg.body)
+
 		// Build a set of enum type names for resolving field types
 		enumNames := map[string]bool{}
 		for _, e := range md.Enums {
@@ -198,7 +371,7 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 
 		// Extract map fields first (they have special syntax)
 		mapFieldPositions := map[string]bool{} // field name → consumed
-		mapMatches := mapFieldRe.FindAllStringSubmatch(msg.body, -1)
+		mapMatches := mapFieldRe.FindAllStringSubmatch(bodyForFields, -1)
 		for _, mf := range mapMatches {
 			keyType := mf[1]
 			valType := mf[2]
@@ -215,34 +388,34 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 			}
 
 			// Extract field comment
-			fd.Description = extractFieldComment(msg.body, fName)
+			fd.Description = extractFieldComment(bodyForFields, fName)
 
 			// If annotated, apply field options
-			applyFieldAnnotation(msg.body, fName, &fd)
+			applyFieldAnnotation(bodyForFields, fName, &fd)
 
 			md.Fields = append(md.Fields, fd)
 			mapFieldPositions[fName] = true
 		}
 
 		// Extract oneof blocks and remember which fields belong to which group
-		oneofFields := extractOneofFields(msg.body)
+		oneofFields := extractOneofFields(bodyForFields)
 
 		// Extract regular fields
-		fieldLines := fieldLineRe.FindAllStringSubmatchIndex(msg.body, -1)
+		fieldLines := fieldLineRe.FindAllStringSubmatchIndex(bodyForFields, -1)
 		for _, flIdx := range fieldLines {
 			fl := []string{
-				msg.body[flIdx[0]:flIdx[1]],
+				bodyForFields[flIdx[0]:flIdx[1]],
 				"",
 				"",
 				"",
 				"",
 			}
 			if flIdx[2] >= 0 {
-				fl[1] = msg.body[flIdx[2]:flIdx[3]]
+				fl[1] = bodyForFields[flIdx[2]:flIdx[3]]
 			}
-			fl[2] = msg.body[flIdx[4]:flIdx[5]]
-			fl[3] = msg.body[flIdx[6]:flIdx[7]]
-			fl[4] = msg.body[flIdx[8]:flIdx[9]]
+			fl[2] = bodyForFields[flIdx[4]:flIdx[5]]
+			fl[3] = bodyForFields[flIdx[6]:flIdx[7]]
+			fl[4] = bodyForFields[flIdx[8]:flIdx[9]]
 
 			fieldName := fl[3]
 
@@ -262,9 +435,10 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 				fd.Number = n
 			}
 
-			// If field type is a nested enum, mark ProtoType accordingly
+			// If field type is a nested enum, mark it as enum
 			if enumNames[fd.ProtoType] {
-				fd.ProtoType = "int32" // enums map to int in generated models
+				fd.IsEnum = true
+				fd.EnumTypeName = fl[2]
 				fd.Comment = fmt.Sprintf("enum %s", fl[2])
 			}
 
@@ -275,13 +449,13 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 			}
 
 			// Extract field comment
-			fd.Description = extractFieldComment(msg.body, fieldName)
+			fd.Description = extractFieldComment(bodyForFields, fieldName)
 
 			// Check for buffalo.models.field annotation
-			applyFieldAnnotation(msg.body, fieldName, &fd)
+			applyFieldAnnotation(bodyForFields, fieldName, &fd)
 
 			// Also check inline annotation (original logic)
-			rest := msg.body[flIdx[1]:]
+			rest := bodyForFields[flIdx[1]:]
 			semiIdx := strings.Index(rest, ";")
 			if semiIdx >= 0 {
 				fieldTail := rest[:semiIdx+1]
@@ -298,6 +472,12 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 			md.Fields = append(md.Fields, fd)
 		}
 
+		// Extract nested messages (sub-structs)
+		md.NestedMessages = extractNestedMessages(msg.body, pkg, filePath)
+
+		// Build oneof groups
+		md.Oneofs = extractOneofDefs(msg.body)
+
 		results = append(results, md)
 	}
 
@@ -306,9 +486,86 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 
 // extractEnums parses enum blocks within a message body.
 func extractEnums(body string) []EnumDef {
+	return extractEnumsWithComments(body)
+}
+
+// extractEnumsWithComments parses enum blocks and extracts comments for
+// both the enum itself and each enum value.
+func extractEnumsWithComments(body string) []EnumDef {
 	var enums []EnumDef
 
 	locs := enumBlockRe.FindAllStringSubmatchIndex(body, -1)
+	for _, loc := range locs {
+		name := body[loc[2]:loc[3]]
+		braceStart := loc[1]
+
+		// Extract leading comment for the enum
+		enumComment := extractLeadingComment(body, loc[0])
+
+		// Find matching }
+		depth := 1
+		pos := braceStart
+		for pos < len(body) && depth > 0 {
+			switch body[pos] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			pos++
+		}
+
+		if depth == 0 {
+			enumBody := body[braceStart : pos-1]
+			ed := EnumDef{Name: name, Comment: enumComment}
+
+			// Parse enum values with comments
+			lines := strings.Split(enumBody, "\n")
+			var pendingComment []string
+			for _, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "//") {
+					pendingComment = append(pendingComment, strings.TrimSpace(strings.TrimPrefix(trimmed, "//")))
+					continue
+				}
+
+				valMatch := enumValueRe.FindStringSubmatch(line)
+				if valMatch != nil {
+					num, _ := strconv.ParseInt(valMatch[2], 10, 32)
+					valComment := strings.Join(pendingComment, " ")
+					// Also check inline comment
+					if idx := strings.Index(line, "//"); idx >= 0 {
+						inline := strings.TrimSpace(line[idx+2:])
+						if valComment == "" {
+							valComment = inline
+						} else {
+							valComment += " " + inline
+						}
+					}
+					ed.Values = append(ed.Values, EnumValue{
+						Name:    valMatch[1],
+						Number:  int32(num),
+						Comment: valComment,
+					})
+					pendingComment = nil
+				} else if trimmed != "" {
+					pendingComment = nil
+				}
+			}
+
+			enums = append(enums, ed)
+		}
+	}
+
+	return enums
+}
+
+// extractNestedMessages parses nested message blocks within a message body
+// and returns them as ModelDef entries (sub-structs).
+func extractNestedMessages(body, pkg, filePath string) []ModelDef {
+	var nested []ModelDef
+
+	locs := nestedMessageRe.FindAllStringSubmatchIndex(body, -1)
 	for _, loc := range locs {
 		name := body[loc[2]:loc[3]]
 		braceStart := loc[1]
@@ -327,23 +584,100 @@ func extractEnums(body string) []EnumDef {
 		}
 
 		if depth == 0 {
-			enumBody := body[braceStart : pos-1]
-			ed := EnumDef{Name: name}
+			nestedBody := body[braceStart : pos-1]
+			comment := extractLeadingComment(body, loc[0])
 
-			valMatches := enumValueRe.FindAllStringSubmatch(enumBody, -1)
-			for _, vm := range valMatches {
-				num, _ := strconv.ParseInt(vm[2], 10, 32)
-				ed.Values = append(ed.Values, EnumValue{
-					Name:   vm[1],
-					Number: int32(num),
-				})
+			md := ModelDef{
+				MessageName: name,
+				Package:     pkg,
+				FilePath:    filePath,
+				Description: comment,
+				Fields:      []FieldDef{},
+				Enums:       extractEnums(nestedBody),
 			}
 
-			enums = append(enums, ed)
+			// Build enum names set
+			enumNames := map[string]bool{}
+			for _, e := range md.Enums {
+				enumNames[e.Name] = true
+			}
+
+			// Parse fields
+			fieldMatches := fieldLineRe.FindAllStringSubmatch(nestedBody, -1)
+			for _, fm := range fieldMatches {
+				qualifier := strings.TrimSpace(fm[1])
+				fd := FieldDef{
+					Repeated:  qualifier == "repeated",
+					Nullable:  qualifier == "optional",
+					ProtoType: fm[2],
+					Name:      fm[3],
+				}
+				if n, err := strconv.Atoi(fm[4]); err == nil {
+					fd.Number = n
+				}
+				if enumNames[fd.ProtoType] {
+					fd.IsEnum = true
+					fd.EnumTypeName = fm[2]
+				}
+				md.Fields = append(md.Fields, fd)
+			}
+
+			nested = append(nested, md)
 		}
 	}
 
-	return enums
+	return nested
+}
+
+// extractOneofDefs parses oneof blocks and returns structured OneofDef entries.
+func extractOneofDefs(body string) []OneofDef {
+	var result []OneofDef
+
+	locs := oneofBlockRe.FindAllStringSubmatchIndex(body, -1)
+	for _, loc := range locs {
+		groupName := body[loc[2]:loc[3]]
+		braceStart := loc[1]
+		groupComment := extractLeadingComment(body, loc[0])
+
+		depth := 1
+		pos := braceStart
+		for pos < len(body) && depth > 0 {
+			switch body[pos] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			pos++
+		}
+
+		if depth == 0 {
+			oneofBody := body[braceStart : pos-1]
+			od := OneofDef{
+				Name:    groupName,
+				Comment: groupComment,
+			}
+
+			fieldMatches := fieldLineRe.FindAllStringSubmatch(oneofBody, -1)
+			for _, fm := range fieldMatches {
+				fd := FieldDef{
+					ProtoType:  fm[2],
+					Name:       fm[3],
+					OneofGroup: groupName,
+					Nullable:   true,
+				}
+				if n, err := strconv.Atoi(fm[4]); err == nil {
+					fd.Number = n
+				}
+				fd.Description = extractFieldComment(oneofBody, fm[3])
+				od.Fields = append(od.Fields, fd)
+			}
+
+			result = append(result, od)
+		}
+	}
+
+	return result
 }
 
 // extractOneofFields parses oneof blocks and returns field_name → oneof_group_name.
