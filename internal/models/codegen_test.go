@@ -230,6 +230,29 @@ func TestPythonPydanticGenerator_BaseModel_ProtoConversion(t *testing.T) {
 	assertContains(t, f.Content, "ParseDict")
 }
 
+func TestPythonPydanticGenerator_BaseModel_ExcludesBaseFieldsInProtoConversion(t *testing.T) {
+	// Verify that ProtoBaseModel excludes base class fields (id, timestamps)
+	// from to_proto / from_proto so that ParseDict does not try to set them
+	// on the proto message where they don't exist.
+	for _, ver := range []string{"2.0", "1.0"} {
+		t.Run("v"+ver, func(t *testing.T) {
+			gen := &PythonPydanticGenerator{version: ver}
+			f, err := gen.GenerateBaseModel(testOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, f.Content, "_base_model_fields")
+			assertContains(t, f.Content, `"id"`)
+			assertContains(t, f.Content, `"created_at"`)
+			assertContains(t, f.Content, `"updated_at"`)
+			assertContains(t, f.Content, `"deleted_at"`)
+			assertContains(t, f.Content, "exclude=self._base_model_fields")
+			// from_proto should filter out base fields too
+			assertContains(t, f.Content, "if k not in cls._base_model_fields")
+		})
+	}
+}
+
 func TestPythonPydanticGenerator_Model_WithExtendsImportFallback(t *testing.T) {
 	gen := &PythonPydanticGenerator{version: "2.0"}
 	m := testModel()
