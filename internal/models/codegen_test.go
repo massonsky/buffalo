@@ -855,3 +855,161 @@ func TestModelWithOneofs_Python(t *testing.T) {
 	assertContains(t, content, "PayloadType = Union[")
 	assertContains(t, content, "class Event")
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  Operator overload / Equal method tests
+// ══════════════════════════════════════════════════════════════════
+
+func TestPythonNoneGenerator_BaseModel_Operators(t *testing.T) {
+	gen := &PythonNoneGenerator{}
+	f, err := gen.GenerateBaseModel(testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "_base_model_fields")
+	assertContains(t, f.Content, "def __eq__")
+	assertContains(t, f.Content, "def __ne__")
+	assertContains(t, f.Content, "def __hash__")
+	assertContains(t, f.Content, "@dataclass(eq=False)")
+}
+
+func TestPythonNoneGenerator_Model_DataclassEqFalse(t *testing.T) {
+	gen := &PythonNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, files[0].Content, "@dataclass(eq=False)")
+}
+
+func TestPythonPydanticGenerator_BaseModel_Operators(t *testing.T) {
+	for _, ver := range []string{"2.0", "1.0"} {
+		t.Run("v"+ver, func(t *testing.T) {
+			gen := &PythonPydanticGenerator{version: ver}
+			f, err := gen.GenerateBaseModel(testOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, f.Content, "_base_model_fields")
+			assertContains(t, f.Content, "def __eq__")
+			assertContains(t, f.Content, "def __ne__")
+			assertContains(t, f.Content, "def __hash__")
+			assertContains(t, f.Content, "ignoring base class fields")
+		})
+	}
+}
+
+func TestGoNoneGenerator_Model_Equal(t *testing.T) {
+	gen := &GoNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "func (m *UserProfile) Equal(other *UserProfile) bool")
+	assertContains(t, content, "m.Email != other.Email")
+	assertContains(t, content, "reflect.DeepEqual(m.Tags, other.Tags)")
+	assertContains(t, content, "\"reflect\"")
+}
+
+func TestGoGORMGenerator_Model_Equal(t *testing.T) {
+	gen := &GoGORMGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "func (m *UserProfile) Equal(other *UserProfile) bool")
+	assertContains(t, content, "m.Email != other.Email")
+}
+
+func TestGoSQLXGenerator_Model_Equal(t *testing.T) {
+	gen := &GoSQLXGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "func (m *UserProfile) Equal(other *UserProfile) bool")
+}
+
+func TestGoEqual_OmitsBaseFields(t *testing.T) {
+	// Equal should NOT reference BaseModel fields like ID, CreatedAt, etc.
+	gen := &GoNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	// The Equal method should not compare ID, CreatedAt, UpdatedAt, DeletedAt
+	// These are embedded in BaseModel, not in model.Fields
+	equalIdx := strings.Index(content, "func (m *UserProfile) Equal")
+	if equalIdx < 0 {
+		t.Fatal("Equal method not found")
+	}
+	equalBody := content[equalIdx:]
+	if strings.Contains(equalBody, "m.ID") || strings.Contains(equalBody, "m.CreatedAt") {
+		t.Error("Equal method should not compare base model fields")
+	}
+}
+
+func TestRustNoneGenerator_Model_PartialEq(t *testing.T) {
+	gen := &RustNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "impl PartialEq for UserProfile")
+	assertContains(t, content, "impl Eq for UserProfile")
+	assertContains(t, content, "self.email == other.email")
+	// Must NOT compare base model field
+	if strings.Contains(content, "self.base == other.base") {
+		t.Error("PartialEq should not compare base model field")
+	}
+}
+
+func TestRustDieselGenerator_Model_PartialEq(t *testing.T) {
+	gen := &RustDieselGenerator{version: "2.0"}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "impl PartialEq for UserProfile")
+	assertContains(t, content, "impl Eq for UserProfile")
+}
+
+func TestCppNoneGenerator_Model_Operators(t *testing.T) {
+	gen := &CppNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "friend bool operator==(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator!=(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator<(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator<=(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator>(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator>=(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "lhs.email == rhs.email")
+	assertContains(t, content, "std::tie(")
+	assertContains(t, content, "#include <tuple>")
+}
+
+func TestSQLAlchemyGenerator_BaseModel_Operators(t *testing.T) {
+	for _, ver := range []string{"2.0", "1.0"} {
+		t.Run("v"+ver, func(t *testing.T) {
+			gen := &PythonSQLAlchemyGenerator{version: ver}
+			f, err := gen.GenerateBaseModel(testOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, f.Content, "_base_model_fields")
+			assertContains(t, f.Content, "def __eq__")
+			assertContains(t, f.Content, "def __ne__")
+			assertContains(t, f.Content, "def __hash__")
+		})
+	}
+}

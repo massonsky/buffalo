@@ -9,6 +9,50 @@ import (
 //  Go generators: None, gorm, sqlx
 // ══════════════════════════════════════════════════════════════════
 
+// generateGoEqual generates an Equal method that compares only model-specific
+// fields, ignoring embedded base model fields (ID, timestamps).
+func generateGoEqual(className string, fields []FieldDef) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("\n// Equal compares two %s instances by model-specific fields only,\n", className))
+	b.WriteString("// ignoring base class fields (ID, timestamps).\n")
+	b.WriteString(fmt.Sprintf("func (m *%s) Equal(other *%s) bool {\n", className, className))
+	b.WriteString("\tif other == nil {\n")
+	b.WriteString("\t\treturn false\n")
+	b.WriteString("\t}\n")
+	hasFields := false
+	for _, f := range fields {
+		if f.Ignore || f.PrimaryKey {
+			continue
+		}
+		hasFields = true
+		goName := toPascalCase(f.Name)
+		if f.Repeated || f.IsMap || f.Nullable {
+			b.WriteString(fmt.Sprintf("\tif !reflect.DeepEqual(m.%s, other.%s) {\n\t\treturn false\n\t}\n", goName, goName))
+		} else {
+			b.WriteString(fmt.Sprintf("\tif m.%s != other.%s {\n\t\treturn false\n\t}\n", goName, goName))
+		}
+	}
+	if !hasFields {
+		b.WriteString("\t_ = other\n")
+	}
+	b.WriteString("\treturn true\n")
+	b.WriteString("}\n")
+	return b.String()
+}
+
+// needsReflectForEqual returns true if any model field requires reflect.DeepEqual.
+func needsReflectForEqual(fields []FieldDef) bool {
+	for _, f := range fields {
+		if f.Ignore || f.PrimaryKey {
+			continue
+		}
+		if f.Repeated || f.IsMap || f.Nullable {
+			return true
+		}
+	}
+	return false
+}
+
 func newGoGenerator(orm ORMPlugin) (ModelCodeGenerator, error) {
 	switch {
 	case orm.IsNone():
@@ -93,7 +137,14 @@ func (g *GoNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	var b strings.Builder
 	b.WriteString(header("buffalo-models"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
-	b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
+	if needsReflectForEqual(model.Fields) {
+		b.WriteString("import (\n")
+		b.WriteString("\t\"reflect\"\n\n")
+		b.WriteString("\t\"google.golang.org/protobuf/proto\"\n")
+		b.WriteString(")\n\n")
+	} else {
+		b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
+	}
 
 	className := model.EffectiveName()
 
@@ -141,6 +192,9 @@ func (g *GoNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	b.WriteString(fmt.Sprintf("func (m *%s) ToProto(msg proto.Message) error {\n", className))
 	b.WriteString("\treturn m.BaseModel.ToProto(msg)\n")
 	b.WriteString("}\n")
+
+	// Equal method: compare only model-specific fields.
+	b.WriteString(generateGoEqual(className, model.Fields))
 
 	fileName := toSnakeCase(model.MessageName) + ".go"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
@@ -298,7 +352,14 @@ func (g *GoGORMGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	var b strings.Builder
 	b.WriteString(header("buffalo-models (gorm)"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
-	b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
+	if needsReflectForEqual(model.Fields) {
+		b.WriteString("import (\n")
+		b.WriteString("\t\"reflect\"\n\n")
+		b.WriteString("\t\"google.golang.org/protobuf/proto\"\n")
+		b.WriteString(")\n\n")
+	} else {
+		b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
+	}
 
 	className := model.EffectiveName()
 
@@ -343,6 +404,9 @@ func (g *GoGORMGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	b.WriteString(fmt.Sprintf("func (m *%s) ToProto(msg proto.Message) error {\n", className))
 	b.WriteString("\treturn m.BaseModel.ToProto(msg)\n")
 	b.WriteString("}\n")
+
+	// Equal method: compare only model-specific fields.
+	b.WriteString(generateGoEqual(className, model.Fields))
 
 	fileName := toSnakeCase(model.MessageName) + ".go"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
@@ -501,7 +565,14 @@ func (g *GoSQLXGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	var b strings.Builder
 	b.WriteString(header("buffalo-models (sqlx)"))
 	b.WriteString(fmt.Sprintf("package %s\n\n", pkg))
-	b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
+	if needsReflectForEqual(model.Fields) {
+		b.WriteString("import (\n")
+		b.WriteString("\t\"reflect\"\n\n")
+		b.WriteString("\t\"google.golang.org/protobuf/proto\"\n")
+		b.WriteString(")\n\n")
+	} else {
+		b.WriteString("import \"google.golang.org/protobuf/proto\"\n\n")
+	}
 
 	className := model.EffectiveName()
 
@@ -547,6 +618,9 @@ func (g *GoSQLXGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	b.WriteString(fmt.Sprintf("func (m *%s) ToProto(msg proto.Message) error {\n", className))
 	b.WriteString("\treturn m.BaseModel.ToProto(msg)\n")
 	b.WriteString("}\n")
+
+	// Equal method: compare only model-specific fields.
+	b.WriteString(generateGoEqual(className, model.Fields))
 
 	fileName := toSnakeCase(model.MessageName) + ".go"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil

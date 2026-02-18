@@ -184,10 +184,10 @@ func (g *PythonNoneGenerator) GenerateBaseModel(opts GenerateOptions) (Generated
 	b.WriteString("\nfrom __future__ import annotations\n\n")
 	b.WriteString("from dataclasses import dataclass, field\n")
 	b.WriteString("from datetime import datetime\n")
-	b.WriteString("from typing import Any, Dict, Optional\n")
+	b.WriteString("from typing import Any, ClassVar, Dict, Optional\n")
 	b.WriteString("from uuid import UUID, uuid4\n\n\n")
 
-	b.WriteString("@dataclass\n")
+	b.WriteString("@dataclass(eq=False)\n")
 	b.WriteString("class BaseModel:\n")
 	b.WriteString("    \"\"\"Base model for all buffalo-models generated models.\"\"\"\n\n")
 	b.WriteString("    id: UUID = field(default_factory=uuid4)\n")
@@ -217,7 +217,40 @@ func (g *PythonNoneGenerator) GenerateBaseModel(opts GenerateOptions) (Generated
 	b.WriteString("    def __repr__(self) -> str:\n")
 	b.WriteString("        cls = type(self).__name__\n")
 	b.WriteString("        fields = \", \".join(f\"{k}={v!r}\" for k, v in self.__dict__.items())\n")
-	b.WriteString("        return f\"{cls}({fields})\"\n")
+	b.WriteString("        return f\"{cls}({fields})\"\n\n")
+
+	// Operator overloads: compare only model-specific fields, ignoring base class fields.
+	b.WriteString("    _base_model_fields: ClassVar[frozenset] = frozenset(\n")
+	b.WriteString("        {\"id\", \"created_at\", \"updated_at\", \"deleted_at\"}\n")
+	b.WriteString("    )\n\n")
+	b.WriteString("    def __eq__(self, other: object) -> bool:\n")
+	b.WriteString("        \"\"\"Compare models by own fields only, ignoring base class fields.\"\"\"\n")
+	b.WriteString("        if not isinstance(other, self.__class__):\n")
+	b.WriteString("            return NotImplemented\n")
+	b.WriteString("        for k in self.__dict__:\n")
+	b.WriteString("            if k in self._base_model_fields:\n")
+	b.WriteString("                continue\n")
+	b.WriteString("            if self.__dict__[k] != other.__dict__.get(k):\n")
+	b.WriteString("                return False\n")
+	b.WriteString("        return True\n\n")
+	b.WriteString("    def __ne__(self, other: object) -> bool:\n")
+	b.WriteString("        result = self.__eq__(other)\n")
+	b.WriteString("        if result is NotImplemented:\n")
+	b.WriteString("            return result\n")
+	b.WriteString("        return not result\n\n")
+	b.WriteString("    def __hash__(self) -> int:\n")
+	b.WriteString("        \"\"\"Hash by own fields only, ignoring base class fields.\"\"\"\n")
+	b.WriteString("        values: list = []\n")
+	b.WriteString("        for k in sorted(self.__dict__):\n")
+	b.WriteString("            if k in self._base_model_fields:\n")
+	b.WriteString("                continue\n")
+	b.WriteString("            v = self.__dict__[k]\n")
+	b.WriteString("            try:\n")
+	b.WriteString("                hash(v)\n")
+	b.WriteString("                values.append((k, v))\n")
+	b.WriteString("            except TypeError:\n")
+	b.WriteString("                values.append((k, repr(v)))\n")
+	b.WriteString("        return hash(tuple(values))\n")
 
 	return GeneratedFile{Path: "base_model.py", Content: b.String()}, nil
 }
@@ -263,7 +296,7 @@ func (g *PythonNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 		b.WriteString(fmt.Sprintf("# DEPRECATED: %s\n", deprecatedComment(true, model.DeprecatedMessage)))
 	}
 
-	b.WriteString("@dataclass\n")
+	b.WriteString("@dataclass(eq=False)\n")
 	parentClass := "BaseModel"
 	if model.Extends != "" {
 		parentClass = model.Extends
@@ -440,7 +473,50 @@ func (g *PythonPydanticGenerator) GenerateBaseModel(opts GenerateOptions) (Gener
 	b.WriteString("    id: UUID = Field(default_factory=uuid4)\n")
 	b.WriteString("    created_at: datetime = Field(default_factory=datetime.utcnow)\n")
 	b.WriteString("    updated_at: datetime = Field(default_factory=datetime.utcnow)\n")
-	b.WriteString("    deleted_at: Optional[datetime] = None\n")
+	b.WriteString("    deleted_at: Optional[datetime] = None\n\n")
+
+	// Operator overloads: compare only model-specific fields, ignoring base class fields.
+	b.WriteString("    _base_model_fields: ClassVar[frozenset] = frozenset(\n")
+	b.WriteString("        {\"id\", \"created_at\", \"updated_at\", \"deleted_at\"}\n")
+	b.WriteString("    )\n\n")
+	b.WriteString("    def __eq__(self, other: object) -> bool:\n")
+	b.WriteString("        \"\"\"Compare models by own fields only, ignoring base class fields.\"\"\"\n")
+	b.WriteString("        if not isinstance(other, self.__class__):\n")
+	b.WriteString("            return NotImplemented\n")
+	if g.isV2() {
+		b.WriteString("        _fields = type(self).model_fields\n")
+	} else {
+		b.WriteString("        _fields = type(self).__fields__\n")
+	}
+	b.WriteString("        for name in _fields:\n")
+	b.WriteString("            if name in self._base_model_fields:\n")
+	b.WriteString("                continue\n")
+	b.WriteString("            if getattr(self, name) != getattr(other, name):\n")
+	b.WriteString("                return False\n")
+	b.WriteString("        return True\n\n")
+	b.WriteString("    def __ne__(self, other: object) -> bool:\n")
+	b.WriteString("        result = self.__eq__(other)\n")
+	b.WriteString("        if result is NotImplemented:\n")
+	b.WriteString("            return result\n")
+	b.WriteString("        return not result\n\n")
+	b.WriteString("    def __hash__(self) -> int:\n")
+	b.WriteString("        \"\"\"Hash by own fields only, ignoring base class fields.\"\"\"\n")
+	if g.isV2() {
+		b.WriteString("        _fields = type(self).model_fields\n")
+	} else {
+		b.WriteString("        _fields = type(self).__fields__\n")
+	}
+	b.WriteString("        values: list = []\n")
+	b.WriteString("        for name in sorted(_fields):\n")
+	b.WriteString("            if name in self._base_model_fields:\n")
+	b.WriteString("                continue\n")
+	b.WriteString("            val = getattr(self, name, None)\n")
+	b.WriteString("            try:\n")
+	b.WriteString("                hash(val)\n")
+	b.WriteString("                values.append((name, val))\n")
+	b.WriteString("            except TypeError:\n")
+	b.WriteString("                values.append((name, repr(val)))\n")
+	b.WriteString("        return hash(tuple(values))\n")
 	b.WriteString("\n\n")
 
 	if g.isV2() {
@@ -449,9 +525,6 @@ func (g *PythonPydanticGenerator) GenerateBaseModel(opts GenerateOptions) (Gener
 		b.WriteString("    proto_class: ClassVar[Type[Any] | None] = None\n")
 		b.WriteString("    # Поля базового класса, которые НЕ являются частью proto-схемы.\n")
 		b.WriteString("    # Исключаются при конвертации to_proto / from_proto.\n")
-		b.WriteString("    _base_model_fields: ClassVar[frozenset[str]] = frozenset(\n")
-		b.WriteString("        {\"id\", \"created_at\", \"updated_at\", \"deleted_at\"}\n")
-		b.WriteString("    )\n\n")
 		b.WriteString("    @classmethod\n")
 		b.WriteString("    def _strip_base_fields(cls, d: Dict[str, Any]) -> Dict[str, Any]:\n")
 		b.WriteString("        \"\"\"Рекурсивно удаляет поля базового класса из словаря.\n\n")
@@ -883,6 +956,38 @@ func (g *PythonSQLAlchemyGenerator) GenerateBaseModel(opts GenerateOptions) (Gen
 		b.WriteString("    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)\n")
 		b.WriteString("    deleted_at = Column(DateTime, nullable=True)\n")
 	}
+
+	// Operator overloads: compare only model-specific fields, ignoring base class fields.
+	b.WriteString("\n")
+	b.WriteString("    _base_model_fields = frozenset({\"id\", \"created_at\", \"updated_at\", \"deleted_at\"})\n\n")
+	b.WriteString("    def __eq__(self, other: object) -> bool:\n")
+	b.WriteString("        \"\"\"Compare models by own fields only, ignoring base class fields.\"\"\"\n")
+	b.WriteString("        if not isinstance(other, self.__class__):\n")
+	b.WriteString("            return NotImplemented\n")
+	b.WriteString("        for k in self.__dict__:\n")
+	b.WriteString("            if k.startswith(\"_\") or k in self._base_model_fields:\n")
+	b.WriteString("                continue\n")
+	b.WriteString("            if self.__dict__[k] != other.__dict__.get(k):\n")
+	b.WriteString("                return False\n")
+	b.WriteString("        return True\n\n")
+	b.WriteString("    def __ne__(self, other: object) -> bool:\n")
+	b.WriteString("        result = self.__eq__(other)\n")
+	b.WriteString("        if result is NotImplemented:\n")
+	b.WriteString("            return result\n")
+	b.WriteString("        return not result\n\n")
+	b.WriteString("    def __hash__(self) -> int:\n")
+	b.WriteString("        \"\"\"Hash by own fields only, ignoring base class fields.\"\"\"\n")
+	b.WriteString("        values: list = []\n")
+	b.WriteString("        for k in sorted(self.__dict__):\n")
+	b.WriteString("            if k.startswith(\"_\") or k in self._base_model_fields:\n")
+	b.WriteString("                continue\n")
+	b.WriteString("            v = self.__dict__[k]\n")
+	b.WriteString("            try:\n")
+	b.WriteString("                hash(v)\n")
+	b.WriteString("                values.append((k, v))\n")
+	b.WriteString("            except TypeError:\n")
+	b.WriteString("                values.append((k, repr(v)))\n")
+	b.WriteString("        return hash(tuple(values))\n")
 
 	return GeneratedFile{Path: "base_model.py", Content: b.String()}, nil
 }
