@@ -231,9 +231,10 @@ func TestPythonPydanticGenerator_BaseModel_ProtoConversion(t *testing.T) {
 }
 
 func TestPythonPydanticGenerator_BaseModel_ExcludesBaseFieldsInProtoConversion(t *testing.T) {
-	// Verify that ProtoBaseModel excludes base class fields (id, timestamps)
-	// from to_proto / from_proto so that ParseDict does not try to set them
-	// on the proto message where they don't exist.
+	// Verify that ProtoBaseModel uses _strip_base_fields to recursively
+	// exclude base class fields (id, timestamps) from to_proto / from_proto
+	// so that ParseDict does not try to set them on proto messages
+	// — including nested models that also inherit BaseModel.
 	for _, ver := range []string{"2.0", "1.0"} {
 		t.Run("v"+ver, func(t *testing.T) {
 			gen := &PythonPydanticGenerator{version: ver}
@@ -246,9 +247,13 @@ func TestPythonPydanticGenerator_BaseModel_ExcludesBaseFieldsInProtoConversion(t
 			assertContains(t, f.Content, `"created_at"`)
 			assertContains(t, f.Content, `"updated_at"`)
 			assertContains(t, f.Content, `"deleted_at"`)
-			assertContains(t, f.Content, "exclude=self._base_model_fields")
-			// from_proto should filter out base fields too
-			assertContains(t, f.Content, "if k not in cls._base_model_fields")
+			// Must use recursive _strip_base_fields (handles nested models)
+			assertContains(t, f.Content, "def _strip_base_fields")
+			assertContains(t, f.Content, "self._strip_base_fields(")
+			// _strip_base_fields must handle nested dicts and lists
+			assertContains(t, f.Content, "isinstance(v, dict)")
+			assertContains(t, f.Content, "isinstance(v, list)")
+			assertContains(t, f.Content, "cls._strip_base_fields(v)")
 		})
 	}
 }
