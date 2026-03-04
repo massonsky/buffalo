@@ -65,10 +65,11 @@ type OutputConfig struct {
 
 // LanguagesConfig contains language-specific settings
 type LanguagesConfig struct {
-	Python PythonConfig `mapstructure:"python"`
-	Go     GoConfig     `mapstructure:"go"`
-	Rust   RustConfig   `mapstructure:"rust"`
-	Cpp    CppConfig    `mapstructure:"cpp"`
+	Python     PythonConfig     `mapstructure:"python"`
+	Go         GoConfig         `mapstructure:"go"`
+	Rust       RustConfig       `mapstructure:"rust"`
+	Cpp        CppConfig        `mapstructure:"cpp"`
+	Typescript TypescriptConfig `mapstructure:"typescript"`
 }
 
 // PythonConfig contains Python-specific settings
@@ -107,6 +108,15 @@ type RustConfig struct {
 type CppConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	Namespace    string `mapstructure:"namespace"`
+	ORM          bool   `mapstructure:"orm"`
+	ORMPlugin    string `mapstructure:"orm_plugin"`
+	ModelsOutput string `mapstructure:"models_output"`
+}
+
+// TypescriptConfig contains TypeScript-specific settings
+type TypescriptConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	Generator    string `mapstructure:"generator"`
 	ORM          bool   `mapstructure:"orm"`
 	ORMPlugin    string `mapstructure:"orm_plugin"`
 	ModelsOutput string `mapstructure:"models_output"`
@@ -216,7 +226,8 @@ func (c *Config) Validate() error {
 	if !c.Languages.Python.Enabled &&
 		!c.Languages.Go.Enabled &&
 		!c.Languages.Rust.Enabled &&
-		!c.Languages.Cpp.Enabled {
+		!c.Languages.Cpp.Enabled &&
+		!c.Languages.Typescript.Enabled {
 		return errors.New(errors.ErrConfig, "at least one language must be enabled")
 	}
 
@@ -248,6 +259,8 @@ func (c *Config) IsLanguageEnabled(language string) bool {
 		return c.Languages.Rust.Enabled
 	case "cpp":
 		return c.Languages.Cpp.Enabled
+	case "typescript":
+		return c.Languages.Typescript.Enabled
 	default:
 		return false
 	}
@@ -267,6 +280,9 @@ func (c *Config) GetEnabledLanguages() []string {
 	}
 	if c.Languages.Cpp.Enabled {
 		languages = append(languages, "cpp")
+	}
+	if c.Languages.Typescript.Enabled {
+		languages = append(languages, "typescript")
 	}
 	return languages
 }
@@ -291,6 +307,10 @@ func (c *Config) GetModelsOutputDir(language string) string {
 		if c.Languages.Cpp.ModelsOutput != "" {
 			return c.Languages.Cpp.ModelsOutput
 		}
+	case "typescript":
+		if c.Languages.Typescript.ModelsOutput != "" {
+			return c.Languages.Typescript.ModelsOutput
+		}
 	}
 
 	// Fallback: base_dir/<lang>/models
@@ -311,6 +331,8 @@ func (c *Config) IsORMEnabled(language string) bool {
 		return c.Languages.Rust.ORM
 	case "cpp":
 		return c.Languages.Cpp.ORM
+	case "typescript":
+		return c.Languages.Typescript.ORM
 	default:
 		return false
 	}
@@ -327,6 +349,8 @@ func (c *Config) GetORMPlugin(language string) string {
 		return c.Languages.Rust.ORMPlugin
 	case "cpp":
 		return c.Languages.Cpp.ORMPlugin
+	case "typescript":
+		return c.Languages.Typescript.ORMPlugin
 	default:
 		return ""
 	}

@@ -93,7 +93,7 @@ func (p *ModelsPlugin) Execute(ctx context.Context, input *plugin.Input) (*plugi
 			len(allModels), len(input.ProtoFiles)))
 
 	// ── Generate models for each enabled language ──
-	languages := []string{"python", "go", "rust", "cpp"}
+	languages := []string{"python", "go", "rust", "cpp", "typescript"}
 	for _, lang := range languages {
 		if !cfg.isEnabled(lang) {
 			continue
@@ -151,7 +151,7 @@ func (p *ModelsPlugin) buildConfig() *pluginModelsConfig {
 			c.generateModelsFromProto = genFromProto
 		}
 	}
-	for _, lang := range []string{"python", "go", "rust", "cpp"} {
+	for _, lang := range []string{"python", "go", "rust", "cpp", "typescript"} {
 		if v, ok := p.config.Options[lang+"_orm"]; ok {
 			if enabled, isBool := v.(bool); isBool && enabled {
 				cfg := langORMCfg{enabled: true}

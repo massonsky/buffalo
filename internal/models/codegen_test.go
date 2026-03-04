@@ -29,6 +29,9 @@ func TestNewModelCodeGenerator_AllLanguages(t *testing.T) {
 		{"rust", "diesel", "diesel"},
 		// C++
 		{"cpp", "None", "None"},
+		// TypeScript
+		{"typescript", "None", "None"},
+		{"typescript", "zod", "zod"},
 	}
 
 	for _, tc := range cases {
@@ -445,6 +448,107 @@ func TestCppNoneGenerator_Model(t *testing.T) {
 	assertContains(t, content, "std::string email")
 	assertContains(t, content, "to_json_obj() const override")
 	assertContains(t, content, "from_json_obj(const nlohmann::json& j) override")
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TypeScript generator tests
+// ══════════════════════════════════════════════════════════════════
+
+func TestTypescriptNoneGenerator_BaseModel(t *testing.T) {
+	gen := &TypescriptNoneGenerator{}
+	f, err := gen.GenerateBaseModel(testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "export interface BaseModel")
+	assertContains(t, f.Content, "id: string")
+	assertContains(t, f.Content, "export function createBaseModel")
+	assertContains(t, f.Content, "export function modelsEqual")
+	assertContains(t, f.Content, "BASE_MODEL_FIELDS")
+	if !strings.HasSuffix(f.Path, ".ts") {
+		t.Errorf("expected .ts path, got %s", f.Path)
+	}
+}
+
+func TestTypescriptNoneGenerator_Model(t *testing.T) {
+	gen := &TypescriptNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "export interface UserProfile extends BaseModel")
+	assertContains(t, content, "email: string")
+	assertContains(t, content, "displayName?: string | null")
+	assertContains(t, content, "age?: number | null")
+	assertContains(t, content, "isActive: boolean")
+	assertContains(t, content, "tags: string[]")
+	assertContains(t, content, "score: number")
+	assertContains(t, content, "export function createUserProfile")
+}
+
+func TestTypescriptNoneGenerator_Init(t *testing.T) {
+	gen := &TypescriptNoneGenerator{}
+	models := []ModelDef{testModel()}
+	f, err := gen.GenerateInit(models, testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "export * from './base_model'")
+	assertContains(t, f.Content, "export * from './user_profile'")
+	if f.Path != "index.ts" {
+		t.Errorf("expected index.ts, got %s", f.Path)
+	}
+}
+
+func TestTypescriptZodGenerator_BaseModel(t *testing.T) {
+	gen := &TypescriptZodGenerator{}
+	f, err := gen.GenerateBaseModel(testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "import { z } from 'zod'")
+	assertContains(t, f.Content, "export const BaseModelSchema")
+	assertContains(t, f.Content, "z.string().uuid()")
+	assertContains(t, f.Content, "export type BaseModel")
+}
+
+func TestTypescriptZodGenerator_Model(t *testing.T) {
+	gen := &TypescriptZodGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "import { z } from 'zod'")
+	assertContains(t, content, "BaseModelSchema.extend")
+	assertContains(t, content, "export const UserProfileSchema")
+	assertContains(t, content, "export type UserProfile")
+	assertContains(t, content, "export function createUserProfile")
+}
+
+func TestProtoTypeToTypescript(t *testing.T) {
+	cases := []struct {
+		proto    string
+		nullable bool
+		want     string
+	}{
+		{"string", false, "string"},
+		{"string", true, "string | null"},
+		{"int32", false, "number"},
+		{"int64", false, "string"},
+		{"bool", false, "boolean"},
+		{"float", false, "number"},
+		{"double", false, "number"},
+		{"bytes", false, "Uint8Array"},
+		{"uint64", false, "string"},
+	}
+	for _, tc := range cases {
+		got := protoTypeToTypescript(tc.proto, tc.nullable)
+		if got != tc.want {
+			t.Errorf("protoTypeToTypescript(%q, %v) = %q, want %q", tc.proto, tc.nullable, got, tc.want)
+		}
+	}
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -70,6 +70,16 @@ languages:
       std: c++17
       grpc_out: ./generated/cpp
 
+  # TypeScript configuration
+  typescript:
+    enabled: false
+    output: ./generated/typescript
+    plugins:
+      - grpc
+    options:
+      generator: protoc-gen-ts
+      es_modules: true
+
 # Logging configuration
 logging:
   # Log level: debug, info, warn, error, fatal
