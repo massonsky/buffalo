@@ -2,7 +2,10 @@ package builder
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/massonsky/buffalo/internal/compiler"
@@ -10,6 +13,7 @@ import (
 	"github.com/massonsky/buffalo/internal/compiler/golang"
 	"github.com/massonsky/buffalo/internal/compiler/python"
 	"github.com/massonsky/buffalo/internal/compiler/rust"
+	"github.com/massonsky/buffalo/internal/compiler/typescript"
 	"github.com/massonsky/buffalo/internal/config"
 	"github.com/massonsky/buffalo/internal/versioning"
 	"github.com/massonsky/buffalo/pkg/logger"
@@ -65,6 +69,19 @@ type executor struct {
 
 // NewExecutor creates a new Executor
 func NewExecutor(log Logger, m *metrics.Collector, cfg *config.Config) Executor {
+	if cfg == nil {
+		cfg = &config.Config{
+			Output: config.OutputConfig{
+				BaseDir: "./generated",
+			},
+			Build: config.BuildConfig{
+				Cache: config.CacheConfig{
+					Directory: ".buffalo-cache",
+				},
+			},
+		}
+	}
+
 	// Create logger for compilers
 	var compilerLog *logger.Logger
 	if logAdapter, ok := log.(*loggerAdapter); ok {
@@ -121,6 +138,47 @@ func NewExecutor(log Logger, m *metrics.Collector, cfg *config.Config) Executor 
 		compilers["cpp"] = cpp.New(compilerLog, &cppOpts)
 	}
 
+	// TypeScript compiler
+	if cfg.Languages.Typescript.Enabled {
+		tsOpts := typescript.DefaultOptions()
+		tsCfg := cfg.Languages.Typescript
+
+		if tsCfg.Generator != "" {
+			tsOpts.Generator = tsCfg.Generator
+		}
+		if tsCfg.Options.Generator != "" {
+			tsOpts.Generator = tsCfg.Options.Generator
+		}
+		if tsCfg.Options.ProtocGenTsPath != "" {
+			tsOpts.ProtocGenTsPath = tsCfg.Options.ProtocGenTsPath
+		}
+		if tsCfg.Options.TsProtoPath != "" {
+			tsOpts.TsProtoPath = tsCfg.Options.TsProtoPath
+		}
+		if tsCfg.Options.ESModules != nil {
+			tsOpts.ESModules = *tsCfg.Options.ESModules
+		}
+		if tsCfg.Options.GenerateGrpc != nil {
+			tsOpts.GenerateGrpc = *tsCfg.Options.GenerateGrpc
+		}
+		if tsCfg.Options.GenerateGrpcWeb != nil {
+			tsOpts.GenerateGrpcWeb = *tsCfg.Options.GenerateGrpcWeb
+		}
+		if tsCfg.Options.GenerateNiceGrpc != nil {
+			tsOpts.GenerateNiceGrpc = *tsCfg.Options.GenerateNiceGrpc
+		}
+		if tsCfg.Options.OutputIndex != nil {
+			tsOpts.OutputIndex = *tsCfg.Options.OutputIndex
+		}
+
+		for _, plugin := range tsCfg.Plugins {
+			if plugin == "grpc" {
+				tsOpts.GenerateGrpc = true
+			}
+		}
+		compilers["typescript"] = typescript.New(compilerLog, tsOpts)
+	}
+
 	return &executor{
 		log:            log,
 		metrics:        m,
@@ -156,6 +214,8 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 
 	// Prepare tasks
 	var tasks []utils.Task
+	generatedByLanguage := make(map[string]map[string]struct{})
+	var generatedMu sync.Mutex
 	for _, file := range plan.Graph.CompilationOrder {
 		protoFile := plan.Graph.Nodes[file]
 
@@ -165,7 +225,23 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 			langCopy := lang
 
 			task := func() error {
-				return e.compileFile(ctx, fileCopy, langCopy, plan)
+				generated, err := e.compileFile(ctx, fileCopy, langCopy, plan)
+				if err != nil {
+					return err
+				}
+
+				if len(generated) > 0 {
+					generatedMu.Lock()
+					if _, ok := generatedByLanguage[langCopy]; !ok {
+						generatedByLanguage[langCopy] = make(map[string]struct{})
+					}
+					for _, gf := range generated {
+						generatedByLanguage[langCopy][gf] = struct{}{}
+					}
+					generatedMu.Unlock()
+				}
+
+				return nil
 			}
 			tasks = append(tasks, task)
 		}
@@ -191,12 +267,16 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 		return result, errors[0] // Return first error
 	}
 
+	if err := e.postProcessLanguages(ctx, plan, result); err != nil {
+		return result, err
+	}
+
 	e.log.Debug("Build execution completed successfully")
 	return result, nil
 }
 
 // compileFile compiles a single proto file for a language
-func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language string, plan *ExecutionPlan) error {
+func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language string, plan *ExecutionPlan) ([]string, error) {
 	e.log.Debug("Compiling file",
 		"file", file.Path,
 		"language", language,
@@ -208,13 +288,12 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 			"file", file.Path,
 			"language", language,
 		)
-		return nil
+		return nil, nil
 	}
 
 	// Check versioning
 	// Create language-specific output directory: generated/{language}/...
-	baseOutputDir := plan.OutputDir
-	outputDir := filepath.Join(baseOutputDir, language)
+	outputDir := e.config.GetOutputDir(language)
 
 	if e.versionManager.IsEnabled() {
 		shouldGenerate, err := e.versionManager.ShouldGenerateNewVersion(file.Path, language)
@@ -229,7 +308,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 				"file", file.Path,
 				"language", language,
 			)
-			return nil
+			return nil, nil
 		}
 
 		// Generate version
@@ -265,7 +344,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 			"language", language,
 			"file", file.Path,
 		)
-		return nil
+		return nil, nil
 	}
 
 	// Prepare compiler options
@@ -286,7 +365,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 	// Compile
 	result, err := comp.Compile(ctx, []compiler.ProtoFile{compilerFile}, compilerOpts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !result.Success {
@@ -315,7 +394,133 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 		"generated", len(result.GeneratedFiles),
 	)
 
+	return result.GeneratedFiles, nil
+}
+
+func (e *executor) postProcessLanguages(ctx context.Context, plan *ExecutionPlan, result *ExecutionResult) error {
+	for _, lang := range plan.Languages {
+		switch lang {
+		case "typescript":
+			tsOutputDir := e.config.GetOutputDir(lang)
+			tsGenerated := collectTypescriptSourceFiles(tsOutputDir)
+
+			depGenerated, err := e.compileTypescriptDependencyProto(ctx, plan, "google/rpc/status.proto")
+			if err != nil {
+				result.Warnings = append(result.Warnings, "failed to compile TypeScript dependency google/rpc/status.proto: "+err.Error())
+				depGenerated = nil
+			}
+			if len(depGenerated) > 0 {
+				tsGenerated = collectTypescriptSourceFiles(tsOutputDir)
+			}
+
+			comp, ok := e.compilers[lang]
+			if !ok {
+				continue
+			}
+
+			if tsComp, ok := comp.(*typescript.Compiler); ok {
+				if err := tsComp.GenerateIndexFile(tsOutputDir, tsGenerated); err != nil {
+					result.Warnings = append(result.Warnings, "failed to generate TypeScript index.ts: "+err.Error())
+				}
+			}
+		}
+	}
+
 	return nil
+}
+
+func (e *executor) compileTypescriptDependencyProto(ctx context.Context, plan *ExecutionPlan, importProtoPath string) ([]string, error) {
+	comp, ok := e.compilers["typescript"]
+	if !ok {
+		return nil, nil
+	}
+
+	if _, ok := resolveImportProtoPath(plan.ImportPaths, importProtoPath); !ok {
+		return nil, nil
+	}
+
+	compilerOpts := compiler.CompileOptions{
+		OutputDir:              e.config.GetOutputDir("typescript"),
+		ImportPaths:            plan.ImportPaths,
+		Verbose:                plan.Options.Verbose,
+		PreserveProtoStructure: e.config.Output.PreserveProtoStructure,
+	}
+
+	depFile := compiler.ProtoFile{
+		Path:        importProtoPath,
+		Package:     "google.rpc",
+		ImportPaths: compilerOpts.ImportPaths,
+	}
+
+	res, err := comp.Compile(ctx, []compiler.ProtoFile{depFile}, compilerOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	return res.GeneratedFiles, nil
+}
+
+func resolveImportProtoPath(importPaths []string, importProtoPath string) (string, bool) {
+	rel := filepath.FromSlash(importProtoPath)
+	for _, base := range importPaths {
+		candidate := filepath.Join(base, rel)
+		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func setToSortedSlice(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for v := range values {
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func uniqueSorted(values []string) []string {
+	if len(values) == 0 {
+		return values
+	}
+	sort.Strings(values)
+	out := make([]string, 0, len(values))
+	last := ""
+	for i, v := range values {
+		if i == 0 || v != last {
+			out = append(out, v)
+			last = v
+		}
+	}
+	return out
+}
+
+func collectTypescriptSourceFiles(outputDir string) []string {
+	files := make([]string, 0)
+	_ = filepath.WalkDir(outputDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(path), ".ts") {
+			return nil
+		}
+		if strings.EqualFold(filepath.Base(path), "index.ts") {
+			return nil
+		}
+		if strings.Contains(strings.ToLower(path), ".buffalo") {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	return uniqueSorted(files)
 }
 
 // parallelExecute executes tasks in parallel with error handling

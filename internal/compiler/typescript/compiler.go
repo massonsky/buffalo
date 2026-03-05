@@ -7,12 +7,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/massonsky/buffalo/internal/compiler"
 	"github.com/massonsky/buffalo/pkg/errors"
 	"github.com/massonsky/buffalo/pkg/logger"
 )
+
+var nonIdentCharRegexp = regexp.MustCompile(`[^a-zA-Z0-9_]`)
 
 // Compiler implements the compiler.Compiler interface for TypeScript
 type Compiler struct {
@@ -30,6 +34,9 @@ type Options struct {
 
 	// ProtocGenTsPath is the path to the protoc-gen-ts plugin
 	ProtocGenTsPath string
+
+	// TsProtoPath is the path to the protoc-gen-ts_proto plugin
+	TsProtoPath string
 
 	// GenerateGrpc enables gRPC-Web or gRPC code generation
 	GenerateGrpc bool
@@ -61,11 +68,15 @@ func New(log *logger.Logger, opts *Options) *Compiler {
 	}
 
 	if opts.Generator == "" {
-		opts.Generator = "protoc-gen-ts"
+		opts.Generator = "ts-proto"
 	}
 
 	if opts.ProtocGenTsPath == "" {
 		opts.ProtocGenTsPath = "protoc-gen-ts"
+	}
+
+	if opts.TsProtoPath == "" {
+		opts.TsProtoPath = "protoc-gen-ts_proto"
 	}
 
 	return &Compiler{
@@ -78,8 +89,9 @@ func New(log *logger.Logger, opts *Options) *Compiler {
 func DefaultOptions() *Options {
 	return &Options{
 		ProtocPath:      "protoc",
-		Generator:       "protoc-gen-ts",
+		Generator:       "ts-proto",
 		ProtocGenTsPath: "protoc-gen-ts",
+		TsProtoPath:     "protoc-gen-ts_proto",
 		GenerateGrpc:    true,
 		GenerateGrpcWeb: false,
 		ESModules:       true,
@@ -100,10 +112,19 @@ func (c *Compiler) Validate() error {
 	}
 
 	// Check if the TS plugin is available
-	if _, err := exec.LookPath(c.options.ProtocGenTsPath); err != nil {
-		return errors.Wrap(err, errors.ErrCompilerNotFound,
-			fmt.Sprintf("%s not found, install: npm install -g %s",
-				c.options.ProtocGenTsPath, c.options.Generator))
+	switch c.options.Generator {
+	case "ts-proto":
+		if _, err := exec.LookPath(c.options.TsProtoPath); err != nil {
+			return errors.Wrap(err, errors.ErrCompilerNotFound,
+				fmt.Sprintf("%s not found, install: npm install -g ts-proto",
+					c.options.TsProtoPath))
+		}
+	default:
+		if _, err := exec.LookPath(c.options.ProtocGenTsPath); err != nil {
+			return errors.Wrap(err, errors.ErrCompilerNotFound,
+				fmt.Sprintf("%s not found, install: npm install -g %s",
+					c.options.ProtocGenTsPath, c.options.Generator))
+		}
 	}
 
 	return nil
@@ -123,7 +144,13 @@ func (c *Compiler) checkTool(tool string, args ...string) error {
 
 // RequiredTools returns the list of required external tools
 func (c *Compiler) RequiredTools() []string {
-	tools := []string{"protoc", c.options.ProtocGenTsPath}
+	tools := []string{"protoc"}
+	switch c.options.Generator {
+	case "ts-proto":
+		tools = append(tools, c.options.TsProtoPath)
+	default:
+		tools = append(tools, c.options.ProtocGenTsPath)
+	}
 	if c.options.GenerateGrpcWeb {
 		tools = append(tools, "protoc-gen-grpc-web")
 	}
@@ -155,13 +182,6 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 		}
 
 		result.GeneratedFiles = append(result.GeneratedFiles, generatedFiles...)
-	}
-
-	// Generate index.ts barrel file if enabled
-	if c.options.OutputIndex {
-		if err := c.generateIndexFile(opts.OutputDir, result.GeneratedFiles); err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("failed to generate index.ts: %v", err))
-		}
 	}
 
 	result.Success = true
@@ -236,6 +256,9 @@ func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.Compil
 
 	switch c.options.Generator {
 	case "ts-proto":
+		if c.options.TsProtoPath != "protoc-gen-ts_proto" {
+			args = append(args, "--plugin=protoc-gen-ts_proto="+c.options.TsProtoPath)
+		}
 		tsProtoOpts := []string{"outputServices=default", "esModuleInterop=true"}
 		if c.options.ESModules {
 			tsProtoOpts = append(tsProtoOpts, "importSuffix=.js")
@@ -262,6 +285,14 @@ func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.Compil
 	return args
 }
 
+// GenerateIndexFile creates a single index.ts barrel after all TS files are generated.
+func (c *Compiler) GenerateIndexFile(outputDir string, generatedFiles []string) error {
+	if !c.options.OutputIndex {
+		return nil
+	}
+	return c.generateIndexFile(outputDir, generatedFiles)
+}
+
 // GetOutputPath returns the output path for a proto file
 func (c *Compiler) GetOutputPath(file compiler.ProtoFile, opts compiler.CompileOptions) string {
 	baseName := strings.TrimSuffix(filepath.Base(file.Path), ".proto")
@@ -273,28 +304,64 @@ func (c *Compiler) GetOutputPath(file compiler.ProtoFile, opts compiler.CompileO
 	}
 }
 
-// generateIndexFile generates an index.ts barrel file that re-exports all generated modules
+// generateIndexFile generates an index.ts barrel file with namespace re-exports,
+// avoiding collisions from wildcard exports.
 func (c *Compiler) generateIndexFile(outputDir string, generatedFiles []string) error {
 	c.log.Debug("Generating index.ts", logger.String("dir", outputDir))
 
+	seenModules := make(map[string]struct{})
+	seenAliases := make(map[string]int)
 	var exports []string
 	for _, f := range generatedFiles {
 		rel, err := filepath.Rel(outputDir, f)
 		if err != nil {
 			continue
 		}
+		if rel == "" {
+			continue
+		}
 		// Convert to module path (no extension for imports)
 		module := strings.TrimSuffix(rel, filepath.Ext(rel))
 		module = strings.ReplaceAll(module, string(filepath.Separator), "/")
-		exports = append(exports, fmt.Sprintf("export * from './%s';", module))
+		if _, ok := seenModules[module]; ok {
+			continue
+		}
+		seenModules[module] = struct{}{}
+
+		alias := moduleAlias(module)
+		if n, exists := seenAliases[alias]; exists {
+			n++
+			seenAliases[alias] = n
+			alias = fmt.Sprintf("%s_%d", alias, n)
+		} else {
+			seenAliases[alias] = 0
+		}
+
+		exports = append(exports, fmt.Sprintf("export * as %s from './%s';", alias, module))
 	}
 
 	if len(exports) == 0 {
 		return nil
 	}
 
+	sort.Strings(exports)
+
 	content := "// Generated by Buffalo\n" + strings.Join(exports, "\n") + "\n"
 	indexPath := filepath.Join(outputDir, "index.ts")
 
 	return os.WriteFile(indexPath, []byte(content), 0644)
+}
+
+func moduleAlias(module string) string {
+	alias := strings.ReplaceAll(module, "/", "_")
+	alias = strings.ReplaceAll(alias, "-", "_")
+	alias = nonIdentCharRegexp.ReplaceAllString(alias, "_")
+	alias = strings.Trim(alias, "_")
+	if alias == "" {
+		return "module"
+	}
+	if alias[0] >= '0' && alias[0] <= '9' {
+		alias = "m_" + alias
+	}
+	return alias
 }

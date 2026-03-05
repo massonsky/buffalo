@@ -428,7 +428,11 @@ func getDefaultConfig() *config.Config {
 		Output: config.OutputConfig{
 			BaseDir: "./generated",
 		},
-		Languages: config.LanguagesConfig{},
+		Languages: config.LanguagesConfig{
+			Typescript: config.TypescriptConfig{
+				Generator: "ts-proto",
+			},
+		},
 		Build: config.BuildConfig{
 			Workers:     0,
 			Incremental: true,

@@ -263,7 +263,7 @@ message TestMessage {
 	languages := []string{"go", "python", "rust"}
 	for _, lang := range languages {
 		t.Run("Compile_"+lang, func(t *testing.T) {
-			err := executor.compileFile(ctx, file, lang, plan)
+			_, err := executor.compileFile(ctx, file, lang, plan)
 			if err != nil {
 				t.Fatalf("compileFile failed for %s: %v", lang, err)
 			}

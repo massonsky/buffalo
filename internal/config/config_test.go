@@ -357,3 +357,35 @@ func TestLoad(t *testing.T) {
 		t.Errorf("Load() project.name = %v, want test-project", cfg.Project.Name)
 	}
 }
+
+func TestConfig_NormalizeTypescript(t *testing.T) {
+	cfg := &Config{
+		Output: OutputConfig{
+			BaseDir: "./generated",
+		},
+		Languages: LanguagesConfig{
+			Typescript: TypescriptConfig{
+				Enabled: true,
+				Output:  "./generated/typescript",
+				Options: TypescriptOptionsConfig{
+					Generator: "ts-proto",
+				},
+			},
+		},
+	}
+
+	cfg.Normalize()
+
+	if cfg.Languages.Typescript.Generator != "ts-proto" {
+		t.Fatalf("expected generator ts-proto, got %q", cfg.Languages.Typescript.Generator)
+	}
+
+	dir, ok := cfg.Output.Directories["typescript"]
+	if !ok {
+		t.Fatal("expected output.directories.typescript to be set")
+	}
+
+	if dir != "typescript" {
+		t.Fatalf("expected normalized directory 'typescript', got %q", dir)
+	}
+}

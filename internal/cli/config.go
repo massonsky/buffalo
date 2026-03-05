@@ -186,7 +186,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 			Severity:   "warning",
 			Field:      "languages",
 			Message:    "No languages enabled",
-			Suggestion: "Enable at least one language (python, go, rust, cpp)",
+			Suggestion: "Enable at least one language (python, go, rust, cpp, typescript)",
 		})
 	}
 
@@ -359,6 +359,7 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 		log.Info(fmt.Sprintf("  Go: enabled=%v, module=%s", cfg.Languages.Go.Enabled, cfg.Languages.Go.Module))
 		log.Info(fmt.Sprintf("  Rust: enabled=%v", cfg.Languages.Rust.Enabled))
 		log.Info(fmt.Sprintf("  C++: enabled=%v", cfg.Languages.Cpp.Enabled))
+		log.Info(fmt.Sprintf("  TypeScript: enabled=%v, generator=%s", cfg.Languages.Typescript.Enabled, cfg.Languages.Typescript.Generator))
 		log.Info("")
 
 		// Build
@@ -449,6 +450,16 @@ languages:
   cpp:
     enabled: false
     namespace: "myproject"
+	typescript:
+		enabled: false
+		generator: "ts-proto"
+		output: "./generated/typescript"
+		plugins:
+			- "grpc"
+		options:
+			generator: "ts-proto"
+			es_modules: true
+			output_index: true
 
 build:
   workers: 4

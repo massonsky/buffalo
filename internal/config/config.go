@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/massonsky/buffalo/internal/dependency"
 	"github.com/massonsky/buffalo/pkg/errors"
@@ -115,11 +116,26 @@ type CppConfig struct {
 
 // TypescriptConfig contains TypeScript-specific settings
 type TypescriptConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	Generator    string `mapstructure:"generator"`
-	ORM          bool   `mapstructure:"orm"`
-	ORMPlugin    string `mapstructure:"orm_plugin"`
-	ModelsOutput string `mapstructure:"models_output"`
+	Enabled      bool                    `mapstructure:"enabled"`
+	Generator    string                  `mapstructure:"generator"`
+	Output       string                  `mapstructure:"output"`
+	Plugins      []string                `mapstructure:"plugins"`
+	Options      TypescriptOptionsConfig `mapstructure:"options"`
+	ORM          bool                    `mapstructure:"orm"`
+	ORMPlugin    string                  `mapstructure:"orm_plugin"`
+	ModelsOutput string                  `mapstructure:"models_output"`
+}
+
+// TypescriptOptionsConfig contains nested TypeScript options for backward-compatible YAML schema.
+type TypescriptOptionsConfig struct {
+	Generator        string `mapstructure:"generator"`
+	ProtocGenTsPath  string `mapstructure:"protoc_gen_ts_path"`
+	TsProtoPath      string `mapstructure:"ts_proto_path"`
+	ESModules        *bool  `mapstructure:"es_modules"`
+	GenerateGrpc     *bool  `mapstructure:"generate_grpc"`
+	GenerateGrpcWeb  *bool  `mapstructure:"generate_grpc_web"`
+	GenerateNiceGrpc *bool  `mapstructure:"generate_nice_grpc"`
+	OutputIndex      *bool  `mapstructure:"output_index"`
 }
 
 // BuildConfig contains build settings
@@ -181,6 +197,8 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	cfg.Normalize()
+
 	return &cfg, nil
 }
 
@@ -202,7 +220,48 @@ func LoadFromFile(path string) (*Config, error) {
 		return nil, err
 	}
 
+	cfg.Normalize()
+
 	return &cfg, nil
+}
+
+// Normalize applies backward-compatible mapping between legacy and current fields.
+func (c *Config) Normalize() {
+	// Map nested TS options.generator -> languages.typescript.generator.
+	if c.Languages.Typescript.Generator == "" && c.Languages.Typescript.Options.Generator != "" {
+		c.Languages.Typescript.Generator = c.Languages.Typescript.Options.Generator
+	}
+
+	// Map languages.typescript.output to output.directories.typescript.
+	if c.Languages.Typescript.Output != "" {
+		if c.Output.Directories == nil {
+			c.Output.Directories = map[string]string{}
+		}
+		c.Output.Directories["typescript"] = normalizeLanguageOutputDir(c.Output.BaseDir, c.Languages.Typescript.Output)
+	}
+}
+
+func normalizeLanguageOutputDir(baseDir string, langOutput string) string {
+	base := filepath.Clean(baseDir)
+	out := filepath.Clean(langOutput)
+
+	if filepath.IsAbs(out) {
+		return out
+	}
+
+	rel, err := filepath.Rel(base, out)
+	if err == nil {
+		// If output is already under baseDir (e.g. ./generated/typescript),
+		// store only language subpath (e.g. typescript).
+		if rel == "." {
+			return rel
+		}
+		if !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+			return rel
+		}
+	}
+
+	return out
 }
 
 // Validate validates the configuration
