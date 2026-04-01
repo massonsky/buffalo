@@ -65,6 +65,14 @@ type executor struct {
 
 // NewExecutor creates a new Executor
 func NewExecutor(log Logger, m *metrics.Collector, cfg *config.Config) Executor {
+	if cfg == nil {
+		cfg = &config.Config{
+			Build: config.BuildConfig{
+				Cache: config.CacheConfig{Directory: ".buffalo-cache"},
+			},
+		}
+	}
+
 	// Create logger for compilers
 	var compilerLog *logger.Logger
 	if logAdapter, ok := log.(*loggerAdapter); ok {

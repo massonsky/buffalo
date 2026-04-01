@@ -96,9 +96,16 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 		Success:        false,
 	}
 
-	// Add warning about Rust compilation
-	result.Warnings = append(result.Warnings,
-		"Rust compilation uses cargo build integration. Manual setup may be required.")
+	if c.options.Generator == "prost" {
+		warning, err := c.validateProstCargoSetup(files)
+		if err != nil {
+			return nil, errors.Wrap(err, errors.ErrCompilation, "failed to validate Cargo integration for Rust/prost")
+		}
+
+		result.Warnings = append(result.Warnings, warning)
+		result.Success = true
+		return result, nil
+	}
 
 	for _, file := range files {
 		c.log.Debug("Compiling proto file to Rust",
@@ -115,6 +122,83 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 
 	result.Success = true
 	return result, nil
+}
+
+func (c *Compiler) validateProstCargoSetup(files []compiler.ProtoFile) (string, error) {
+	projectRoot, cargoTomlPath, buildRsPath, err := c.findCargoProject(files)
+	if err != nil {
+		protoFile := "<unknown>"
+		if len(files) > 0 {
+			protoFile = files[0].Path
+		}
+
+		result := fmt.Sprintf("Prost requires Cargo integration. Add to build.rs:\n"+
+			"    prost_build::compile_protos(&[\"%s\"], &[\".\"])?;", protoFile)
+		return "", fmt.Errorf("prost generator requires manual Cargo setup:\n%s", result)
+	}
+
+	buildRsContent, err := os.ReadFile(buildRsPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read build.rs: %w", err)
+	}
+
+	buildRsSource := string(buildRsContent)
+	if !strings.Contains(buildRsSource, "compile_protos(") {
+		return "", fmt.Errorf("prost generator requires manual Cargo setup:\nfound build.rs at %s but it does not call compile_protos(...)", buildRsPath)
+	}
+
+	return fmt.Sprintf(
+		"Rust/prost uses Cargo integration at %s (Cargo.toml: %s, build.rs: %s). Generated Rust sources are produced during `cargo build`, not directly by `buffalo build`.",
+		projectRoot,
+		cargoTomlPath,
+		buildRsPath,
+	), nil
+}
+
+func (c *Compiler) findCargoProject(files []compiler.ProtoFile) (string, string, string, error) {
+	seen := make(map[string]struct{})
+	var candidates []string
+
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, wd)
+	}
+
+	for _, file := range files {
+		absFilePath, err := filepath.Abs(file.Path)
+		if err != nil {
+			continue
+		}
+		candidates = append(candidates, filepath.Dir(absFilePath))
+	}
+
+	for _, candidate := range candidates {
+		for dir := candidate; dir != ""; dir = filepath.Dir(dir) {
+			if _, ok := seen[dir]; ok {
+				if dir == filepath.Dir(dir) {
+					break
+				}
+				continue
+			}
+			seen[dir] = struct{}{}
+
+			cargoTomlPath := filepath.Join(dir, "Cargo.toml")
+			buildRsPath := filepath.Join(dir, "build.rs")
+			if fileExists(cargoTomlPath) && fileExists(buildRsPath) {
+				return dir, cargoTomlPath, buildRsPath, nil
+			}
+
+			if dir == filepath.Dir(dir) {
+				break
+			}
+		}
+	}
+
+	return "", "", "", fmt.Errorf("Cargo.toml and build.rs were not found in the current project or its parent directories")
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // compileFile compiles a single proto file
@@ -146,11 +230,10 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 		generatedFiles = append(generatedFiles, outputPath)
 
 	case "prost":
-		// For prost, we need to generate a build.rs file
-		// This is typically done manually in a Rust project
-		result := fmt.Sprintf("Prost requires Cargo integration. Add to build.rs:\n"+
-			"    prost_build::compile_protos(&[\"%s\"], &[\".\"])?;", file.Path)
-		return nil, fmt.Errorf("prost generator requires manual Cargo setup:\n%s", result)
+		// Prost generation is handled through Cargo build.rs integration.
+		// Validation happens in Compile(), so by the time we are here there is
+		// nothing direct for Buffalo to invoke per-file.
+		return generatedFiles, nil
 
 	default:
 		return nil, errors.New(errors.ErrConfig, "unknown Rust generator: %s", c.options.Generator)

@@ -99,6 +99,14 @@ type builder struct {
 
 // New creates a new Builder
 func New(cfg *config.Config, opts ...Option) (Builder, error) {
+	if cfg == nil {
+		cfg = &config.Config{
+			Build: config.BuildConfig{
+				Cache: config.CacheConfig{Directory: ".buffalo-cache"},
+			},
+		}
+	}
+
 	b := &builder{
 		log:     logger.New(),
 		metrics: metrics.NewCollector(),
@@ -303,6 +311,10 @@ func (b *builder) Build(ctx context.Context, plan *BuildPlan) (*BuildResult, err
 		logger.Int("files_generated", result.FilesGenerated),
 		logger.Bool("success", result.Success),
 	)
+
+	if len(result.Errors) > 0 {
+		return result, result.Errors[0]
+	}
 
 	return result, nil
 }
