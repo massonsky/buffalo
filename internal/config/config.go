@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/massonsky/buffalo/internal/dependency"
 	"github.com/massonsky/buffalo/pkg/errors"
@@ -65,10 +66,11 @@ type OutputConfig struct {
 
 // LanguagesConfig contains language-specific settings
 type LanguagesConfig struct {
-	Python PythonConfig `mapstructure:"python"`
-	Go     GoConfig     `mapstructure:"go"`
-	Rust   RustConfig   `mapstructure:"rust"`
-	Cpp    CppConfig    `mapstructure:"cpp"`
+	Python     PythonConfig     `mapstructure:"python"`
+	Go         GoConfig         `mapstructure:"go"`
+	Rust       RustConfig       `mapstructure:"rust"`
+	Cpp        CppConfig        `mapstructure:"cpp"`
+	Typescript TypescriptConfig `mapstructure:"typescript"`
 }
 
 // PythonConfig contains Python-specific settings
@@ -110,6 +112,30 @@ type CppConfig struct {
 	ORM          bool   `mapstructure:"orm"`
 	ORMPlugin    string `mapstructure:"orm_plugin"`
 	ModelsOutput string `mapstructure:"models_output"`
+}
+
+// TypescriptConfig contains TypeScript-specific settings
+type TypescriptConfig struct {
+	Enabled      bool                    `mapstructure:"enabled"`
+	Generator    string                  `mapstructure:"generator"`
+	Output       string                  `mapstructure:"output"`
+	Plugins      []string                `mapstructure:"plugins"`
+	Options      TypescriptOptionsConfig `mapstructure:"options"`
+	ORM          bool                    `mapstructure:"orm"`
+	ORMPlugin    string                  `mapstructure:"orm_plugin"`
+	ModelsOutput string                  `mapstructure:"models_output"`
+}
+
+// TypescriptOptionsConfig contains nested TypeScript options for backward-compatible YAML schema.
+type TypescriptOptionsConfig struct {
+	Generator        string `mapstructure:"generator"`
+	ProtocGenTsPath  string `mapstructure:"protoc_gen_ts_path"`
+	TsProtoPath      string `mapstructure:"ts_proto_path"`
+	ESModules        *bool  `mapstructure:"es_modules"`
+	GenerateGrpc     *bool  `mapstructure:"generate_grpc"`
+	GenerateGrpcWeb  *bool  `mapstructure:"generate_grpc_web"`
+	GenerateNiceGrpc *bool  `mapstructure:"generate_nice_grpc"`
+	OutputIndex      *bool  `mapstructure:"output_index"`
 }
 
 // BuildConfig contains build settings
@@ -171,6 +197,8 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	cfg.Normalize()
+
 	return &cfg, nil
 }
 
@@ -192,7 +220,48 @@ func LoadFromFile(path string) (*Config, error) {
 		return nil, err
 	}
 
+	cfg.Normalize()
+
 	return &cfg, nil
+}
+
+// Normalize applies backward-compatible mapping between legacy and current fields.
+func (c *Config) Normalize() {
+	// Map nested TS options.generator -> languages.typescript.generator.
+	if c.Languages.Typescript.Generator == "" && c.Languages.Typescript.Options.Generator != "" {
+		c.Languages.Typescript.Generator = c.Languages.Typescript.Options.Generator
+	}
+
+	// Map languages.typescript.output to output.directories.typescript.
+	if c.Languages.Typescript.Output != "" {
+		if c.Output.Directories == nil {
+			c.Output.Directories = map[string]string{}
+		}
+		c.Output.Directories["typescript"] = normalizeLanguageOutputDir(c.Output.BaseDir, c.Languages.Typescript.Output)
+	}
+}
+
+func normalizeLanguageOutputDir(baseDir string, langOutput string) string {
+	base := filepath.Clean(baseDir)
+	out := filepath.Clean(langOutput)
+
+	if filepath.IsAbs(out) {
+		return out
+	}
+
+	rel, err := filepath.Rel(base, out)
+	if err == nil {
+		// If output is already under baseDir (e.g. ./generated/typescript),
+		// store only language subpath (e.g. typescript).
+		if rel == "." {
+			return rel
+		}
+		if !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+			return rel
+		}
+	}
+
+	return out
 }
 
 // Validate validates the configuration
@@ -216,7 +285,8 @@ func (c *Config) Validate() error {
 	if !c.Languages.Python.Enabled &&
 		!c.Languages.Go.Enabled &&
 		!c.Languages.Rust.Enabled &&
-		!c.Languages.Cpp.Enabled {
+		!c.Languages.Cpp.Enabled &&
+		!c.Languages.Typescript.Enabled {
 		return errors.New(errors.ErrConfig, "at least one language must be enabled")
 	}
 
@@ -248,6 +318,8 @@ func (c *Config) IsLanguageEnabled(language string) bool {
 		return c.Languages.Rust.Enabled
 	case "cpp":
 		return c.Languages.Cpp.Enabled
+	case "typescript":
+		return c.Languages.Typescript.Enabled
 	default:
 		return false
 	}
@@ -267,6 +339,9 @@ func (c *Config) GetEnabledLanguages() []string {
 	}
 	if c.Languages.Cpp.Enabled {
 		languages = append(languages, "cpp")
+	}
+	if c.Languages.Typescript.Enabled {
+		languages = append(languages, "typescript")
 	}
 	return languages
 }
@@ -291,6 +366,10 @@ func (c *Config) GetModelsOutputDir(language string) string {
 		if c.Languages.Cpp.ModelsOutput != "" {
 			return c.Languages.Cpp.ModelsOutput
 		}
+	case "typescript":
+		if c.Languages.Typescript.ModelsOutput != "" {
+			return c.Languages.Typescript.ModelsOutput
+		}
 	}
 
 	// Fallback: base_dir/<lang>/models
@@ -311,6 +390,8 @@ func (c *Config) IsORMEnabled(language string) bool {
 		return c.Languages.Rust.ORM
 	case "cpp":
 		return c.Languages.Cpp.ORM
+	case "typescript":
+		return c.Languages.Typescript.ORM
 	default:
 		return false
 	}
@@ -327,6 +408,8 @@ func (c *Config) GetORMPlugin(language string) string {
 		return c.Languages.Rust.ORMPlugin
 	case "cpp":
 		return c.Languages.Cpp.ORMPlugin
+	case "typescript":
+		return c.Languages.Typescript.ORMPlugin
 	default:
 		return ""
 	}

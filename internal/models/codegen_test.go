@@ -29,6 +29,9 @@ func TestNewModelCodeGenerator_AllLanguages(t *testing.T) {
 		{"rust", "diesel", "diesel"},
 		// C++
 		{"cpp", "None", "None"},
+		// TypeScript
+		{"typescript", "None", "None"},
+		{"typescript", "zod", "zod"},
 	}
 
 	for _, tc := range cases {
@@ -230,6 +233,34 @@ func TestPythonPydanticGenerator_BaseModel_ProtoConversion(t *testing.T) {
 	assertContains(t, f.Content, "ParseDict")
 }
 
+func TestPythonPydanticGenerator_BaseModel_ExcludesBaseFieldsInProtoConversion(t *testing.T) {
+	// Verify that ProtoBaseModel uses _strip_base_fields to recursively
+	// exclude base class fields (id, timestamps) from to_proto / from_proto
+	// so that ParseDict does not try to set them on proto messages
+	// — including nested models that also inherit BaseModel.
+	for _, ver := range []string{"2.0", "1.0"} {
+		t.Run("v"+ver, func(t *testing.T) {
+			gen := &PythonPydanticGenerator{version: ver}
+			f, err := gen.GenerateBaseModel(testOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, f.Content, "_base_model_fields")
+			assertContains(t, f.Content, `"id"`)
+			assertContains(t, f.Content, `"created_at"`)
+			assertContains(t, f.Content, `"updated_at"`)
+			assertContains(t, f.Content, `"deleted_at"`)
+			// Must use recursive _strip_base_fields (handles nested models)
+			assertContains(t, f.Content, "def _strip_base_fields")
+			assertContains(t, f.Content, "self._strip_base_fields(")
+			// _strip_base_fields must handle nested dicts and lists
+			assertContains(t, f.Content, "isinstance(v, dict)")
+			assertContains(t, f.Content, "isinstance(v, list)")
+			assertContains(t, f.Content, "cls._strip_base_fields(v)")
+		})
+	}
+}
+
 func TestPythonPydanticGenerator_Model_WithExtendsImportFallback(t *testing.T) {
 	gen := &PythonPydanticGenerator{version: "2.0"}
 	m := testModel()
@@ -417,6 +448,107 @@ func TestCppNoneGenerator_Model(t *testing.T) {
 	assertContains(t, content, "std::string email")
 	assertContains(t, content, "to_json_obj() const override")
 	assertContains(t, content, "from_json_obj(const nlohmann::json& j) override")
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TypeScript generator tests
+// ══════════════════════════════════════════════════════════════════
+
+func TestTypescriptNoneGenerator_BaseModel(t *testing.T) {
+	gen := &TypescriptNoneGenerator{}
+	f, err := gen.GenerateBaseModel(testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "export interface BaseModel")
+	assertContains(t, f.Content, "id: string")
+	assertContains(t, f.Content, "export function createBaseModel")
+	assertContains(t, f.Content, "export function modelsEqual")
+	assertContains(t, f.Content, "BASE_MODEL_FIELDS")
+	if !strings.HasSuffix(f.Path, ".ts") {
+		t.Errorf("expected .ts path, got %s", f.Path)
+	}
+}
+
+func TestTypescriptNoneGenerator_Model(t *testing.T) {
+	gen := &TypescriptNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "export interface UserProfile extends BaseModel")
+	assertContains(t, content, "email: string")
+	assertContains(t, content, "displayName?: string | null")
+	assertContains(t, content, "age?: number | null")
+	assertContains(t, content, "isActive: boolean")
+	assertContains(t, content, "tags: string[]")
+	assertContains(t, content, "score: number")
+	assertContains(t, content, "export function createUserProfile")
+}
+
+func TestTypescriptNoneGenerator_Init(t *testing.T) {
+	gen := &TypescriptNoneGenerator{}
+	models := []ModelDef{testModel()}
+	f, err := gen.GenerateInit(models, testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "export * from './base_model'")
+	assertContains(t, f.Content, "export * from './user_profile'")
+	if f.Path != "index.ts" {
+		t.Errorf("expected index.ts, got %s", f.Path)
+	}
+}
+
+func TestTypescriptZodGenerator_BaseModel(t *testing.T) {
+	gen := &TypescriptZodGenerator{}
+	f, err := gen.GenerateBaseModel(testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "import { z } from 'zod'")
+	assertContains(t, f.Content, "export const BaseModelSchema")
+	assertContains(t, f.Content, "z.string().uuid()")
+	assertContains(t, f.Content, "export type BaseModel")
+}
+
+func TestTypescriptZodGenerator_Model(t *testing.T) {
+	gen := &TypescriptZodGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "import { z } from 'zod'")
+	assertContains(t, content, "BaseModelSchema.extend")
+	assertContains(t, content, "export const UserProfileSchema")
+	assertContains(t, content, "export type UserProfile")
+	assertContains(t, content, "export function createUserProfile")
+}
+
+func TestProtoTypeToTypescript(t *testing.T) {
+	cases := []struct {
+		proto    string
+		nullable bool
+		want     string
+	}{
+		{"string", false, "string"},
+		{"string", true, "string | null"},
+		{"int32", false, "number"},
+		{"int64", false, "string"},
+		{"bool", false, "boolean"},
+		{"float", false, "number"},
+		{"double", false, "number"},
+		{"bytes", false, "Uint8Array"},
+		{"uint64", false, "string"},
+	}
+	for _, tc := range cases {
+		got := protoTypeToTypescript(tc.proto, tc.nullable)
+		if got != tc.want {
+			t.Errorf("protoTypeToTypescript(%q, %v) = %q, want %q", tc.proto, tc.nullable, got, tc.want)
+		}
+	}
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -826,4 +958,162 @@ func TestModelWithOneofs_Python(t *testing.T) {
 	content := files[0].Content
 	assertContains(t, content, "PayloadType = Union[")
 	assertContains(t, content, "class Event")
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  Operator overload / Equal method tests
+// ══════════════════════════════════════════════════════════════════
+
+func TestPythonNoneGenerator_BaseModel_Operators(t *testing.T) {
+	gen := &PythonNoneGenerator{}
+	f, err := gen.GenerateBaseModel(testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, f.Content, "_base_model_fields")
+	assertContains(t, f.Content, "def __eq__")
+	assertContains(t, f.Content, "def __ne__")
+	assertContains(t, f.Content, "def __hash__")
+	assertContains(t, f.Content, "@dataclass(eq=False)")
+}
+
+func TestPythonNoneGenerator_Model_DataclassEqFalse(t *testing.T) {
+	gen := &PythonNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, files[0].Content, "@dataclass(eq=False)")
+}
+
+func TestPythonPydanticGenerator_BaseModel_Operators(t *testing.T) {
+	for _, ver := range []string{"2.0", "1.0"} {
+		t.Run("v"+ver, func(t *testing.T) {
+			gen := &PythonPydanticGenerator{version: ver}
+			f, err := gen.GenerateBaseModel(testOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, f.Content, "_base_model_fields")
+			assertContains(t, f.Content, "def __eq__")
+			assertContains(t, f.Content, "def __ne__")
+			assertContains(t, f.Content, "def __hash__")
+			assertContains(t, f.Content, "ignoring base class fields")
+		})
+	}
+}
+
+func TestGoNoneGenerator_Model_Equal(t *testing.T) {
+	gen := &GoNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "func (m *UserProfile) Equal(other *UserProfile) bool")
+	assertContains(t, content, "m.Email != other.Email")
+	assertContains(t, content, "reflect.DeepEqual(m.Tags, other.Tags)")
+	assertContains(t, content, "\"reflect\"")
+}
+
+func TestGoGORMGenerator_Model_Equal(t *testing.T) {
+	gen := &GoGORMGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "func (m *UserProfile) Equal(other *UserProfile) bool")
+	assertContains(t, content, "m.Email != other.Email")
+}
+
+func TestGoSQLXGenerator_Model_Equal(t *testing.T) {
+	gen := &GoSQLXGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "func (m *UserProfile) Equal(other *UserProfile) bool")
+}
+
+func TestGoEqual_OmitsBaseFields(t *testing.T) {
+	// Equal should NOT reference BaseModel fields like ID, CreatedAt, etc.
+	gen := &GoNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	// The Equal method should not compare ID, CreatedAt, UpdatedAt, DeletedAt
+	// These are embedded in BaseModel, not in model.Fields
+	equalIdx := strings.Index(content, "func (m *UserProfile) Equal")
+	if equalIdx < 0 {
+		t.Fatal("Equal method not found")
+	}
+	equalBody := content[equalIdx:]
+	if strings.Contains(equalBody, "m.ID") || strings.Contains(equalBody, "m.CreatedAt") {
+		t.Error("Equal method should not compare base model fields")
+	}
+}
+
+func TestRustNoneGenerator_Model_PartialEq(t *testing.T) {
+	gen := &RustNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "impl PartialEq for UserProfile")
+	assertContains(t, content, "impl Eq for UserProfile")
+	assertContains(t, content, "self.email == other.email")
+	// Must NOT compare base model field
+	if strings.Contains(content, "self.base == other.base") {
+		t.Error("PartialEq should not compare base model field")
+	}
+}
+
+func TestRustDieselGenerator_Model_PartialEq(t *testing.T) {
+	gen := &RustDieselGenerator{version: "2.0"}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "impl PartialEq for UserProfile")
+	assertContains(t, content, "impl Eq for UserProfile")
+}
+
+func TestCppNoneGenerator_Model_Operators(t *testing.T) {
+	gen := &CppNoneGenerator{}
+	files, err := gen.GenerateModel(testModel(), testOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[0].Content
+	assertContains(t, content, "friend bool operator==(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator!=(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator<(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator<=(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator>(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "friend bool operator>=(const UserProfile& lhs, const UserProfile& rhs)")
+	assertContains(t, content, "lhs.email == rhs.email")
+	assertContains(t, content, "std::tie(")
+	assertContains(t, content, "#include <tuple>")
+}
+
+func TestSQLAlchemyGenerator_BaseModel_Operators(t *testing.T) {
+	for _, ver := range []string{"2.0", "1.0"} {
+		t.Run("v"+ver, func(t *testing.T) {
+			gen := &PythonSQLAlchemyGenerator{version: ver}
+			f, err := gen.GenerateBaseModel(testOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertContains(t, f.Content, "_base_model_fields")
+			assertContains(t, f.Content, "def __eq__")
+			assertContains(t, f.Content, "def __ne__")
+			assertContains(t, f.Content, "def __hash__")
+		})
+	}
 }

@@ -53,6 +53,8 @@ func NewModelCodeGenerator(language string, orm ORMPlugin) (ModelCodeGenerator, 
 		return newRustGenerator(orm)
 	case "cpp":
 		return newCppGenerator(orm)
+	case "typescript":
+		return newTypescriptGenerator(orm)
 	default:
 		return nil, fmt.Errorf("unsupported model codegen language: %s", language)
 	}

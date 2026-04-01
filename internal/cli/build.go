@@ -58,7 +58,7 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 
 	buildCmd.Flags().StringVarP(&buildOutputDir, "output", "o", "", "output directory for generated code")
-	buildCmd.Flags().StringSliceVarP(&buildLanguages, "lang", "l", []string{}, "target languages (python,go,rust,cpp)")
+	buildCmd.Flags().StringSliceVarP(&buildLanguages, "lang", "l", []string{}, "target languages (python,go,rust,cpp,typescript)")
 	buildCmd.Flags().StringSliceVarP(&buildProtoPath, "proto-path", "p", []string{}, "paths to search for proto files")
 	buildCmd.Flags().BoolVar(&buildDryRun, "dry-run", false, "show what would be built without building")
 	buildCmd.Flags().BoolVar(&buildSkipSystemCheck, "skip-system-check", false, "skip system readiness check before build")
@@ -428,7 +428,11 @@ func getDefaultConfig() *config.Config {
 		Output: config.OutputConfig{
 			BaseDir: "./generated",
 		},
-		Languages: config.LanguagesConfig{},
+		Languages: config.LanguagesConfig{
+			Typescript: config.TypescriptConfig{
+				Generator: "ts-proto",
+			},
+		},
 		Build: config.BuildConfig{
 			Workers:     0,
 			Incremental: true,
@@ -452,6 +456,8 @@ func enableLanguages(cfg *config.Config, languages []string) {
 			cfg.Languages.Rust.Enabled = true
 		case "cpp":
 			cfg.Languages.Cpp.Enabled = true
+		case "typescript":
+			cfg.Languages.Typescript.Enabled = true
 		}
 	}
 }

@@ -9,6 +9,35 @@ import (
 //  Rust generators: None, diesel
 // ══════════════════════════════════════════════════════════════════
 
+// generateRustPartialEq generates custom PartialEq + Eq impls that compare
+// only model-specific fields, ignoring base model fields (id, timestamps).
+func generateRustPartialEq(className string, fields []FieldDef) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("\nimpl PartialEq for %s {\n", className))
+	b.WriteString("    fn eq(&self, other: &Self) -> bool {\n")
+
+	var comparisons []string
+	for _, f := range fields {
+		if f.Ignore || f.PrimaryKey {
+			continue
+		}
+		comparisons = append(comparisons, fmt.Sprintf("self.%s == other.%s", f.Name, f.Name))
+	}
+
+	if len(comparisons) == 0 {
+		b.WriteString("        true\n")
+	} else {
+		b.WriteString("        ")
+		b.WriteString(strings.Join(comparisons, "\n            && "))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("    }\n")
+	b.WriteString("}\n\n")
+	b.WriteString(fmt.Sprintf("impl Eq for %s {}\n", className))
+	return b.String()
+}
+
 func newRustGenerator(orm ORMPlugin) (ModelCodeGenerator, error) {
 	switch {
 	case orm.IsNone():
@@ -110,6 +139,9 @@ func (g *RustNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) 
 	b.WriteString("        serde_json::to_value(self)\n")
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
+
+	// PartialEq + Eq: compare only model-specific fields.
+	b.WriteString(generateRustPartialEq(className, model.Fields))
 
 	fileName := toSnakeCase(model.MessageName) + ".rs"
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
@@ -272,6 +304,10 @@ func (g *RustDieselGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	b.WriteString("        serde_json::to_value(self)\n")
 	b.WriteString("    }\n")
 	b.WriteString("}\n\n")
+
+	// PartialEq + Eq: compare only model-specific fields.
+	b.WriteString(generateRustPartialEq(className, model.Fields))
+	b.WriteString("\n")
 
 	// Insertable (New) struct
 	newName := "New" + className

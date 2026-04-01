@@ -20,6 +20,84 @@ func newCppGenerator(orm ORMPlugin) (ModelCodeGenerator, error) {
 //  C++ None (structs with nlohmann/json)
 // ──────────────────────────────────────────────────────────────────
 
+// generateCppOperators generates friend comparison operators (==, !=, <, <=, >, >=)
+// that compare only model-specific fields, ignoring base class fields.
+func generateCppOperators(className string, fields []FieldDef) string {
+	var b strings.Builder
+
+	// Collect non-ignored, non-PK field names
+	var fieldNames []string
+	for _, f := range fields {
+		if f.Ignore || f.PrimaryKey {
+			continue
+		}
+		fieldNames = append(fieldNames, f.Name)
+	}
+
+	b.WriteString("\n  public:\n")
+
+	// operator==
+	b.WriteString(fmt.Sprintf("    friend bool operator==(const %s& lhs, const %s& rhs) {\n", className, className))
+	if len(fieldNames) == 0 {
+		b.WriteString("        return true;\n")
+	} else {
+		b.WriteString("        return ")
+		for i, name := range fieldNames {
+			if i > 0 {
+				b.WriteString("\n            && ")
+			}
+			b.WriteString(fmt.Sprintf("lhs.%s == rhs.%s", name, name))
+		}
+		b.WriteString(";\n")
+	}
+	b.WriteString("    }\n\n")
+
+	// operator!=
+	b.WriteString(fmt.Sprintf("    friend bool operator!=(const %s& lhs, const %s& rhs) {\n", className, className))
+	b.WriteString("        return !(lhs == rhs);\n")
+	b.WriteString("    }\n\n")
+
+	// operator<
+	b.WriteString(fmt.Sprintf("    friend bool operator<(const %s& lhs, const %s& rhs) {\n", className, className))
+	if len(fieldNames) == 0 {
+		b.WriteString("        return false;\n")
+	} else {
+		b.WriteString("        return std::tie(")
+		for i, name := range fieldNames {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString("lhs." + name)
+		}
+		b.WriteString(")\n            < std::tie(")
+		for i, name := range fieldNames {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString("rhs." + name)
+		}
+		b.WriteString(");\n")
+	}
+	b.WriteString("    }\n\n")
+
+	// operator<=
+	b.WriteString(fmt.Sprintf("    friend bool operator<=(const %s& lhs, const %s& rhs) {\n", className, className))
+	b.WriteString("        return !(rhs < lhs);\n")
+	b.WriteString("    }\n\n")
+
+	// operator>
+	b.WriteString(fmt.Sprintf("    friend bool operator>(const %s& lhs, const %s& rhs) {\n", className, className))
+	b.WriteString("        return rhs < lhs;\n")
+	b.WriteString("    }\n\n")
+
+	// operator>=
+	b.WriteString(fmt.Sprintf("    friend bool operator>=(const %s& lhs, const %s& rhs) {\n", className, className))
+	b.WriteString("        return !(lhs < rhs);\n")
+	b.WriteString("    }\n")
+
+	return b.String()
+}
+
 // CppNoneGenerator generates plain C++ structs with optional JSON serialization.
 type CppNoneGenerator struct{}
 
@@ -110,6 +188,7 @@ func (g *CppNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) (
 		"<string>":   true,
 		"<cstdint>":  true,
 		"<optional>": true,
+		"<tuple>":    true,
 	}
 	for _, f := range model.Fields {
 		if f.Repeated {
@@ -163,6 +242,9 @@ func (g *CppNoneGenerator) GenerateModel(model ModelDef, opts GenerateOptions) (
 		line := g.fieldToCpp(f)
 		h.WriteString(line)
 	}
+
+	// Operator overloads: compare only model-specific fields, ignoring base class fields.
+	h.WriteString(generateCppOperators(className, model.Fields))
 
 	h.WriteString("};\n\n")
 	h.WriteString(fmt.Sprintf("}  // namespace %s\n", ns))
