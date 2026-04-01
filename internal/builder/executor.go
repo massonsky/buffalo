@@ -67,6 +67,11 @@ type executor struct {
 	languageConfigs map[string]interface{} // Language-specific configs
 }
 
+type compileOutcome struct {
+	generated []string
+	warnings  []string
+}
+
 // NewExecutor creates a new Executor
 func NewExecutor(log Logger, m *metrics.Collector, cfg *config.Config) Executor {
 	if cfg == nil {
@@ -215,6 +220,7 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 	// Prepare tasks
 	var tasks []utils.Task
 	generatedByLanguage := make(map[string]map[string]struct{})
+	var warnings []string
 	var generatedMu sync.Mutex
 	for _, file := range plan.Graph.CompilationOrder {
 		protoFile := plan.Graph.Nodes[file]
@@ -225,21 +231,24 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 			langCopy := lang
 
 			task := func() error {
-				generated, err := e.compileFile(ctx, fileCopy, langCopy, plan)
+				outcome, err := e.compileFile(ctx, fileCopy, langCopy, plan)
 				if err != nil {
 					return err
 				}
 
-				if len(generated) > 0 {
-					generatedMu.Lock()
+				generatedMu.Lock()
+				if len(outcome.generated) > 0 {
 					if _, ok := generatedByLanguage[langCopy]; !ok {
 						generatedByLanguage[langCopy] = make(map[string]struct{})
 					}
-					for _, gf := range generated {
+					for _, gf := range outcome.generated {
 						generatedByLanguage[langCopy][gf] = struct{}{}
 					}
-					generatedMu.Unlock()
 				}
+				if len(outcome.warnings) > 0 {
+					warnings = append(warnings, outcome.warnings...)
+				}
+				generatedMu.Unlock()
 
 				return nil
 			}
@@ -257,14 +266,17 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 		if tr.Error != nil {
 			errors = append(errors, tr.Error)
 			e.log.Warn("Task failed", "index", tr.Index, "error", tr.Error)
-		} else {
-			result.FilesGenerated++
 		}
 	}
 
 	if len(errors) > 0 {
 		e.log.Error("Build execution completed with errors", "count", len(errors))
 		return result, errors[0] // Return first error
+	}
+
+	result.Warnings = append(result.Warnings, uniqueSorted(warnings)...)
+	for _, files := range generatedByLanguage {
+		result.FilesGenerated += len(files)
 	}
 
 	if err := e.postProcessLanguages(ctx, plan, result); err != nil {
@@ -276,7 +288,7 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 }
 
 // compileFile compiles a single proto file for a language
-func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language string, plan *ExecutionPlan) ([]string, error) {
+func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language string, plan *ExecutionPlan) (*compileOutcome, error) {
 	e.log.Debug("Compiling file",
 		"file", file.Path,
 		"language", language,
@@ -288,7 +300,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 			"file", file.Path,
 			"language", language,
 		)
-		return nil, nil
+		return &compileOutcome{}, nil
 	}
 
 	// Check versioning
@@ -308,7 +320,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 				"file", file.Path,
 				"language", language,
 			)
-			return nil, nil
+			return &compileOutcome{}, nil
 		}
 
 		// Generate version
@@ -344,7 +356,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 			"language", language,
 			"file", file.Path,
 		)
-		return nil, nil
+		return &compileOutcome{}, nil
 	}
 
 	// Prepare compiler options
@@ -368,12 +380,18 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 		return nil, err
 	}
 
-	if !result.Success {
+	if len(result.Warnings) > 0 || !result.Success {
 		e.log.Warn("Compilation completed with warnings",
 			"file", file.Path,
 			"language", language,
 			"warnings", len(result.Warnings),
 		)
+		for _, warning := range result.Warnings {
+			e.log.Warn("⚠️  "+warning,
+				"file", file.Path,
+				"language", language,
+			)
+		}
 	}
 
 	// Save version state if versioning is enabled
@@ -394,7 +412,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 		"generated", len(result.GeneratedFiles),
 	)
 
-	return result.GeneratedFiles, nil
+	return &compileOutcome{generated: result.GeneratedFiles, warnings: result.Warnings}, nil
 }
 
 func (e *executor) postProcessLanguages(ctx context.Context, plan *ExecutionPlan, result *ExecutionResult) error {
