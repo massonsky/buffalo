@@ -65,6 +65,8 @@ func (r *dependencyResolver) Resolve(ctx context.Context, files []*ProtoFile) (*
 // topologicalSort performs topological sorting on the dependency graph
 func (r *dependencyResolver) topologicalSort(graph *DependencyGraph) ([]string, error) {
 	// Kahn's algorithm for topological sorting
+	// Edges[node] = list of dependencies (node depends on each dep)
+	// So dep must come before node in the order
 	inDegree := make(map[string]int)
 
 	// Initialize in-degrees
@@ -72,16 +74,18 @@ func (r *dependencyResolver) topologicalSort(graph *DependencyGraph) ([]string, 
 		inDegree[node] = 0
 	}
 
-	// Calculate in-degrees
-	for _, deps := range graph.Edges {
+	// Build reverse edges: dep -> list of nodes that depend on dep
+	dependents := make(map[string][]string)
+	for node, deps := range graph.Edges {
 		for _, dep := range deps {
 			if _, exists := graph.Nodes[dep]; exists {
-				inDegree[dep]++
+				inDegree[node]++
+				dependents[dep] = append(dependents[dep], node)
 			}
 		}
 	}
 
-	// Find nodes with in-degree 0
+	// Find nodes with in-degree 0 (no dependencies)
 	queue := []string{}
 	for node, degree := range inDegree {
 		if degree == 0 {
@@ -97,14 +101,14 @@ func (r *dependencyResolver) topologicalSort(graph *DependencyGraph) ([]string, 
 		queue = queue[1:]
 		result = append(result, node)
 
-		// Reduce in-degree for dependent nodes
-		for _, dep := range graph.Edges[node] {
-			if _, exists := graph.Nodes[dep]; !exists {
+		// Reduce in-degree for nodes that depend on this node
+		for _, dependent := range dependents[node] {
+			if _, exists := graph.Nodes[dependent]; !exists {
 				continue
 			}
-			inDegree[dep]--
-			if inDegree[dep] == 0 {
-				queue = append(queue, dep)
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				queue = append(queue, dependent)
 			}
 		}
 	}

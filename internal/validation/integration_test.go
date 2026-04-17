@@ -602,7 +602,8 @@ func readFile(t *testing.T, path string) string {
 func filterFiles(files []string, pattern string) []string {
 	var result []string
 	for _, f := range files {
-		if strings.Contains(f, pattern) {
+		normalized := filepath.ToSlash(f)
+		if strings.Contains(normalized, pattern) {
 			result = append(result, f)
 		}
 	}

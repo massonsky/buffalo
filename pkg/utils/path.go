@@ -137,7 +137,7 @@ func ExpandPath(path string) (string, error) {
 
 // ToSlash converts path separators to forward slashes (for cross-platform compatibility).
 func ToSlash(path string) string {
-	return filepath.ToSlash(path)
+	return strings.ReplaceAll(path, "\\", "/")
 }
 
 // FromSlash converts forward slashes to OS-specific separators.

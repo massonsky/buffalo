@@ -213,7 +213,6 @@ func TestCompiler_BuildProtocArgs(t *testing.T) {
 		hasImport3 := false
 		hasImport4 := false
 		hasPythonOut := false
-		hasProtoFile := false
 
 		for _, arg := range args {
 			if arg == "--proto_path=/import1" {
@@ -231,9 +230,6 @@ func TestCompiler_BuildProtocArgs(t *testing.T) {
 			if arg == "--python_out=/output" {
 				hasPythonOut = true
 			}
-			if arg == "/path/to/test.proto" {
-				hasProtoFile = true
-			}
 		}
 
 		if !hasImport3 || !hasImport4 {
@@ -245,9 +241,7 @@ func TestCompiler_BuildProtocArgs(t *testing.T) {
 		if !hasPythonOut {
 			t.Error("Expected --python_out flag")
 		}
-		if !hasProtoFile {
-			t.Error("Expected proto file path in args")
-		}
+		// Note: proto file path is added by the caller, not by buildProtocArgs
 	})
 
 	t.Run("grpc_python_out", func(t *testing.T) {
