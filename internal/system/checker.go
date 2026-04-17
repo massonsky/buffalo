@@ -2,7 +2,9 @@ package system
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -104,7 +106,7 @@ func (sc *SystemChecker) checkGo() []CheckResult {
 		Command:      "go",
 		Args:         []string{"version"},
 		InstallGuide: "https://golang.org/dl/",
-		Critical:     true,
+		Critical:     false,
 	}
 
 	if runtime.GOOS == "windows" {
@@ -124,7 +126,7 @@ func (sc *SystemChecker) checkGo() []CheckResult {
 		Args:           []string{"--version"},
 		InstallCommand: "go install google.golang.org/protobuf/cmd/protoc-gen-go@latest",
 		InstallGuide:   "https://grpc.io/docs/languages/go/quickstart/",
-		Critical:       true,
+		Critical:       false,
 	}
 	results = append(results, sc.checkCommand(protoGenGoReq))
 
@@ -136,7 +138,7 @@ func (sc *SystemChecker) checkGo() []CheckResult {
 			Args:           []string{"--version"},
 			InstallCommand: "go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest",
 			InstallGuide:   "https://grpc.io/docs/languages/go/quickstart/",
-			Critical:       true,
+			Critical:       false,
 		}
 		results = append(results, sc.checkCommand(grpcGenReq))
 	}
@@ -148,10 +150,7 @@ func (sc *SystemChecker) checkGo() []CheckResult {
 func (sc *SystemChecker) checkPython() []CheckResult {
 	results := []CheckResult{}
 
-	pythonCmd := "python3"
-	if runtime.GOOS == "windows" {
-		pythonCmd = "python"
-	}
+	pythonCmd := findPythonCmd()
 
 	// Проверка Python
 	pyReq := Requirement{
@@ -159,7 +158,7 @@ func (sc *SystemChecker) checkPython() []CheckResult {
 		Command:      pythonCmd,
 		Args:         []string{"--version"},
 		InstallGuide: "https://www.python.org/downloads/",
-		Critical:     true,
+		Critical:     false,
 	}
 
 	if runtime.GOOS == "windows" {
@@ -175,10 +174,11 @@ func (sc *SystemChecker) checkPython() []CheckResult {
 	// Проверка grpcio-tools
 	grpcToolsReq := Requirement{
 		Name:         "grpcio-tools (Python)",
-		Critical:     true,
+		Critical:     false,
 		InstallGuide: "https://grpc.io/docs/languages/python/quickstart/",
 		CheckFunc: func() error {
-			cmd := exec.Command(pythonCmd, "-c", "import grpc_tools; print(grpc_tools.__version__)")
+			resolved := findPythonCmd()
+			cmd := exec.Command(resolved, "-c", "import grpc_tools; print(grpc_tools.__version__)")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("не установлен: %v", err)
@@ -201,10 +201,11 @@ func (sc *SystemChecker) checkPython() []CheckResult {
 	// Проверка protobuf (Python)
 	protobufReq := Requirement{
 		Name:         "protobuf (Python)",
-		Critical:     true,
+		Critical:     false,
 		InstallGuide: "https://developers.google.com/protocol-buffers/docs/pythontutorial",
 		CheckFunc: func() error {
-			cmd := exec.Command(pythonCmd, "-c", "import google.protobuf; print(google.protobuf.__version__)")
+			resolved := findPythonCmd()
+			cmd := exec.Command(resolved, "-c", "import google.protobuf; print(google.protobuf.__version__)")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				return fmt.Errorf("не установлен: %v", err)
@@ -237,7 +238,7 @@ func (sc *SystemChecker) checkRust() []CheckResult {
 		Command:      "rustc",
 		Args:         []string{"--version"},
 		InstallGuide: "https://rustup.rs/",
-		Critical:     true,
+		Critical:     false,
 	}
 
 	if runtime.GOOS == "windows" {
@@ -255,7 +256,7 @@ func (sc *SystemChecker) checkRust() []CheckResult {
 		Args:           []string{"--version"},
 		InstallCommand: "Устанавливается вместе с Rust через rustup",
 		InstallGuide:   "https://rustup.rs/",
-		Critical:       true,
+		Critical:       false,
 	}
 	results = append(results, sc.checkCommand(cargoReq))
 
@@ -292,7 +293,7 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 				Args:           []string{},
 				InstallCommand: "Установите Visual Studio с компонентами C++",
 				InstallGuide:   "https://visualstudio.microsoft.com/",
-				Critical:       true,
+				Critical:       false,
 			},
 			"g++": {
 				Name:           "G++ Compiler",
@@ -300,7 +301,7 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 				Args:           []string{"--version"},
 				InstallCommand: "scoop install gcc",
 				InstallGuide:   "https://gcc.gnu.org/",
-				Critical:       true,
+				Critical:       false,
 			},
 			"clang++": {
 				Name:           "Clang++ Compiler",
@@ -308,7 +309,7 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 				Args:           []string{"--version"},
 				InstallCommand: "scoop install llvm",
 				InstallGuide:   "https://clang.llvm.org/",
-				Critical:       true,
+				Critical:       false,
 			},
 		}
 	} else if runtime.GOOS == "darwin" {
@@ -319,7 +320,7 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 				Args:           []string{"--version"},
 				InstallCommand: "xcode-select --install",
 				InstallGuide:   "https://clang.llvm.org/",
-				Critical:       true,
+				Critical:       false,
 			},
 			"g++": {
 				Name:           "G++ Compiler",
@@ -327,7 +328,7 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 				Args:           []string{"--version"},
 				InstallCommand: "brew install gcc",
 				InstallGuide:   "https://gcc.gnu.org/",
-				Critical:       true,
+				Critical:       false,
 			},
 		}
 	} else {
@@ -338,7 +339,7 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 				Args:           []string{"--version"},
 				InstallCommand: "sudo apt install -y build-essential",
 				InstallGuide:   "https://gcc.gnu.org/",
-				Critical:       true,
+				Critical:       false,
 			},
 			"clang++": {
 				Name:           "Clang++ Compiler",
@@ -346,7 +347,7 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 				Args:           []string{"--version"},
 				InstallCommand: "sudo apt install -y clang",
 				InstallGuide:   "https://clang.llvm.org/",
-				Critical:       true,
+				Critical:       false,
 			},
 		}
 	}
@@ -413,6 +414,122 @@ func (sc *SystemChecker) checkCpp() []CheckResult {
 	return results
 }
 
+// findPythonCmd detects the Python interpreter, checking virtual environments
+// (.venv, venv, .env, env) and VIRTUAL_ENV before falling back to system PATH.
+func findPythonCmd() string {
+	base := "python3"
+	if runtime.GOOS == "windows" {
+		base = "python"
+	}
+
+	// 1. Check VIRTUAL_ENV environment variable (activated venv)
+	if venv := os.Getenv("VIRTUAL_ENV"); venv != "" {
+		candidate := filepath.Join(venv, venvBinDir(), base)
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// 2. Check common venv directories relative to cwd
+	venvDirs := []string{".venv", "venv", ".env", "env"}
+	for _, dir := range venvDirs {
+		candidate := filepath.Join(dir, venvBinDir(), base)
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// 3. Fall back to system PATH
+	if p, err := exec.LookPath(base); err == nil {
+		return p
+	}
+	return base
+}
+
+// findCommand looks for a command in virtual environments and local tool
+// directories before falling back to system PATH.
+func findCommand(name string) string {
+	// Check VIRTUAL_ENV
+	if venv := os.Getenv("VIRTUAL_ENV"); venv != "" {
+		candidate := filepath.Join(venv, venvBinDir(), name)
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// Check common venv directories
+	venvDirs := []string{".venv", "venv", ".env", "env"}
+	for _, dir := range venvDirs {
+		candidate := filepath.Join(dir, venvBinDir(), name)
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// Check GOPATH/bin for Go tools
+	if gopath := os.Getenv("GOPATH"); gopath != "" {
+		candidate := filepath.Join(gopath, "bin", name)
+		if runtime.GOOS == "windows" {
+			candidate += ".exe"
+		}
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// Check GOBIN
+	if gobin := os.Getenv("GOBIN"); gobin != "" {
+		candidate := filepath.Join(gobin, name)
+		if runtime.GOOS == "windows" {
+			candidate += ".exe"
+		}
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// Check HOME/go/bin (default GOPATH)
+	if home, err := os.UserHomeDir(); err == nil {
+		candidate := filepath.Join(home, "go", "bin", name)
+		if runtime.GOOS == "windows" {
+			candidate += ".exe"
+		}
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// Check cargo bin for Rust tools
+	if home, err := os.UserHomeDir(); err == nil {
+		candidate := filepath.Join(home, ".cargo", "bin", name)
+		if runtime.GOOS == "windows" {
+			candidate += ".exe"
+		}
+		if fileExists(candidate) {
+			return candidate
+		}
+	}
+
+	// Fall back to PATH
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	return name
+}
+
+// venvBinDir returns the subdirectory name for binaries in a virtual environment.
+func venvBinDir() string {
+	if runtime.GOOS == "windows" {
+		return "Scripts"
+	}
+	return "bin"
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
 // checkCommand проверяет наличие команды в системе
 func (sc *SystemChecker) checkCommand(req Requirement) CheckResult {
 	result := CheckResult{
@@ -421,20 +538,26 @@ func (sc *SystemChecker) checkCommand(req Requirement) CheckResult {
 		InstallGuide:   req.InstallGuide,
 	}
 
-	path, err := exec.LookPath(req.Command)
+	resolved := findCommand(req.Command)
+	path, err := exec.LookPath(resolved)
 	if err != nil {
-		result.Installed = false
-		result.Error = fmt.Errorf("команда '%s' не найдена в PATH", req.Command)
-		return result
+		// findCommand may return an absolute path that LookPath doesn't handle
+		if fileExists(resolved) {
+			path = resolved
+		} else {
+			result.Installed = false
+			result.Error = fmt.Errorf("команда '%s' не найдена в PATH и локальных окружениях", req.Command)
+			return result
+		}
 	}
 
 	// Выполняем команду с аргументами для получения версии
 	if len(req.Args) > 0 {
-		cmd := exec.Command(req.Command, req.Args...)
+		cmd := exec.Command(path, req.Args...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			result.Installed = false
-			result.Error = fmt.Errorf("не удалось выполнить '%s %s': %v", req.Command, strings.Join(req.Args, " "), err)
+			result.Error = fmt.Errorf("не удалось выполнить '%s %s': %v", path, strings.Join(req.Args, " "), err)
 			return result
 		}
 

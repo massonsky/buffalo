@@ -138,12 +138,15 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		// Выводим предупреждения
 		hasWarnings := false
 		for _, result := range sysResults {
-			if !result.Installed && !result.Requirement.Critical {
+			if !result.Installed {
 				if !hasWarnings {
-					log.Warn("⚠️  Некоторые опциональные компоненты отсутствуют:")
+					log.Warn("⚠️  Некоторые компоненты отсутствуют:")
 					hasWarnings = true
 				}
 				log.Warn(fmt.Sprintf("   • %s", result.Requirement.Name))
+				if result.InstallCommand != "" {
+					log.Info(fmt.Sprintf("     💡 Установка: %s", result.InstallCommand))
+				}
 			}
 		}
 		if hasWarnings {
@@ -487,6 +490,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 // loadConfig loads configuration from viper
 func loadConfig(_ *logger.Logger) (*config.Config, error) {
+	// If --config flag was explicitly provided, always use it
+	if cfgFile != "" {
+		return config.LoadFromFile(cfgFile)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, err
@@ -496,6 +503,15 @@ func loadConfig(_ *logger.Logger) (*config.Config, error) {
 
 // loadConfigWithPath loads configuration and returns the config file path
 func loadConfigWithPath(_ *logger.Logger) (*config.Config, string, error) {
+	// If --config flag was explicitly provided, always use it
+	if cfgFile != "" {
+		cfg, err := config.LoadFromFile(cfgFile)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to load config from %s: %w", cfgFile, err)
+		}
+		return cfg, cfgFile, nil
+	}
+
 	// Try to find config file in current directory
 	configPaths := []string{
 		"buffalo.yaml",
