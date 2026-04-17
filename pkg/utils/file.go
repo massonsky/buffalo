@@ -240,7 +240,7 @@ func WriteFile(path string, data []byte) error {
 		return err
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to write file: %s", path)
 	}
 

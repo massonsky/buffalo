@@ -255,7 +255,7 @@ func (it *Integrator) WriteBuildFiles(builds []GeneratedBuild) error {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("bazel: mkdir %s: %w", dir, err)
 		}
-		if err := os.WriteFile(build.Path, []byte(build.Content), 0o644); err != nil {
+		if err := os.WriteFile(build.Path, []byte(build.Content), 0o600); err != nil {
 			return fmt.Errorf("bazel: write %s: %w", build.Path, err)
 		}
 	}

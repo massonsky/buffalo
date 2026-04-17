@@ -134,7 +134,7 @@ func (p *ValidatePlugin) Execute(ctx context.Context, input *plugin.Input) (*plu
 				output.Success = false
 				continue
 			}
-			if err := os.WriteFile(outPath, []byte(f.Content), 0644); err != nil {
+			if err := os.WriteFile(outPath, []byte(f.Content), 0600); err != nil {
 				output.Errors = append(output.Errors,
 					fmt.Sprintf("write failed: %v", err))
 				output.Success = false

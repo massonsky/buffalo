@@ -214,7 +214,7 @@ func (m *Manager) GenerateVersion(protoPath string) (string, error) {
 		// Parse version number and increment
 		versionNum := 1
 		if strings.HasPrefix(prevVersion.Version, "v") {
-			fmt.Sscanf(prevVersion.Version, "v%d", &versionNum)
+			_, _ = fmt.Sscanf(prevVersion.Version, "v%d", &versionNum)
 			versionNum++
 		}
 		return fmt.Sprintf("v%d", versionNum), nil
@@ -267,7 +267,7 @@ func (m *Manager) SaveVersion(protoPath, language, version string, outputPath st
 
 	// Write state (hash|version|timestamp|outputPath)
 	state := fmt.Sprintf("%s|%s|%s|%s", hash, version, time.Now().Format(time.RFC3339), outputPath)
-	if err := os.WriteFile(stateFile, []byte(state), 0644); err != nil {
+	if err := os.WriteFile(stateFile, []byte(state), 0600); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to write state file: %s", stateFile)
 	}
 
@@ -385,7 +385,7 @@ func (m *Manager) saveSemanticVersion(protoPath, version, outputPath string) err
 
 	// Write state (hash|version|timestamp|outputPath)
 	state := fmt.Sprintf("%s|%s|%s|%s", hash, version, time.Now().Format(time.RFC3339), outputPath)
-	if err := os.WriteFile(stateFile, []byte(state), 0644); err != nil {
+	if err := os.WriteFile(stateFile, []byte(state), 0600); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to write semantic state file")
 	}
 

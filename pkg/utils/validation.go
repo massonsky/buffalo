@@ -143,7 +143,7 @@ func ValidateOutputDir(path string) (*ValidationResult, error) {
 
 	// Check if directory is writable by trying to create a temp file
 	tempFile := filepath.Join(path, ".buffalo_test_write")
-	if err := os.WriteFile(tempFile, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(tempFile, []byte("test"), 0600); err != nil {
 		result.AddError("output directory is not writable: %s", path)
 		return result, nil
 	}

@@ -307,7 +307,7 @@ func (m *Migrator) createBackup(configPath string, data map[string]interface{}) 
 		return "", err
 	}
 
-	if err := os.WriteFile(backupPath, yamlData, 0644); err != nil {
+	if err := os.WriteFile(backupPath, yamlData, 0600); err != nil {
 		return "", err
 	}
 
@@ -325,7 +325,7 @@ func (m *Migrator) writeConfig(configPath string, data map[string]interface{}) e
 	// Add header comment
 	header := "# Buffalo Configuration\n# Migrated automatically by buffalo upgrade\n\n"
 
-	return os.WriteFile(configPath, []byte(header+string(yamlData)), 0644)
+	return os.WriteFile(configPath, []byte(header+string(yamlData)), 0600)
 }
 
 // SaveRollbackInfo saves rollback information for later use.
@@ -341,7 +341,7 @@ func (m *Migrator) SaveRollbackInfo(info *RollbackInfo) error {
 		return errors.Wrap(err, errors.ErrIO, "failed to marshal rollback info")
 	}
 
-	return os.WriteFile(rollbackPath, data, 0644)
+	return os.WriteFile(rollbackPath, data, 0600)
 }
 
 // LoadRollbackInfo loads the most recent rollback information.
@@ -382,7 +382,7 @@ func (m *Migrator) Rollback(configPath string) error {
 			return errors.Wrap(err, errors.ErrIO, "failed to read backup file")
 		}
 
-		if err := os.WriteFile(configPath, data, 0644); err != nil {
+		if err := os.WriteFile(configPath, data, 0600); err != nil {
 			return errors.Wrap(err, errors.ErrIO, "failed to restore config")
 		}
 	}

@@ -223,13 +223,13 @@ func (s *Store) Save(metrics *BuildMetrics) error {
 		return fmt.Errorf("failed to marshal metrics: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write metrics file: %w", err)
 	}
 
 	// Also update latest.json
 	latestPath := filepath.Join(s.dir, "latest.json")
-	if err := os.WriteFile(latestPath, data, 0644); err != nil {
+	if err := os.WriteFile(latestPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write latest metrics: %w", err)
 	}
 
