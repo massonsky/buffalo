@@ -11,10 +11,7 @@ linters:
     - staticcheck
     - unused
     - gosimple
-    - structcheck
-    - varcheck
     - ineffassign
-    - deadcode
     - typecheck
     - gosec
     - gocyclo
@@ -25,13 +22,10 @@ linters:
     - unparam
     - nakedret
     - prealloc
-    - exportloopref
     - nolintlint
   
   disable:
     - exhaustive
-    - exhaustivestruct
-    - godox
 
 linters-settings:
   gocyclo:
@@ -74,6 +68,5 @@ issues:
   max-same-issues: 0
 
 output:
-  format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
