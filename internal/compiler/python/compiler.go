@@ -449,9 +449,13 @@ func (c *Compiler) fixImports(opts compiler.CompileOptions, _ []string) error {
 	outputDir := opts.OutputDir
 
 	// Get the working directory to calculate the full module path
-	workDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get working directory: %v", err)
+	workDir := opts.ProjectDir
+	if workDir == "" {
+		var err error
+		workDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get working directory: %v", err)
+		}
 	}
 
 	// Calculate the Python module prefix from the output directory relative to working directory

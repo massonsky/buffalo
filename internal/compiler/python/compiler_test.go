@@ -427,22 +427,12 @@ class MyServiceStub:
 		t.Fatalf("Failed to create pb2 file: %v", err)
 	}
 
-	// Change to temp dir to simulate working directory
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	defer os.Chdir(oldWd)
-
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("Failed to change to temp directory: %v", err)
-	}
-
 	// Fix imports
 	generatedFiles := []string{grpcFile, pb2File}
 	opts := compiler.CompileOptions{
 		OutputDir:              outputDir,
 		PreserveProtoStructure: true,
+		ProjectDir:             tempDir,
 	}
 	if err := c.fixImports(opts, generatedFiles); err != nil {
 		t.Fatalf("fixImports failed: %v", err)
@@ -571,22 +561,12 @@ class MyServiceStub:
 		t.Fatalf("Failed to create grpc file: %v", err)
 	}
 
-	// Change to temp dir to simulate working directory
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	defer os.Chdir(oldWd)
-
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("Failed to change to temp directory: %v", err)
-	}
-
 	// Fix imports with PreserveProtoStructure = false
 	generatedFiles := []string{grpcFile}
 	compileOpts := compiler.CompileOptions{
 		OutputDir:              outputDir,
 		PreserveProtoStructure: false,
+		ProjectDir:             tempDir,
 	}
 	if err := c.fixImports(compileOpts, generatedFiles); err != nil {
 		t.Fatalf("fixImports failed: %v", err)
@@ -635,22 +615,12 @@ class MyServiceStub:
 		t.Fatalf("Failed to create grpc file: %v", err)
 	}
 
-	// Change to temp dir
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	defer os.Chdir(oldWd)
-
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("Failed to change to temp directory: %v", err)
-	}
-
 	// Fix imports with PreserveProtoStructure = true
 	generatedFiles := []string{grpcFile}
 	compileOpts := compiler.CompileOptions{
 		OutputDir:              outputDir,
 		PreserveProtoStructure: true,
+		ProjectDir:             tempDir,
 	}
 	if err := c.fixImports(compileOpts, generatedFiles); err != nil {
 		t.Fatalf("fixImports failed: %v", err)
@@ -700,22 +670,12 @@ class MyServiceStub:
 		t.Fatalf("Failed to create grpc file: %v", err)
 	}
 
-	// Change to temp dir
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	defer os.Chdir(oldWd)
-
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("Failed to change to temp directory: %v", err)
-	}
-
 	// Fix imports
 	generatedFiles := []string{grpcFile}
 	opts := compiler.CompileOptions{
 		OutputDir:              outputDir,
 		PreserveProtoStructure: false,
+		ProjectDir:             tempDir,
 	}
 	if err := c.fixImports(opts, generatedFiles); err != nil {
 		t.Fatalf("fixImports failed: %v", err)

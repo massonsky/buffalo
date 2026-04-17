@@ -31,6 +31,10 @@ type CompileOptions struct {
 
 	// PreserveProtoStructure preserves the proto directory structure in output
 	PreserveProtoStructure bool
+
+	// ProjectDir is the project root directory used for calculating relative paths.
+	// If empty, os.Getwd() is used as fallback.
+	ProjectDir string
 }
 
 // CompileResult contains the results of compilation
