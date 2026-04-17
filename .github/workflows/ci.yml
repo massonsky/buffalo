@@ -18,7 +18,7 @@ permissions:
 
 env:
   GO_VERSION: "1.24"
-  VERSION_PREFIX: "1.30"
+  VERSION_PREFIX: "1.32"
 
 jobs:
   lint:
@@ -80,7 +80,14 @@ jobs:
         id: version
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          VERSION="${{ env.VERSION_PREFIX }}.${SHORT_SHA}"
+          PREFIX="${{ env.VERSION_PREFIX }}"
+          LATEST=$(git tag -l "v${PREFIX}.*" --sort=-v:refname | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -1)
+          if [[ "$LATEST" =~ ^v[0-9]+\.[0-9]+\.([0-9]+)$ ]]; then
+            PATCH=$(( ${BASH_REMATCH[1]} + 1 ))
+          else
+            PATCH=0
+          fi
+          VERSION="${PREFIX}.${PATCH}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "Building version: ${VERSION}"
@@ -128,7 +135,14 @@ jobs:
         id: version
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          VERSION="${{ env.VERSION_PREFIX }}.${SHORT_SHA}"
+          PREFIX="${{ env.VERSION_PREFIX }}"
+          LATEST=$(git tag -l "v${PREFIX}.*" --sort=-v:refname | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -1)
+          if [[ "$LATEST" =~ ^v[0-9]+\.[0-9]+\.([0-9]+)$ ]]; then
+            PATCH=$(( ${BASH_REMATCH[1]} + 1 ))
+          else
+            PATCH=0
+          fi
+          VERSION="${PREFIX}.${PATCH}"
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"

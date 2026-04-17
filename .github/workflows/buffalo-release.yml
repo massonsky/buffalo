@@ -75,6 +75,13 @@ jobs:
             ## Buffalo ${{ steps.version.outputs.version }}
 
             ### Installation
+
+            **Go install (recommended):**
+            ```bash
+            go install github.com/massonsky/buffalo/cmd/buffalo@${{ steps.version.outputs.tag }}
+            ```
+
+            **Binary download:**
             ```bash
             # Linux (amd64)
             curl -L -o buffalo https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/buffalo-linux-amd64
@@ -99,3 +106,13 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main || true
+          git checkout main 2>/dev/null || git checkout -b main
+          git merge --ff-only ${{ github.sha }} \
+            -m "ci: merge release ${{ steps.version.outputs.tag }} → main"
+          git push origin main
