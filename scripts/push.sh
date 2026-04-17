@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-usage() { echo "Usage: $0 -m <commit message>"; exit 1; }
+usage() { echo "Usage: $0 -m <commit message> [-maj <major>] [-min <minor>]"; exit 1; }
 
 MESSAGE=""
-while getopts "m:" opt; do
-    case $opt in
-        m) MESSAGE="$OPTARG" ;;
-        *) usage ;;
+MAJOR=1
+MINOR=32
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -m)   MESSAGE="$2"; shift 2 ;;
+        -maj) MAJOR="$2"; shift 2 ;;
+        -min) MINOR="$2"; shift 2 ;;
+        *)    usage ;;
     esac
 done
 [ -z "$MESSAGE" ] && usage
@@ -24,7 +29,7 @@ echo "=== git commit ==="
 git commit -m "$MESSAGE"
 
 HASH=$(git rev-parse --short HEAD)
-TAG="v1.32.$HASH"
+TAG="v${MAJOR}.${MINOR}.$HASH"
 
 echo ""
 echo "=== git tag $TAG ==="

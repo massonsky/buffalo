@@ -1,7 +1,13 @@
 param(
     [Parameter(Mandatory=$true)]
     [Alias("m")]
-    [string]$Message
+    [string]$Message,
+
+    [Alias("maj")]
+    [int]$Major = 1,
+
+    [Alias("min")]
+    [int]$Minor = 32
 )
 
 Set-StrictMode -Version Latest
@@ -18,7 +24,7 @@ git commit -m $Message
 if ($LASTEXITCODE -ne 0) { Write-Host "Commit failed" -ForegroundColor Red; exit 1 }
 
 $hash = git rev-parse --short HEAD
-$tag = "v1.32.$hash"
+$tag = "v$Major.$Minor.$hash"
 
 Write-Host "`n=== git tag $tag ===" -ForegroundColor Cyan
 git tag $tag
