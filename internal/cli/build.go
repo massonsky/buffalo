@@ -213,7 +213,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				integrator.SetBazelPath(cfg.Bazel.BazelPath)
 			}
 
-			// Discover proto_library targets
+			// Discover proto targets (proto_library and filegroup with proto globs)
 			patterns := buildBazelPatterns
 			if len(patterns) == 0 {
 				patterns = cfg.Bazel.Patterns
@@ -225,13 +225,18 @@ func runBuild(cmd *cobra.Command, args []string) error {
 					logger.Any("error", err))
 			} else if len(targets) > 0 {
 				bazelTargets = targets
+				syncMode := integrator.GetSyncMode()
 				log.Info("🎯 Discovered Bazel proto targets",
-					logger.Int("count", len(targets)))
+					logger.Int("count", len(targets)),
+					logger.String("mode", string(syncMode)),
+				)
 
 				for _, t := range targets {
 					log.Debug("  Target",
+						logger.String("rule", t.Rule),
 						logger.String("label", t.Package+":"+t.Name),
 						logger.Int("srcs", len(t.Srcs)),
+						logger.Int("globs", len(t.GlobPatterns)),
 						logger.Int("deps", len(t.Deps)),
 					)
 				}
@@ -253,6 +258,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 					log.Info("📄 Using proto files from Bazel targets",
 						logger.Int("count", len(allProtoFiles)))
 				}
+			} else {
+				log.Info("🔧 Bazel workspace detected but no proto targets in BUILD files")
+				log.Info("   Buffalo will compile proto files normally, sync BUILD.bazel after build")
 			}
 		} else {
 			if buildBazel {
@@ -461,14 +469,16 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	// Bazel post-build: generate BUILD.bazel files for generated code
 	generateBazelBuilds := cfg.Bazel.GenerateBuildFiles || buildBazel
-	if bazelIntegrator != nil && len(bazelTargets) > 0 && generateBazelBuilds {
-		log.Info("🔧 Generating Bazel BUILD files for generated code...")
+	if bazelIntegrator != nil && generateBazelBuilds {
+		syncMode := bazelIntegrator.GetSyncMode()
+		log.Info("🔧 Generating Bazel BUILD files for generated code...",
+			logger.String("mode", string(syncMode)))
 
 		err := bazelIntegrator.SyncAfterBuild(ctx, bazelTargets, languages, cfg.Output.BaseDir)
 		if err != nil {
 			log.Warn("Failed to generate Bazel BUILD files", logger.Any("error", err))
 		} else {
-			log.Info("✅ Bazel BUILD files generated successfully")
+			log.Info("✅ Bazel BUILD files synced (existing custom BUILD files preserved)")
 		}
 	}
 

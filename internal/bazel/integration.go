@@ -11,11 +11,21 @@ import (
 // Integrator is the main entry point for Buffalo ↔ Bazel integration.
 // It detects a Bazel workspace, discovers proto_library targets,
 // resolves proto files, and after compilation generates BUILD.bazel files.
+//
+// Two modes of operation:
+//
+//  1. proto_library mode: Bazel defines proto_library rules, Buffalo discovers them
+//     and generates language-specific BUILD targets (go_proto_library, etc.).
+//
+//  2. filegroup mode: Bazel declares proto sources via filegroup(glob()),
+//     Buffalo compiles them and generates filegroup/library BUILD targets
+//     for downstream services (compile_data, deps).
 type Integrator struct {
-	workspace  *Workspace
-	querier    *BazelQuerier
-	generator  *Generator
-	useBazelQuery bool // whether to use `bazel query` or file-based parsing
+	workspace     *Workspace
+	querier       *BazelQuerier
+	generator     *Generator
+	useBazelQuery bool     // whether to use `bazel query` or file-based parsing
+	syncMode      SyncMode // detected mode of collaboration
 }
 
 // NewIntegrator creates an Integrator for the given directory.
@@ -33,20 +43,22 @@ func NewIntegrator(dir string) (*Integrator, error) {
 	generator := NewGenerator(ws.Root, ws.ModuleName)
 
 	return &Integrator{
-		workspace:  ws,
-		querier:    querier,
-		generator:  generator,
+		workspace:     ws,
+		querier:       querier,
+		generator:     generator,
 		useBazelQuery: IsBazelAvailable(),
+		syncMode:      SyncModeFilegroup, // default, auto-detected later
 	}, nil
 }
 
 // NewIntegratorFromWorkspace creates an Integrator from an already-detected workspace.
 func NewIntegratorFromWorkspace(ws *Workspace) *Integrator {
 	return &Integrator{
-		workspace:  ws,
-		querier:    NewQuerier(ws.Root),
-		generator:  NewGenerator(ws.Root, ws.ModuleName),
+		workspace:     ws,
+		querier:       NewQuerier(ws.Root),
+		generator:     NewGenerator(ws.Root, ws.ModuleName),
 		useBazelQuery: IsBazelAvailable(),
+		syncMode:      SyncModeFilegroup,
 	}
 }
 
@@ -55,18 +67,62 @@ func (it *Integrator) GetWorkspace() *Workspace {
 	return it.workspace
 }
 
+// GetSyncMode returns the detected sync mode.
+func (it *Integrator) GetSyncMode() SyncMode {
+	return it.syncMode
+}
+
 // SetBazelPath sets a custom bazel binary path.
 func (it *Integrator) SetBazelPath(path string) {
 	it.querier.SetBazelPath(path)
 }
 
-// DiscoverProtoTargets finds all proto_library targets in the workspace.
+// DiscoverProtoTargets finds all proto-providing targets in the workspace.
 // Uses `bazel query` when available, otherwise falls back to file parsing.
+// Auto-detects the sync mode based on discovered targets.
 func (it *Integrator) DiscoverProtoTargets(ctx context.Context, patterns []string) ([]BazelTarget, error) {
+	var targets []BazelTarget
+	var err error
+
 	if it.useBazelQuery {
-		return it.discoverViaQuery(ctx, patterns)
+		targets, err = it.discoverViaQuery(ctx, patterns)
+	} else {
+		targets, err = it.discoverViaFiles(ctx)
 	}
-	return it.discoverViaFiles(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Auto-detect sync mode based on what we found
+	it.syncMode = it.detectSyncMode(targets)
+
+	return targets, nil
+}
+
+// detectSyncMode determines the collaboration mode based on discovered targets.
+func (it *Integrator) detectSyncMode(targets []BazelTarget) SyncMode {
+	hasProtoLibrary := false
+	hasFilegroup := false
+
+	for _, t := range targets {
+		if t.Rule == "proto_library" {
+			hasProtoLibrary = true
+		}
+		if t.Rule == "filegroup" && t.IsProtoSource() {
+			hasFilegroup = true
+		}
+	}
+
+	// proto_library takes priority (more structured)
+	if hasProtoLibrary {
+		return SyncModeProtoLibrary
+	}
+	if hasFilegroup {
+		return SyncModeFilegroup
+	}
+	// Default to filegroup if we found proto files via file scan
+	return SyncModeFilegroup
 }
 
 // discoverViaQuery uses `bazel query kind(proto_library, //...)`.
@@ -106,6 +162,11 @@ func (it *Integrator) discoverViaQuery(ctx context.Context, patterns []string) (
 		}
 	}
 
+	// If bazel query found nothing, fall back to file parsing
+	if len(allTargets) == 0 {
+		return it.discoverViaFiles(ctx)
+	}
+
 	return allTargets, nil
 }
 
@@ -131,7 +192,7 @@ func (it *Integrator) discoverViaFiles(ctx context.Context) ([]BazelTarget, erro
 	return allTargets, nil
 }
 
-// ResolveProtoFilePaths resolves all proto_library targets to actual file paths
+// ResolveProtoFilePaths resolves all proto-providing targets to actual file paths
 // on disk, relative to the workspace root.
 func (it *Integrator) ResolveProtoFilePaths(targets []BazelTarget) []string {
 	seen := make(map[string]bool)
@@ -157,7 +218,18 @@ func (it *Integrator) ResolveProtoFilePaths(targets []BazelTarget) []string {
 // CreateSyncPlan builds a plan describing what Buffalo will compile
 // and what BUILD files it will generate.
 func (it *Integrator) CreateSyncPlan(ctx context.Context, targets []BazelTarget, languages []string, outputDir string) (*SyncPlan, error) {
-	builds, err := it.generator.GenerateBuildFiles(targets, languages, outputDir)
+	var builds []GeneratedBuild
+	var err error
+
+	switch it.syncMode {
+	case SyncModeProtoLibrary:
+		builds, err = it.generator.GenerateBuildFiles(targets, languages, outputDir)
+	case SyncModeFilegroup:
+		builds, err = it.generator.GenerateFilegroupBuilds(languages, outputDir)
+	default:
+		builds, err = it.generator.GenerateFilegroupBuilds(languages, outputDir)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("bazel: generate BUILD files: %w", err)
 	}
@@ -167,10 +239,12 @@ func (it *Integrator) CreateSyncPlan(ctx context.Context, targets []BazelTarget,
 		BuildFilesToGenerate: builds,
 		Languages:            languages,
 		OutputDir:            outputDir,
+		Mode:                 it.syncMode,
 	}, nil
 }
 
 // WriteBuildFiles writes the generated BUILD.bazel files to disk.
+// Existing non-Buffalo BUILD files are preserved.
 func (it *Integrator) WriteBuildFiles(builds []GeneratedBuild) error {
 	for _, build := range builds {
 		dir := filepath.Dir(build.Path)

@@ -2,6 +2,7 @@ package bazel
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -17,7 +18,7 @@ func ParseBuildFile(path string, pkg string) ([]BazelTarget, error) {
 
 // parseBuildContent extracts targets from BUILD file content.
 // This is a pragmatic parser — it handles the common patterns used in proto_library,
-// go_proto_library, py_proto_library, etc. without a full Starlark evaluator.
+// go_proto_library, filegroup, py_library etc. without a full Starlark evaluator.
 func parseBuildContent(content string, pkg string) []BazelTarget {
 	var targets []BazelTarget
 
@@ -43,6 +44,9 @@ func parseBuildContent(content string, pkg string) []BazelTarget {
 		target.StripImportPrefix = parseStringAttr(body, "strip_import_prefix")
 		target.ImportPrefix = parseStringAttr(body, "import_prefix")
 		target.ProtoSourceRoot = parseStringAttr(body, "proto_source_root")
+
+		// Extract glob patterns from srcs = glob([...])
+		target.GlobPatterns = parseGlobPatterns(body, "srcs")
 
 		if target.Name != "" {
 			targets = append(targets, target)
@@ -100,6 +104,17 @@ func extractQuotedStrings(text string) []string {
 	return result
 }
 
+// parseGlobPatterns extracts the glob patterns from `attr = glob([...])`.
+// Returns nil if the attribute doesn't use glob().
+func parseGlobPatterns(body, attr string) []string {
+	globPattern := regexp.MustCompile(`(?ms)^\s*` + regexp.QuoteMeta(attr) + `\s*=\s*glob\(\s*\[([^\]]*)\]`)
+	m := globPattern.FindStringSubmatch(body)
+	if m != nil {
+		return extractQuotedStrings(m[1])
+	}
+	return nil
+}
+
 // parseModuleName extracts module(name = "...") from MODULE.bazel content.
 func parseModuleName(content string) string {
 	pattern := regexp.MustCompile(`(?ms)module\(\s*\n(?:.*\n)*?\s*name\s*=\s*"([^"]*)"`)
@@ -116,11 +131,12 @@ func parseModuleName(content string) string {
 	return ""
 }
 
-// FilterProtoTargets returns only proto_library targets from a list.
+// FilterProtoTargets returns targets that provide proto files
+// (proto_library rules and filegroups with proto srcs/globs).
 func FilterProtoTargets(targets []BazelTarget) []BazelTarget {
 	var result []BazelTarget
 	for _, t := range targets {
-		if t.Rule == "proto_library" {
+		if t.IsProtoSource() {
 			result = append(result, t)
 		}
 	}
@@ -162,16 +178,22 @@ func langProtoRules(lang string) []string {
 
 // ResolveProtoFiles resolves the actual file paths for a target's srcs,
 // relative to the workspace root and the target's package directory.
+// For filegroup targets with glob patterns, it expands the globs on disk.
 func ResolveProtoFiles(ws *Workspace, target BazelTarget) []string {
 	// Determine the package directory on disk
 	pkgDir := target.Package
 	pkgDir = strings.TrimPrefix(pkgDir, "//")
 
 	var files []string
+
+	// Handle explicit srcs
 	for _, src := range target.Srcs {
 		// Handle label references (e.g., "//other:file.proto")
 		if strings.HasPrefix(src, "//") || strings.HasPrefix(src, ":") || strings.Contains(src, ":") {
-			// Skip label references — they should be resolved via deps
+			continue
+		}
+		// Only include proto files
+		if !isProtoFile(src) {
 			continue
 		}
 		fullPath := src
@@ -180,5 +202,61 @@ func ResolveProtoFiles(ws *Workspace, target BazelTarget) []string {
 		}
 		files = append(files, fullPath)
 	}
-	return files
+
+	// Handle glob patterns (e.g., filegroup with srcs = glob(["proto/**/*.proto"]))
+	for _, pattern := range target.GlobPatterns {
+		if !isProtoGlob(pattern) {
+			continue
+		}
+		globPath := pattern
+		if pkgDir != "" {
+			globPath = pkgDir + "/" + pattern
+		}
+		absGlob := filepath.Join(ws.Root, filepath.FromSlash(globPath))
+		matches, err := filepath.Glob(absGlob)
+		if err != nil {
+			continue
+		}
+		for _, m := range matches {
+			rel, err := filepath.Rel(ws.Root, m)
+			if err != nil {
+				continue
+			}
+			files = append(files, filepath.ToSlash(rel))
+		}
+
+		// For ** patterns, filepath.Glob doesn't support recursive matching.
+		// Walk the directory tree to find matching files.
+		if strings.Contains(pattern, "**") {
+			baseDir := pkgDir
+			if baseDir == "" {
+				baseDir = "."
+			}
+			absBase := filepath.Join(ws.Root, baseDir)
+			filepath.Walk(absBase, func(path string, info os.FileInfo, err error) error {
+				if err != nil || info.IsDir() {
+					return nil
+				}
+				if isProtoFile(info.Name()) {
+					rel, err := filepath.Rel(ws.Root, path)
+					if err != nil {
+						return nil
+					}
+					files = append(files, filepath.ToSlash(rel))
+				}
+				return nil
+			})
+		}
+	}
+
+	// Deduplicate
+	seen := make(map[string]bool)
+	var unique []string
+	for _, f := range files {
+		if !seen[f] {
+			seen[f] = true
+			unique = append(unique, f)
+		}
+	}
+	return unique
 }
