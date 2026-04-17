@@ -97,7 +97,7 @@ func parseListAttr(body, attr string) []string {
 func extractQuotedStrings(text string) []string {
 	pattern := regexp.MustCompile(`"([^"]*)"`)
 	matches := pattern.FindAllStringSubmatch(text, -1)
-	var result []string
+	result := make([]string, 0, len(matches))
 	for _, m := range matches {
 		result = append(result, m[1])
 	}
@@ -184,7 +184,7 @@ func ResolveProtoFiles(ws *Workspace, target BazelTarget) []string {
 	pkgDir := target.Package
 	pkgDir = strings.TrimPrefix(pkgDir, "//")
 
-	var files []string
+	files := make([]string, 0, len(target.Srcs))
 
 	// Handle explicit srcs
 	for _, src := range target.Srcs {

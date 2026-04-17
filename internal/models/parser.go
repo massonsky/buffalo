@@ -90,7 +90,7 @@ func ExtractModels(content, filePath string) ([]ModelDef, error) {
 	pkg := extractPackage(content)
 	messages := extractMessageBlocks(content)
 
-	var results []ModelDef
+	results := make([]ModelDef, 0, len(messages))
 	for _, msg := range messages {
 		// Check if this message has a buffalo.models.model annotation
 		modelMatch := modelAnnotationRe.FindStringSubmatch(msg.body)
@@ -200,7 +200,7 @@ type ProtoImport struct {
 // ExtractImports returns all import statements found in the proto file.
 func ExtractImports(content string) []ProtoImport {
 	matches := importRe.FindAllStringSubmatch(content, -1)
-	var imports []ProtoImport
+	imports := make([]ProtoImport, 0, len(matches))
 	for _, m := range matches {
 		imports = append(imports, ProtoImport{
 			Path:     m[2],
@@ -221,7 +221,7 @@ func ExtractFileOptions(content string) []ProtoFileOption {
 	// Remove model annotations to avoid matching them as file options
 	clean := modelAnnotationRe.ReplaceAllString(content, "")
 	matches := fileOptionRe.FindAllStringSubmatch(clean, -1)
-	var opts []ProtoFileOption
+	opts := make([]ProtoFileOption, 0, len(matches))
 	for _, m := range matches {
 		opts = append(opts, ProtoFileOption{
 			Name:  m[1],
@@ -326,7 +326,7 @@ func ExtractAllMessages(content, filePath string) ([]ModelDef, error) {
 	pkg := extractPackage(content)
 	messages := extractMessageBlocks(content)
 
-	var results []ModelDef
+	results := make([]ModelDef, 0, len(messages))
 	for _, msg := range messages {
 		// Skip if this is inside a service block (heuristic: check if name
 		// matches a Request/Response that is NOT a standalone message)
@@ -975,7 +975,7 @@ func parseInt32(s string) int32 {
 
 func parseStringList(s string) []string {
 	matches := listValueRe.FindAllStringSubmatch(s, -1)
-	var result []string
+	result := make([]string, 0, len(matches))
 	for _, m := range matches {
 		result = append(result, m[1])
 	}

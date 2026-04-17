@@ -153,7 +153,7 @@ func (c *Compiler) validateProstCargoSetup(files []compiler.ProtoFile) (string, 
 
 func (c *Compiler) findCargoProject(files []compiler.ProtoFile) (string, string, string, error) {
 	seen := make(map[string]struct{})
-	var candidates []string
+	candidates := make([]string, 0, len(files)+1)
 
 	if wd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, wd)

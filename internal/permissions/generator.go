@@ -183,7 +183,7 @@ const (
 		}
 	}
 
-	var actions, roles, scopes []constPair
+	actions := make([]constPair, 0, len(actionSet))
 	for a := range actionSet {
 		actions = append(actions, constPair{
 			Const: toConstName(a),
@@ -192,6 +192,7 @@ const (
 	}
 	sort.Slice(actions, func(i, j int) bool { return actions[i].Const < actions[j].Const })
 
+	roles := make([]constPair, 0, len(roleSet))
 	for r := range roleSet {
 		roles = append(roles, constPair{
 			Const: toConstName(r),
@@ -200,6 +201,7 @@ const (
 	}
 	sort.Slice(roles, func(i, j int) bool { return roles[i].Const < roles[j].Const })
 
+	scopes := make([]constPair, 0, len(scopeSet))
 	for s := range scopeSet {
 		scopes = append(scopes, constPair{
 			Const: toConstName(s),

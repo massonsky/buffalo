@@ -145,7 +145,7 @@ type NodeMetric struct {
 
 // GetTopByFanOut returns nodes with the most outgoing edges.
 func GetTopByFanOut(g *Graph, limit int) []NodeMetric {
-	var metrics []NodeMetric
+	metrics := make([]NodeMetric, 0, len(g.Nodes))
 
 	for nodeID := range g.Nodes {
 		fanOut := len(g.GetOutgoingEdges(nodeID))
@@ -169,7 +169,7 @@ func GetTopByFanOut(g *Graph, limit int) []NodeMetric {
 
 // GetTopByFanIn returns nodes with the most incoming edges.
 func GetTopByFanIn(g *Graph, limit int) []NodeMetric {
-	var metrics []NodeMetric
+	metrics := make([]NodeMetric, 0, len(g.Nodes))
 
 	for nodeID := range g.Nodes {
 		fanIn := len(g.GetIncomingEdges(nodeID))
@@ -193,7 +193,7 @@ func GetTopByFanIn(g *Graph, limit int) []NodeMetric {
 
 // GetTopByTransitiveDeps returns nodes with the most transitive dependencies.
 func GetTopByTransitiveDeps(g *Graph, limit int) []NodeMetric {
-	var metrics []NodeMetric
+	metrics := make([]NodeMetric, 0, len(g.Nodes))
 
 	for nodeID := range g.Nodes {
 		deps := len(g.GetTransitiveDependencies(nodeID))

@@ -230,7 +230,7 @@ func (c *Checker) GetAssetForPlatform(release *ReleaseInfo) (*ReleaseAsset, erro
 	}
 
 	// Build possible asset name patterns
-	var patterns []string
+	patterns := make([]string, 0, len(archNames[arch])*8)
 	for _, archName := range archNames[arch] {
 		patterns = append(patterns,
 			fmt.Sprintf("buffalo_%s_%s", os, archName),

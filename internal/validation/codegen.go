@@ -87,7 +87,7 @@ type GoCodeGenerator struct{}
 func (g *GoCodeGenerator) Language() string { return "go" }
 
 func (g *GoCodeGenerator) Generate(messages []MessageRules) ([]GeneratedFile, error) {
-	var files []GeneratedFile
+	files := make([]GeneratedFile, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Disabled {
 			continue
@@ -234,7 +234,7 @@ type PythonCodeGenerator struct{}
 func (g *PythonCodeGenerator) Language() string { return "python" }
 
 func (g *PythonCodeGenerator) Generate(messages []MessageRules) ([]GeneratedFile, error) {
-	var files []GeneratedFile
+	files := make([]GeneratedFile, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Disabled {
 			continue
@@ -318,7 +318,7 @@ type CppCodeGenerator struct{}
 func (g *CppCodeGenerator) Language() string { return "cpp" }
 
 func (g *CppCodeGenerator) Generate(messages []MessageRules) ([]GeneratedFile, error) {
-	var files []GeneratedFile
+	files := make([]GeneratedFile, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Disabled {
 			continue
@@ -402,7 +402,7 @@ type RustCodeGenerator struct{}
 func (g *RustCodeGenerator) Language() string { return "rust" }
 
 func (g *RustCodeGenerator) Generate(messages []MessageRules) ([]GeneratedFile, error) {
-	var files []GeneratedFile
+	files := make([]GeneratedFile, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Disabled {
 			continue

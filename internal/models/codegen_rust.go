@@ -16,7 +16,7 @@ func generateRustPartialEq(className string, fields []FieldDef) string {
 	b.WriteString(fmt.Sprintf("\nimpl PartialEq for %s {\n", className))
 	b.WriteString("    fn eq(&self, other: &Self) -> bool {\n")
 
-	var comparisons []string
+	comparisons := make([]string, 0, len(fields))
 	for _, f := range fields {
 		if f.Ignore || f.PrimaryKey {
 			continue

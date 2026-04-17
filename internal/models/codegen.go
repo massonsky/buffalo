@@ -543,7 +543,7 @@ func generateCppEnum(e EnumDef) string {
 
 // generatePythonOneofType produces a Python Union type alias for a oneof group.
 func generatePythonOneofType(o OneofDef) string {
-	var types []string
+	types := make([]string, 0, len(o.Fields))
 	for _, f := range o.Fields {
 		types = append(types, protoTypeToPython(f.ProtoType, false))
 	}

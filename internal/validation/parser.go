@@ -133,7 +133,7 @@ func parseCategory(category, body, fieldName, fieldType string) ([]FieldRule, er
 	inner := body[1 : len(body)-1]
 	kvs := kvRe.FindAllStringSubmatch(inner, -1)
 
-	var rules []FieldRule
+	rules := make([]FieldRule, 0, len(kvs))
 	for _, kv := range kvs {
 		key := kv[1]
 		rawValue := strings.Trim(kv[2], `"' `)

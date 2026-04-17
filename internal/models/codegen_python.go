@@ -1068,7 +1068,7 @@ func (g *PythonSQLAlchemyGenerator) GenerateModel(model ModelDef, opts GenerateO
 	b.WriteString(fmt.Sprintf("    __tablename__ = \"%s\"\n", tableName))
 
 	// __table_args__
-	var tableArgs []string
+	tableArgs := make([]string, 0, len(model.Indexes)+len(model.Checks))
 	for _, idx := range model.Indexes {
 		cols := strings.Join(idx.Columns, "\", \"")
 		unique := ""

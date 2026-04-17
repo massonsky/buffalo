@@ -98,7 +98,7 @@ func NewProtoParser(log Logger) ProtoParser {
 func (p *protoParser) ParseFiles(ctx context.Context, files []string, importPaths []string) ([]*ProtoFile, error) {
 	p.log.Debug("Parsing proto files", "count", len(files))
 
-	var result []*ProtoFile
+	result := make([]*ProtoFile, 0, len(files))
 	for _, file := range files {
 		protoFile, err := p.ParseFile(ctx, file, importPaths)
 		if err != nil {

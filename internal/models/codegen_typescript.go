@@ -550,7 +550,7 @@ func generateTypescriptEnum(e EnumDef) string {
 
 // generateTypescriptOneofType produces a TypeScript union type for a oneof group.
 func generateTypescriptOneofType(o OneofDef) string {
-	var types []string
+	types := make([]string, 0, len(o.Fields))
 	for _, f := range o.Fields {
 		types = append(types, protoTypeToTypescript(f.ProtoType, false))
 	}

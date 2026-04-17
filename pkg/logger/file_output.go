@@ -170,7 +170,7 @@ func (o *FileOutput) cleanupOldFiles() {
 		modTime time.Time
 	}
 
-	var files []fileInfo
+	files := make([]fileInfo, 0, len(matches))
 	for _, match := range matches {
 		info, err := os.Stat(match)
 		if err != nil {

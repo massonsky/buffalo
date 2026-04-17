@@ -162,7 +162,7 @@ func (a *Analyzer) FindUnusedFiles() []string {
 
 // FindHeavyNodes finds nodes with the most transitive dependencies.
 func (a *Analyzer) FindHeavyNodes(limit int) []HeavyNode {
-	var heavyNodes []HeavyNode
+	heavyNodes := make([]HeavyNode, 0, len(a.graph.Nodes))
 
 	for nodeID := range a.graph.Nodes {
 		transDeps := len(a.graph.GetTransitiveDependencies(nodeID))
@@ -195,7 +195,7 @@ func (a *Analyzer) FindHeavyNodes(limit int) []HeavyNode {
 
 // CalculateCoupling calculates coupling metrics for all nodes.
 func (a *Analyzer) CalculateCoupling() []CouplingMetrics {
-	var metrics []CouplingMetrics
+	metrics := make([]CouplingMetrics, 0, len(a.graph.Nodes))
 
 	for nodeID := range a.graph.Nodes {
 		ca := len(a.graph.GetIncomingEdges(nodeID)) // Afferent (dependents)

@@ -552,7 +552,6 @@ func (a *ProtoAnalyzer) trackScopes(ctx *syntaxContext, lineNum int, line, clean
 			// RPC body: rpc Foo(Req) returns (Resp) {
 			ctx.pushScope(scopeRPCBody, "rpc", lineNum)
 			opens--
-			matched = true
 		}
 
 		// Handle any remaining unmatched opens

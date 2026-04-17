@@ -56,7 +56,7 @@ func (e *Exporter) Export(format ExportFormat, writer io.Writer) error {
 
 // exportText exports metrics in plain text format.
 func (e *Exporter) exportText(snapshot *Snapshot, writer io.Writer) error {
-	var lines []string
+	lines := make([]string, 0, len(snapshot.Metrics)+8)
 
 	// Add timestamp
 	lines = append(lines, fmt.Sprintf("# Metrics Snapshot - %s", snapshot.Timestamp.Format(time.RFC3339)))
@@ -162,7 +162,7 @@ func formatMetricJSON(metric MetricSnapshot) string {
 
 // exportPrometheus exports metrics in Prometheus format.
 func (e *Exporter) exportPrometheus(snapshot *Snapshot, writer io.Writer) error {
-	var lines []string
+	lines := make([]string, 0, len(snapshot.Metrics))
 
 	// Sort metric names
 	names := make([]string, 0, len(snapshot.Metrics))

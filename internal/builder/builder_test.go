@@ -110,7 +110,7 @@ message TestMessage {
 		}
 	}
 
-	var protoFiles []string
+	protoFiles := make([]string, 0, len(files))
 	for _, f := range files {
 		protoFiles = append(protoFiles, filepath.Join(tempDir, f))
 	}

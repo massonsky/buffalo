@@ -311,7 +311,7 @@ func (c *Compiler) generateIndexFile(outputDir string, generatedFiles []string) 
 
 	seenModules := make(map[string]struct{})
 	seenAliases := make(map[string]int)
-	var exports []string
+	exports := make([]string, 0, len(generatedFiles))
 	for _, f := range generatedFiles {
 		rel, err := filepath.Rel(outputDir, f)
 		if err != nil {

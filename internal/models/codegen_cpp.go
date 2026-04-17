@@ -26,7 +26,7 @@ func generateCppOperators(className string, fields []FieldDef) string {
 	var b strings.Builder
 
 	// Collect non-ignored, non-PK field names
-	var fieldNames []string
+	fieldNames := make([]string, 0, len(fields))
 	for _, f := range fields {
 		if f.Ignore || f.PrimaryKey {
 			continue

@@ -331,7 +331,7 @@ func (g *Generator) outputBuildPath(pkg string, lang string, outputDir string) s
 
 // createBindings creates language bindings for each proto target.
 func (g *Generator) createBindings(targets []BazelTarget, lang string) []LanguageBinding {
-	var bindings []LanguageBinding
+	bindings := make([]LanguageBinding, 0, len(targets))
 	for _, t := range targets {
 		if t.Rule != "proto_library" {
 			continue
