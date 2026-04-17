@@ -8,7 +8,10 @@ import (
 
 var (
 	// Version is the current version of Buffalo.
-	Version = "1.30.2b199e0"
+	// Injected at build time via ldflags:
+	//   -X github.com/massonsky/buffalo/internal/version.Version=1.30.<hash>
+	// When built without ldflags (e.g. plain `go install`), defaults to "dev".
+	Version = "dev"
 
 	// GitCommit is the git commit hash.
 	GitCommit = "unknown"

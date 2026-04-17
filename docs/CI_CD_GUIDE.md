@@ -15,48 +15,68 @@ This guide explains how to integrate Buffalo into your CI/CD pipelines for autom
 
 ## GitHub Actions
 
-Buffalo provides ready-to-use GitHub Actions workflows.
+Buffalo uses a two-stage CI/CD pipeline with automatic promotion from `dev` to `main`.
 
-### Quick Start
+### Pipeline Flow
 
-1. **Copy workflow template** to `.github/workflows/buffalo.yml`:
+```
+push to dev/devb
+      │
+      ├── Lint (golangci-lint)
+      ├── Test (ubuntu, windows, macos)
+      │
+      └── Build (5 platform binaries)
+              │
+              └── Promote (merge to main → tag v1.30.<hash>)
+                            │
+                            └── Release (GitHub Release with binaries)
+```
+
+### Workflow Files
+
+| File | Trigger | Purpose |
+|------|---------|---------|
+| `ci.yml` | push to `dev`/`devb`, PR | Lint → Test → Build → Promote to main + tag |
+| `buffalo-release.yml` | tag `v*` | Build release binaries, create GitHub Release |
+| `buffalo-build.yml` | PR only | Quick build verification |
+
+### Version Format
+
+Version is automatically set to `1.30.<short-git-hash>` and injected via ldflags:
+
+```
+-X github.com/massonsky/buffalo/internal/version.Version=1.30.abc1234
+-X github.com/massonsky/buffalo/internal/version.BuildDate=2026-04-17
+-X github.com/massonsky/buffalo/internal/version.GitCommit=abc1234
+```
+
+### Using Buffalo in Your Project
+
+Install from latest release:
 
 ```yaml
-name: Buffalo Build
+name: Build with Buffalo
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: '25.x'
-      
+
       - name: Install Buffalo
         run: |
-          curl -L -o buffalo https://github.com/massonsky/buffalo/releases/download/v0.7.0/buffalo-linux-amd64
+          LATEST=$(curl -s https://api.github.com/repos/massonsky/buffalo/releases/latest | grep tag_name | cut -d'"' -f4)
+          curl -L -o buffalo https://github.com/massonsky/buffalo/releases/download/${LATEST}/buffalo-linux-amd64
           chmod +x buffalo
           sudo mv buffalo /usr/local/bin/
-      
+
       - name: Build Proto Files
         run: buffalo build
 ```
-
-2. **Commit and push** - workflow will run automatically
-
-### Available Workflow Templates
-
-- **`buffalo-build.yml`** - Full build with multi-language support
-- **`buffalo-release.yml`** - Release workflow for tagged commits
 
 Location: `.github/workflows/`
 
@@ -558,5 +578,5 @@ Full working examples are available in `examples/ci/`:
 
 ---
 
-**Version:** 0.7.0  
-**Last Updated:** January 2026
+**Version:** 1.30  
+**Last Updated:** April 2026

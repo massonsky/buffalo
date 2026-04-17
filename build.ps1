@@ -50,11 +50,8 @@ function Ensure-Directory {
 }
 
 function Get-Version {
-    try {
-        $version = & git describe --tags --always --dirty 2>$null
-        if ($LASTEXITCODE -eq 0) { return $version }
-    } catch { }
-    return $Version
+    $commit = Get-GitCommit
+    return "1.30.$commit"
 }
 
 function Get-BuildTime {

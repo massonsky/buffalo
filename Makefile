@@ -11,15 +11,17 @@ INSTALL_PREFIX?=/usr/local
 INSTALL_BIN=$(INSTALL_PREFIX)/bin
 
 # Version detection (cross-platform)
+# Format: 1.30.<short-commit-hash> (e.g. 1.30.6a1a03a)
+VERSION_PREFIX=1.30
 ifeq ($(OS),Windows_NT)
-    VERSION=$(shell git describe --tags --always --dirty 2>NUL || echo v0.5.0-dev)
-    BUILD_TIME=$(shell powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd_HH:mm:ss'" 2>NUL || echo unknown)
     GIT_COMMIT=$(shell git rev-parse --short HEAD 2>NUL || echo unknown)
+    VERSION=$(VERSION_PREFIX).$(GIT_COMMIT)
+    BUILD_TIME=$(shell powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd_HH:mm:ss'" 2>NUL || echo unknown)
     BINARY_EXT=.exe
 else
-    VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo v0.5.0-dev)
-    BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S' 2>/dev/null || echo unknown)
     GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+    VERSION=$(VERSION_PREFIX).$(GIT_COMMIT)
+    BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S' 2>/dev/null || echo unknown)
     BINARY_EXT=
 endif
 

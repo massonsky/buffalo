@@ -44,10 +44,9 @@ ensure_directory() {
 }
 
 get_version() {
-    if git describe --tags --always --dirty 2>/dev/null; then
-        return
-    fi
-    echo "$VERSION"
+    local commit
+    commit=$(get_git_commit)
+    echo "1.30.${commit}"
 }
 
 get_build_time() {
