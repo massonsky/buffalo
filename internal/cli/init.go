@@ -12,6 +12,7 @@ import (
 
 var (
 	initForce bool
+	initBazel bool
 
 	initCmd = &cobra.Command{
 		Use:   "init",
@@ -19,7 +20,10 @@ var (
 		Long: `Initialize a new Buffalo project with default configuration.
 
 This will create a buffalo.yaml configuration file in the current directory
-with sensible defaults.`,
+with sensible defaults.
+
+Use --bazel to also initialize Bazel integration: extracts rules_buffalo
+into .buffalo/bazel/rules_buffalo/ for use with bzlmod.`,
 		RunE: runInit,
 	}
 )
@@ -27,6 +31,7 @@ with sensible defaults.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "overwrite existing config file")
+	initCmd.Flags().BoolVar(&initBazel, "bazel", false, "initialize Bazel integration (rules_buffalo)")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -181,6 +186,18 @@ message ExampleResponse {
 			logger.String("path", protoPath+"/buffalo/validate/validate.proto"))
 	}
 
+	// Extract Bazel rules if requested
+	if initBazel {
+		rulesPath, err := embedded.ExtractBazelRules(".buffalo")
+		if err != nil {
+			return fmt.Errorf("failed to extract Bazel rules: %w", err)
+		}
+		log.Info("📦 Extracted rules_buffalo", logger.String("path", rulesPath))
+		log.Info("📝 Add to your MODULE.bazel:",
+			logger.String("snippet",
+				`bazel_dep(name = "rules_buffalo", version = "1.0.0") + local_path_override(module_name = "rules_buffalo", path = ".buffalo/bazel/rules_buffalo")`))
+	}
+
 	fmt.Println()
 	log.Info("🎉 Buffalo project initialized successfully!")
 	fmt.Println()
@@ -188,6 +205,20 @@ message ExampleResponse {
 	fmt.Println("  1. Edit buffalo.yaml to configure your project")
 	fmt.Println("  2. Add your .proto files to ./protos directory")
 	fmt.Println("  3. Run 'buffalo build' to generate code")
+	if initBazel {
+		fmt.Println()
+		fmt.Println("Bazel integration:")
+		fmt.Println("  4. Add to your MODULE.bazel:")
+		fmt.Println(`     bazel_dep(name = "rules_buffalo", version = "1.0.0")`)
+		fmt.Println(`     local_path_override(`)
+		fmt.Println(`         module_name = "rules_buffalo",`)
+		fmt.Println(`         path = ".buffalo/bazel/rules_buffalo",`)
+		fmt.Println(`     )`)
+		fmt.Println("  5. Use buffalo_proto_compile in your BUILD.bazel:")
+		fmt.Println(`     load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_compile")`)
+		fmt.Println()
+		fmt.Println("  See .buffalo/bazel/rules_buffalo/README.md for full documentation.")
+	}
 	fmt.Println()
 
 	return nil

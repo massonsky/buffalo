@@ -160,9 +160,9 @@ type xmlQueryResult struct {
 }
 
 type xmlRule struct {
-	Class  string        `xml:"class,attr"`
-	Name   string        `xml:"name,attr"`
-	Lists  []xmlListAttr `xml:"list"`
+	Class   string          `xml:"class,attr"`
+	Name    string          `xml:"name,attr"`
+	Lists   []xmlListAttr   `xml:"list"`
 	Strings []xmlStringAttr `xml:"string"`
 }
 

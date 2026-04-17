@@ -126,16 +126,20 @@ func (it *Integrator) detectSyncMode(targets []BazelTarget) SyncMode {
 }
 
 // discoverViaQuery uses `bazel query kind(proto_library, //...)`.
+// Falls back to file-based parsing if query fails.
 func (it *Integrator) discoverViaQuery(ctx context.Context, patterns []string) ([]BazelTarget, error) {
 	if len(patterns) == 0 {
 		patterns = []string{"//..."}
 	}
 
 	var allTargets []BazelTarget
+	var queryFailed bool
 	for _, pattern := range patterns {
 		labels, err := it.querier.FindProtoTargets(ctx, pattern)
 		if err != nil {
-			return nil, fmt.Errorf("bazel query failed for %q: %w", pattern, err)
+			// bazel query failed — fall back to file parsing
+			queryFailed = true
+			break
 		}
 
 		for _, label := range labels {
@@ -146,6 +150,11 @@ func (it *Integrator) discoverViaQuery(ctx context.Context, patterns []string) (
 				Name:    name,
 			})
 		}
+	}
+
+	// If bazel query failed or found nothing, fall back to file parsing
+	if queryFailed || len(allTargets) == 0 {
+		return it.discoverViaFiles(ctx)
 	}
 
 	// Enrich targets with srcs/deps from XML query
@@ -160,11 +169,6 @@ func (it *Integrator) discoverViaQuery(ctx context.Context, patterns []string) (
 		if len(deps) > 0 {
 			t.Deps = deps
 		}
-	}
-
-	// If bazel query found nothing, fall back to file parsing
-	if len(allTargets) == 0 {
-		return it.discoverViaFiles(ctx)
 	}
 
 	return allTargets, nil

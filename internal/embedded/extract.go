@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ExtractValidateProto extracts the embedded buffalo/validate/validate.proto
@@ -85,6 +86,71 @@ func ValidateProtoImportPath(workspaceDir string) (string, error) {
 func ListEmbeddedProtos() ([]string, error) {
 	var files []string
 	err := fs.WalkDir(ProtoFS, "proto", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files, err
+}
+
+// ExtractBazelRules extracts the embedded rules_buffalo Bazel module
+// into <workspaceDir>/bazel/rules_buffalo/.
+//
+// The extracted files provide Bazel rules for Buffalo proto compilation:
+//   - buffalo_proto_compile — hermetic rule for bazel build
+//   - buffalo_proto_gen — source-tree generation via bazel run
+//
+// Returns the absolute path to the extracted rules_buffalo directory.
+func ExtractBazelRules(workspaceDir string) (rulesPath string, err error) {
+	rulesPath = filepath.Join(workspaceDir, "bazel", "rules_buffalo")
+
+	// Walk embedded bazel/rules_buffalo/ and extract
+	err = fs.WalkDir(BazelFS, "bazel/rules_buffalo", func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		// Strip "bazel/rules_buffalo" prefix, rebuild under workspaceDir/bazel/rules_buffalo
+		rel := strings.TrimPrefix(path, "bazel/rules_buffalo")
+		if rel == "" {
+			rel = "."
+		} else {
+			rel = strings.TrimPrefix(rel, "/")
+		}
+
+		target := filepath.Join(rulesPath, rel)
+
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+
+		data, err := BazelFS.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read embedded %s: %w", path, err)
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", filepath.Dir(target), err)
+		}
+
+		if err := os.WriteFile(target, data, 0644); err != nil {
+			return fmt.Errorf("write %s: %w", target, err)
+		}
+
+		return nil
+	})
+
+	return rulesPath, err
+}
+
+// ListEmbeddedBazelFiles returns a list of all embedded Bazel rule file paths.
+func ListEmbeddedBazelFiles() ([]string, error) {
+	var files []string
+	err := fs.WalkDir(BazelFS, "bazel", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

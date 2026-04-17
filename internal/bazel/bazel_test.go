@@ -520,9 +520,9 @@ func min(a, b int) int {
 
 func TestSplitLabel(t *testing.T) {
 	tests := []struct {
-		label   string
-		pkg     string
-		name    string
+		label string
+		pkg   string
+		name  string
 	}{
 		{"//proto/user:user_proto", "//proto/user", "user_proto"},
 		{"//proto/user", "//proto/user", "user"},

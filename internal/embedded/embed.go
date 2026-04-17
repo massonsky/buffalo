@@ -16,3 +16,9 @@ import "embed"
 //
 //go:embed proto
 var ProtoFS embed.FS
+
+// BazelFS contains the rules_buffalo Bazel module files.
+// Extracted to .buffalo/bazel/rules_buffalo/ via ExtractBazelRules().
+//
+//go:embed bazel
+var BazelFS embed.FS
