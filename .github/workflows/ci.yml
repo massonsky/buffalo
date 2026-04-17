@@ -2,7 +2,7 @@
 #
 # Flow:
 #   1. Push to dev/devb triggers lint, test (3 OS), build (5 platforms)
-#   2. If all green → auto-merge to main → create semver tag v1.33.<patch>
+#   2. If all green → auto-merge to main → create semver tag vX.Y.<patch>
 #   3. Tag push triggers release.yml → GitHub Release with binaries
 
 name: CI

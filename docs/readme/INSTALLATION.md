@@ -5,13 +5,13 @@
 ### Linux/macOS
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/massonsky/buffalo/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/massonsky/buffalo/main/scripts/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/massonsky/buffalo/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/massonsky/buffalo/main/scripts/install.ps1 | iex
 ```
 
 ### Verify
