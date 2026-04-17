@@ -37,8 +37,8 @@ git tag "$TAG"
 
 echo ""
 echo "=== git push ==="
-git push
-git push --tags
+git push -u origin HEAD
+git push origin "$TAG"
 
 echo ""
 echo "Done: $TAG"

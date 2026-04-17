@@ -30,7 +30,7 @@ Write-Host "`n=== git tag $tag ===" -ForegroundColor Cyan
 git tag $tag
 
 Write-Host "`n=== git push ===" -ForegroundColor Cyan
-git push
-git push --tags
+git push -u origin HEAD
+git push origin $tag
 
 Write-Host "`nDone: $tag" -ForegroundColor Green
