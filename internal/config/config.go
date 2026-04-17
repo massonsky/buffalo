@@ -17,12 +17,43 @@ type Config struct {
 	Output       OutputConfig            `mapstructure:"output"`
 	Languages    LanguagesConfig         `mapstructure:"languages"`
 	Build        BuildConfig             `mapstructure:"build"`
+	Bazel        BazelConfig             `mapstructure:"bazel"`
 	Versioning   VersioningConfig        `mapstructure:"versioning"`
 	Logging      LoggingConfig           `mapstructure:"logging"`
 	Dependencies []dependency.Dependency `mapstructure:"dependencies"`
 	Plugins      []PluginConfig          `mapstructure:"plugins"`
 	Templates    []TemplateConfig        `mapstructure:"templates"`
 	Models       ModelsConfig            `mapstructure:"models"`
+}
+
+// BazelConfig contains Bazel integration settings.
+type BazelConfig struct {
+	// Enabled activates Bazel integration (auto-detect workspace, generate BUILD files).
+	Enabled bool `mapstructure:"enabled"`
+
+	// AutoDetect enables automatic detection of Bazel workspace.
+	// When true, Buffalo looks for MODULE.bazel/WORKSPACE in parent directories.
+	AutoDetect bool `mapstructure:"auto_detect"`
+
+	// BazelPath is the path to the bazel binary. Defaults to "bazel".
+	BazelPath string `mapstructure:"bazel_path"`
+
+	// UseQuery uses `bazel query` to discover proto targets instead of file parsing.
+	// Requires bazel to be installed. Falls back to file parsing if unavailable.
+	UseQuery bool `mapstructure:"use_query"`
+
+	// Patterns lists Bazel target patterns to scan (e.g., "//proto/...", "//api/...").
+	// Defaults to ["//..."].
+	Patterns []string `mapstructure:"patterns"`
+
+	// GenerateBuildFiles controls whether Buffalo generates BUILD.bazel for output.
+	GenerateBuildFiles bool `mapstructure:"generate_build_files"`
+
+	// StripImportPrefix is applied to proto_library targets.
+	StripImportPrefix string `mapstructure:"strip_import_prefix"`
+
+	// GoModulePath overrides the Go module path used in go_proto_library importpath.
+	GoModulePath string `mapstructure:"go_module_path"`
 }
 
 // ModelsConfig contains buffalo.models generation settings.

@@ -66,6 +66,10 @@ func (sc *SystemChecker) CheckReadiness() ([]CheckResult, error) {
 		results = append(results, sc.checkCpp()...)
 	}
 
+	if sc.config.Bazel.Enabled || sc.config.Bazel.AutoDetect {
+		results = append(results, sc.checkBazel())
+	}
+
 	return results, nil
 }
 
@@ -492,4 +496,30 @@ func GetMissingCritical(results []CheckResult) []CheckResult {
 		}
 	}
 	return missing
+}
+
+// checkBazel проверяет наличие Bazel
+func (sc *SystemChecker) checkBazel() CheckResult {
+	bazelCmd := "bazel"
+	if sc.config.Bazel.BazelPath != "" {
+		bazelCmd = sc.config.Bazel.BazelPath
+	}
+
+	req := Requirement{
+		Name:         "Bazel Build System",
+		Command:      bazelCmd,
+		Args:         []string{"version"},
+		InstallGuide: "https://bazel.build/install",
+		Critical:     false, // Not critical — falls back to file parsing
+	}
+
+	if runtime.GOOS == "windows" {
+		req.InstallCommand = "scoop install bazel  # или choco install bazel"
+	} else if runtime.GOOS == "darwin" {
+		req.InstallCommand = "brew install bazel"
+	} else {
+		req.InstallCommand = "sudo apt install -y bazel  # или см. https://bazel.build/install/ubuntu"
+	}
+
+	return sc.checkCommand(req)
 }

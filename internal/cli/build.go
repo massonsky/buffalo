@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/massonsky/buffalo/internal/bazel"
 	"github.com/massonsky/buffalo/internal/builder"
 	"github.com/massonsky/buffalo/internal/config"
 	"github.com/massonsky/buffalo/internal/dependency"
@@ -23,6 +24,8 @@ var (
 	buildSkipSystemCheck bool
 	buildSkipLock        bool
 	buildForceLock       bool
+	buildBazel           bool
+	buildBazelPatterns   []string
 
 	buildCmd = &cobra.Command{
 		Use:   "build",
@@ -64,6 +67,8 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildSkipSystemCheck, "skip-system-check", false, "skip system readiness check before build")
 	buildCmd.Flags().BoolVar(&buildSkipLock, "skip-lock", false, "skip lock file and build directly from config")
 	buildCmd.Flags().BoolVar(&buildForceLock, "force-lock", false, "force regenerate lock file")
+	buildCmd.Flags().BoolVar(&buildBazel, "bazel", false, "enable Bazel integration (discover proto_library targets, generate BUILD.bazel)")
+	buildCmd.Flags().StringSliceVar(&buildBazelPatterns, "bazel-pattern", []string{}, "Bazel target patterns to scan (default //...)")
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
@@ -180,6 +185,83 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info("Found proto files", logger.Int("count", len(allProtoFiles)))
+
+	// Bazel integration
+	var bazelIntegrator *bazel.Integrator
+	var bazelTargets []bazel.BazelTarget
+
+	useBazel := buildBazel || cfg.Bazel.Enabled || cfg.Bazel.AutoDetect
+	if useBazel {
+		log.Info("🔧 Bazel integration enabled, detecting workspace...")
+
+		integrator, err := bazel.NewIntegrator(".")
+		if err != nil {
+			log.Warn("Failed to initialize Bazel integration", logger.Any("error", err))
+		} else if integrator != nil {
+			bazelIntegrator = integrator
+			ws := integrator.GetWorkspace()
+			log.Info("📦 Bazel workspace detected",
+				logger.String("root", ws.Root),
+				logger.String("type", ws.Type),
+			)
+			if ws.ModuleName != "" {
+				log.Info("   Module", logger.String("name", ws.ModuleName))
+			}
+
+			// Set custom bazel path if configured
+			if cfg.Bazel.BazelPath != "" {
+				integrator.SetBazelPath(cfg.Bazel.BazelPath)
+			}
+
+			// Discover proto_library targets
+			patterns := buildBazelPatterns
+			if len(patterns) == 0 {
+				patterns = cfg.Bazel.Patterns
+			}
+
+			targets, err := integrator.DiscoverProtoTargets(ctx, patterns)
+			if err != nil {
+				log.Warn("Failed to discover Bazel proto targets, falling back to file scan",
+					logger.Any("error", err))
+			} else if len(targets) > 0 {
+				bazelTargets = targets
+				log.Info("🎯 Discovered Bazel proto targets",
+					logger.Int("count", len(targets)))
+
+				for _, t := range targets {
+					log.Debug("  Target",
+						logger.String("label", t.Package+":"+t.Name),
+						logger.Int("srcs", len(t.Srcs)),
+						logger.Int("deps", len(t.Deps)),
+					)
+				}
+
+				// Resolve proto files from Bazel targets
+				bazelProtoFiles := integrator.ResolveProtoFilePaths(targets)
+				if len(bazelProtoFiles) > 0 {
+					// Merge with existing proto files, Bazel targets take priority
+					seen := make(map[string]bool)
+					for _, f := range bazelProtoFiles {
+						seen[f] = true
+					}
+					for _, f := range allProtoFiles {
+						if !seen[f] {
+							bazelProtoFiles = append(bazelProtoFiles, f)
+						}
+					}
+					allProtoFiles = bazelProtoFiles
+					log.Info("📄 Using proto files from Bazel targets",
+						logger.Int("count", len(allProtoFiles)))
+				}
+			}
+		} else {
+			if buildBazel {
+				log.Warn("⚠️  --bazel flag set but no Bazel workspace found")
+			} else {
+				log.Debug("No Bazel workspace detected, skipping Bazel integration")
+			}
+		}
+	}
 
 	// Handle lock file
 	var lockFile *config.LockFile
@@ -375,6 +457,19 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		log.Debug("Build metrics",
 			logger.Int("total_metrics", len(snapshot.Metrics)),
 		)
+	}
+
+	// Bazel post-build: generate BUILD.bazel files for generated code
+	generateBazelBuilds := cfg.Bazel.GenerateBuildFiles || buildBazel
+	if bazelIntegrator != nil && len(bazelTargets) > 0 && generateBazelBuilds {
+		log.Info("🔧 Generating Bazel BUILD files for generated code...")
+
+		err := bazelIntegrator.SyncAfterBuild(ctx, bazelTargets, languages, cfg.Output.BaseDir)
+		if err != nil {
+			log.Warn("Failed to generate Bazel BUILD files", logger.Any("error", err))
+		} else {
+			log.Info("✅ Bazel BUILD files generated successfully")
+		}
 	}
 
 	return nil
