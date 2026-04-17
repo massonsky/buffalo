@@ -389,3 +389,122 @@ func TestConfig_NormalizeTypescript(t *testing.T) {
 		t.Fatalf("expected normalized directory 'typescript', got %q", dir)
 	}
 }
+
+func TestLoadFromFile_ConfigDir(t *testing.T) {
+	// Create nested directory: tmpDir/third_party/api/
+	tmpDir := t.TempDir()
+	nestedDir := filepath.Join(tmpDir, "third_party", "api")
+	if err := os.MkdirAll(nestedDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create proto dir that config references
+	protoDir := filepath.Join(nestedDir, "api_proto")
+	if err := os.MkdirAll(protoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create config in nested dir
+	cfgContent := `
+project:
+  name: nested-project
+  version: 0.1.0
+
+proto:
+  paths:
+    - ./api_proto
+  import_paths:
+    - ./vendor_proto
+
+output:
+  base_dir: ./generated
+
+languages:
+  python:
+    enabled: true
+`
+	cfgPath := filepath.Join(nestedDir, "buffalo.yaml")
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFromFile(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadFromFile() error: %v", err)
+	}
+
+	// ConfigDir should be the directory of the config file
+	if cfg.ConfigDir != nestedDir {
+		t.Errorf("ConfigDir = %q, want %q", cfg.ConfigDir, nestedDir)
+	}
+
+	// Proto paths should be resolved relative to config dir
+	expectedProtoPath := filepath.Join(nestedDir, "api_proto")
+	if len(cfg.Proto.Paths) != 1 || cfg.Proto.Paths[0] != expectedProtoPath {
+		t.Errorf("Proto.Paths = %v, want [%s]", cfg.Proto.Paths, expectedProtoPath)
+	}
+
+	// Import paths should be resolved relative to config dir
+	expectedImportPath := filepath.Join(nestedDir, "vendor_proto")
+	if len(cfg.Proto.ImportPaths) != 1 || cfg.Proto.ImportPaths[0] != expectedImportPath {
+		t.Errorf("Proto.ImportPaths = %v, want [%s]", cfg.Proto.ImportPaths, expectedImportPath)
+	}
+
+	// Output base dir should be resolved relative to config dir
+	expectedBaseDir := filepath.Join(nestedDir, "generated")
+	if cfg.Output.BaseDir != expectedBaseDir {
+		t.Errorf("Output.BaseDir = %q, want %q", cfg.Output.BaseDir, expectedBaseDir)
+	}
+}
+
+func TestConfig_ResolveRelativePaths_AbsoluteUnchanged(t *testing.T) {
+	var absPath, absDir string
+	if filepath.Separator == '\\' {
+		absPath = `C:\absolute\path`
+		absDir = `C:\some\dir`
+	} else {
+		absPath = "/absolute/path"
+		absDir = "/some/dir"
+	}
+	cfg := &Config{
+		ConfigDir: absDir,
+		Proto: ProtoConfig{
+			Paths:       []string{absPath},
+			ImportPaths: []string{absPath},
+		},
+		Output: OutputConfig{
+			BaseDir: absPath,
+		},
+	}
+
+	cfg.ResolveRelativePaths()
+
+	if cfg.Proto.Paths[0] != absPath {
+		t.Errorf("absolute path was modified: got %q", cfg.Proto.Paths[0])
+	}
+	if cfg.Output.BaseDir != absPath {
+		t.Errorf("absolute base_dir was modified: got %q", cfg.Output.BaseDir)
+	}
+}
+
+func TestConfig_ResolveRelativePaths_EmptyConfigDir(t *testing.T) {
+	cfg := &Config{
+		ConfigDir: "",
+		Proto: ProtoConfig{
+			Paths: []string{"./protos"},
+		},
+		Output: OutputConfig{
+			BaseDir: "./generated",
+		},
+	}
+
+	cfg.ResolveRelativePaths()
+
+	// Paths should remain unchanged when ConfigDir is empty
+	if cfg.Proto.Paths[0] != "./protos" {
+		t.Errorf("path was modified with empty ConfigDir: got %q", cfg.Proto.Paths[0])
+	}
+	if cfg.Output.BaseDir != "./generated" {
+		t.Errorf("base_dir was modified with empty ConfigDir: got %q", cfg.Output.BaseDir)
+	}
+}

@@ -24,6 +24,11 @@ type Config struct {
 	Plugins      []PluginConfig          `mapstructure:"plugins"`
 	Templates    []TemplateConfig        `mapstructure:"templates"`
 	Models       ModelsConfig            `mapstructure:"models"`
+
+	// ConfigDir is the directory containing the loaded config file.
+	// All relative paths in the config are resolved relative to this directory.
+	// Set automatically by LoadFromFile. Empty when loaded from CWD.
+	ConfigDir string `mapstructure:"-"`
 }
 
 // BazelConfig contains Bazel integration settings.
@@ -247,11 +252,20 @@ func LoadFromFile(path string) (*Config, error) {
 		return nil, errors.Wrap(err, errors.ErrConfig, "failed to unmarshal config")
 	}
 
+	// Set ConfigDir to the directory of the config file so that
+	// relative paths (proto.paths, output.base_dir, etc.) are resolved
+	// relative to the config file, not to CWD.
+	absPath, err := filepath.Abs(path)
+	if err == nil {
+		cfg.ConfigDir = filepath.Dir(absPath)
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
 	cfg.Normalize()
+	cfg.ResolveRelativePaths()
 
 	return &cfg, nil
 }
@@ -461,4 +475,38 @@ func (c *Config) GetPb2ImportPrefix(language string) string {
 	default:
 		return ""
 	}
+}
+
+// ResolveRelativePaths resolves all relative paths in the config
+// relative to ConfigDir. If ConfigDir is empty (config loaded from CWD),
+// paths are left unchanged.
+func (c *Config) ResolveRelativePaths() {
+	if c.ConfigDir == "" {
+		return
+	}
+
+	// Resolve proto.paths
+	for i, p := range c.Proto.Paths {
+		c.Proto.Paths[i] = c.resolveRelPath(p)
+	}
+
+	// Resolve proto.import_paths
+	for i, p := range c.Proto.ImportPaths {
+		c.Proto.ImportPaths[i] = c.resolveRelPath(p)
+	}
+
+	// Resolve output.base_dir
+	c.Output.BaseDir = c.resolveRelPath(c.Output.BaseDir)
+
+	// Resolve cache directory
+	c.Build.Cache.Directory = c.resolveRelPath(c.Build.Cache.Directory)
+}
+
+// resolveRelPath resolves a relative path against ConfigDir.
+// Absolute paths are returned unchanged.
+func (c *Config) resolveRelPath(p string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(c.ConfigDir, p)
 }
