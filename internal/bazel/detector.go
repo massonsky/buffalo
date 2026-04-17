@@ -44,7 +44,7 @@ func DetectWorkspace(dir string) (*Workspace, error) {
 }
 
 // findWorkspaceRoot walks up from dir until it finds a workspace marker file.
-func findWorkspaceRoot(dir string) (string, string, error) {
+func findWorkspaceRoot(dir string) (string, string, error) { //nolint:unparam // error return kept for interface compatibility
 	current := dir
 	for {
 		for _, name := range workspaceFiles {

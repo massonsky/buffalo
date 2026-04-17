@@ -74,7 +74,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 			log.Warn(fmt.Sprintf("⚠️  Не удалось загрузить конфигурацию: %v", err))
 			log.Info("Выполняется проверка всех языков...")
 		} else {
-			log.Info(fmt.Sprintf("📋 Проверка готовности для языков из конфигурации..."))
+			log.Info("📋 Проверка готовности для языков из конфигурации...")
 			results = append(results, runSystemCheck(cfg)...)
 
 			// Проверка конфига и зависимостей
@@ -569,7 +569,7 @@ func checkDependencies() CheckResult {
 
 	// Count proto files
 	count := 0
-	filepath.Walk(protoDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(protoDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && strings.HasSuffix(path, ".proto") {
 			count++
 		}

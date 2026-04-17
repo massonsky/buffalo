@@ -12,12 +12,13 @@ import (
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gopkg.in/yaml.v3"
 )
 
 var (
 	// Plugin flags
-	pluginURL    string
 	pluginName   string
 	pluginForce  bool
 	pluginGlobal bool
@@ -111,7 +112,7 @@ func init() {
 	pluginInstallCmd.Flags().StringVarP(&pluginName, "name", "n", "", "plugin name (required)")
 	pluginInstallCmd.Flags().BoolVarP(&pluginGlobal, "global", "g", false, "install globally to ~/.buffalo/plugins/")
 	pluginInstallCmd.Flags().BoolVarP(&pluginForce, "force", "f", false, "force overwrite if plugin exists")
-	pluginInstallCmd.MarkFlagRequired("name")
+	_ = pluginInstallCmd.MarkFlagRequired("name")
 
 	// Remove flags
 	pluginRemoveCmd.Flags().BoolVarP(&pluginGlobal, "global", "g", false, "remove from global ~/.buffalo/plugins/")
@@ -180,7 +181,7 @@ func listPluginsInDir(dir, location string) error {
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".so") {
 			if !found {
-				fmt.Printf("\n%s plugins (%s):\n", strings.Title(location), dir)
+				fmt.Printf("\n%s plugins (%s):\n", cases.Title(language.English).String(location), dir)
 				found = true
 			}
 			name := strings.TrimSuffix(entry.Name(), ".so")
@@ -359,7 +360,7 @@ func togglePlugin(name string, enable bool) error {
 		return fmt.Errorf("could not marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return fmt.Errorf("could not write config file: %w", err)
 	}
 
@@ -398,7 +399,7 @@ func loadPluginConfig() (*config.Config, error) {
 
 // downloadFile downloads a file from URL
 func downloadFile(filepath string, url string) error {
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) //nolint:gosec // G107: URL comes from plugin config, not user input
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,7 @@ func TestNewInstaller(t *testing.T) {
 	installer := NewInstaller(log)
 
 	if installer == nil {
-		t.Error("NewInstaller() returned nil")
+		t.Fatal("NewInstaller() returned nil")
 	}
 
 	if installer.platform == "" {

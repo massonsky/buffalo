@@ -65,8 +65,8 @@ Templates are defined in buffalo.yaml:
 		RunE:  runTemplateValidate,
 	}
 
-	templateLang   string
-	templateName   string
+	templateLang     string
+	templateName     string
 	templateOutput   string
 	templateData     string
 	templateDataFile string
@@ -87,12 +87,12 @@ func init() {
 	templateGenerateCmd.Flags().StringVarP(&templateOutput, "output", "o", "", "output directory (required)")
 	templateGenerateCmd.Flags().StringVar(&templateData, "data", "", "JSON data to pass to template")
 	templateGenerateCmd.Flags().StringVar(&templateDataFile, "data-file", "", "path to JSON file with template data")
-	templateGenerateCmd.MarkFlagRequired("template")
-	templateGenerateCmd.MarkFlagRequired("output")
+	_ = templateGenerateCmd.MarkFlagRequired("template")
+	_ = templateGenerateCmd.MarkFlagRequired("output")
 
 	// Validate command flags
 	templateValidateCmd.Flags().StringVarP(&templateName, "template", "t", "", "template name to validate (required)")
-	templateValidateCmd.MarkFlagRequired("template")
+	_ = templateValidateCmd.MarkFlagRequired("template")
 }
 
 func runTemplateList(cmd *cobra.Command, args []string) error {
@@ -106,7 +106,7 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create template manager
-	mgr := template.NewManager(*log)
+	mgr := template.NewManager(log)
 
 	// Register templates from config
 	if cfg.Templates != nil {
@@ -203,7 +203,7 @@ func runTemplateGenerate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create template manager
-	mgr := template.NewManager(*log)
+	mgr := template.NewManager(log)
 
 	// Register templates from config
 	if cfg.Templates != nil {
@@ -238,7 +238,7 @@ func runTemplateGenerate(cmd *cobra.Command, args []string) error {
 	// Parse template data if provided
 	var data interface{}
 	var jsonBytes []byte
-	
+
 	// Read from file if specified
 	if templateDataFile != "" {
 		var err error
@@ -251,7 +251,7 @@ func runTemplateGenerate(cmd *cobra.Command, args []string) error {
 	} else if templateData != "" {
 		jsonBytes = []byte(templateData)
 	}
-	
+
 	if len(jsonBytes) > 0 {
 		var jsonData map[string]interface{}
 		if err := json.Unmarshal(jsonBytes, &jsonData); err != nil {
@@ -337,7 +337,7 @@ func runTemplateValidate(cmd *cobra.Command, args []string) error {
 
 			// Count template files
 			fileCount := 0
-			filepath.Walk(absPath, func(path string, info os.FileInfo, err error) error {
+			_ = filepath.Walk(absPath, func(path string, info os.FileInfo, err error) error {
 				if err == nil && !info.IsDir() {
 					for _, pattern := range tmplCfg.Patterns {
 						if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {

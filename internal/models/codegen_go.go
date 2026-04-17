@@ -412,7 +412,7 @@ func (g *GoGORMGenerator) GenerateModel(model ModelDef, opts GenerateOptions) ([
 	return []GeneratedFile{{Path: fileName, Content: b.String()}}, nil
 }
 
-func (g *GoGORMGenerator) fieldToGORM(f FieldDef, model ModelDef) string {
+func (g *GoGORMGenerator) fieldToGORM(f FieldDef, _ ModelDef) string {
 	var b strings.Builder
 
 	if f.Description != "" {

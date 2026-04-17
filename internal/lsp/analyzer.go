@@ -145,7 +145,6 @@ var (
 	syntaxPattern     = regexp.MustCompile(`^\s*syntax\s*=\s*["']([^"']+)["']\s*;`)
 	packagePattern    = regexp.MustCompile(`^\s*package\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*;`)
 	importPattern     = regexp.MustCompile(`^\s*import\s+(?:(weak|public)\s+)?["']([^"']+)["']\s*;`)
-	optionPattern     = regexp.MustCompile(`^\s*option\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*=`)
 	messagePattern    = regexp.MustCompile(`^\s*message\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{?`)
 	enumPattern       = regexp.MustCompile(`^\s*enum\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{?`)
 	servicePattern    = regexp.MustCompile(`^\s*service\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{?`)
@@ -153,15 +152,8 @@ var (
 	fieldPattern      = regexp.MustCompile(`^\s*(repeated|optional|required)?\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(\d+)`)
 	enumValuePattern  = regexp.MustCompile(`^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(-?\d+)`)
 	oneofPattern      = regexp.MustCompile(`^\s*oneof\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{?`)
-	mapPattern        = regexp.MustCompile(`^\s*map\s*<\s*([^,]+)\s*,\s*([^>]+)\s*>\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(\d+)`)
-	commentPattern    = regexp.MustCompile(`^\s*//(.*)$`)
 	blockCommentStart = regexp.MustCompile(`^\s*/\*`)
 	blockCommentEnd   = regexp.MustCompile(`\*/`)
-
-	// Buffalo annotation patterns
-	buffaloOptionPattern = regexp.MustCompile(`\[\s*\(\s*buffalo\.`)
-	validationPattern    = regexp.MustCompile(`buffalo\.validate\.rules`)
-	permissionPattern    = regexp.MustCompile(`buffalo\.permissions`)
 )
 
 // Analyze analyzes a document and returns diagnostics.
@@ -235,7 +227,7 @@ func (a *ProtoAnalyzer) Analyze(doc *Document) []Diagnostic {
 			if len(matches) > 4 {
 				fieldNum := matches[4]
 				var num int
-				fmt.Sscanf(fieldNum, "%d", &num)
+				_, _ = fmt.Sscanf(fieldNum, "%d", &num)
 				if num <= 0 {
 					diagnostics = append(diagnostics, Diagnostic{
 						Range:    lineRange(lineNum, line),
@@ -442,8 +434,8 @@ func (a *ProtoAnalyzer) checkValidationRules(line string, lineNum int, diagnosti
 		maxMatch := regexp.MustCompile(`max_len:\s*(\d+)`).FindStringSubmatch(line)
 		if len(minMatch) > 1 && len(maxMatch) > 1 {
 			var min, max int
-			fmt.Sscanf(minMatch[1], "%d", &min)
-			fmt.Sscanf(maxMatch[1], "%d", &max)
+			_, _ = fmt.Sscanf(minMatch[1], "%d", &min)
+			_, _ = fmt.Sscanf(maxMatch[1], "%d", &max)
 			if min > max {
 				*diagnostics = append(*diagnostics, Diagnostic{
 					Range:    lineRange(lineNum, line),
@@ -462,8 +454,8 @@ func (a *ProtoAnalyzer) checkValidationRules(line string, lineNum int, diagnosti
 		ltMatch := regexp.MustCompile(`lt[e]?:\s*(-?\d+(?:\.\d+)?)`).FindStringSubmatch(line)
 		if len(gtMatch) > 1 && len(ltMatch) > 1 {
 			var gt, lt float64
-			fmt.Sscanf(gtMatch[1], "%f", &gt)
-			fmt.Sscanf(ltMatch[1], "%f", &lt)
+			_, _ = fmt.Sscanf(gtMatch[1], "%f", &gt)
+			_, _ = fmt.Sscanf(ltMatch[1], "%f", &lt)
 			if gt >= lt {
 				*diagnostics = append(*diagnostics, Diagnostic{
 					Range:    lineRange(lineNum, line),
@@ -505,7 +497,7 @@ func (a *ProtoAnalyzer) analyzePermissions(doc *Document) []Diagnostic {
 
 		if inService && strings.Contains(line, "}") && !strings.Contains(line, "{") {
 			// Check if service has any permissions defined
-			if !serviceHasPermissions[currentService] {
+			if !serviceHasPermissions[currentService] { //nolint:staticcheck // SA9003: informational check, no action needed
 				// This is just informational, not an error
 			}
 			inService = false

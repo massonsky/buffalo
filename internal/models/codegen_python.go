@@ -32,7 +32,7 @@ func pb2ImportPrefix(opts GenerateOptions) string {
 //
 // Given outputDir="./generated/models", the parent is "generated".
 // The generated code does: sys.path.insert(0, os.path.join(os.getcwd(), "generated"))
-func pythonSysPathSetup(outputDir, prefix string) string {
+func pythonSysPathSetup(outputDir, _ string) string {
 	// Normalise outputDir and take its parent directory
 	norm := strings.ReplaceAll(outputDir, "\\", "/")
 	norm = strings.TrimPrefix(norm, "./")

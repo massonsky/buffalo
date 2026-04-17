@@ -9,6 +9,8 @@ import (
 	"github.com/massonsky/buffalo/internal/tools"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 var (
@@ -211,7 +213,7 @@ func runToolsList(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		toolsList := byLanguage[lang]
-		printToolsGroup(strings.Title(lang), toolsList, installer)
+		printToolsGroup(cases.Title(language.English).String(lang), toolsList, installer)
 	}
 
 	fmt.Println()
@@ -307,7 +309,7 @@ func runToolsCheck(cmd *cobra.Command, args []string) error {
 		if lang == "core" {
 			continue
 		}
-		fmt.Printf("\n%s:\n", strings.Title(lang))
+		fmt.Printf("\n%s:\n", cases.Title(language.English).String(lang))
 		fmt.Println(strings.Repeat("─", 50))
 		for _, result := range langResults {
 			printCheckResult(result)
@@ -363,7 +365,7 @@ func printCheckResult(result tools.InstallResult) {
 	}
 }
 
-func printInstallResults(results map[string][]tools.InstallResult, log *logger.Logger) error {
+func printInstallResults(results map[string][]tools.InstallResult, _ *logger.Logger) error {
 	fmt.Println()
 	fmt.Println("📋 Installation Results")
 	fmt.Println("═══════════════════════════════════════════════════")
@@ -374,7 +376,7 @@ func printInstallResults(results map[string][]tools.InstallResult, log *logger.L
 	alreadyCount := 0
 
 	for category, categoryResults := range results {
-		fmt.Printf("\n%s:\n", strings.Title(category))
+		fmt.Printf("\n%s:\n", cases.Title(language.English).String(category))
 		fmt.Println(strings.Repeat("─", 50))
 
 		for _, result := range categoryResults {

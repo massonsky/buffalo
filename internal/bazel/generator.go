@@ -119,7 +119,7 @@ func (g *Generator) GenerateFilegroupBuilds(languages []string, outputDir string
 func (g *Generator) discoverGeneratedPackages(langDir string, lang string) map[string][]string {
 	packages := make(map[string][]string)
 
-	filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -190,7 +190,7 @@ func (g *Generator) renderFilegroupBuild(files []string, lang string, pkgLabel s
 	return b.String()
 }
 
-func (g *Generator) renderRustFilegroup(b *strings.Builder, files []string, pkgLabel string) {
+func (g *Generator) renderRustFilegroup(b *strings.Builder, files []string, _ string) {
 	// One filegroup with all generated .rs files
 	rsFiles := filterByExt(files, ".rs")
 	binFiles := filterByExt(files, ".bin")
@@ -220,7 +220,7 @@ func (g *Generator) renderRustFilegroup(b *strings.Builder, files []string, pkgL
 	}
 }
 
-func (g *Generator) renderPythonLibrary(b *strings.Builder, files []string, pkgLabel string) {
+func (g *Generator) renderPythonLibrary(b *strings.Builder, files []string, _ string) {
 	b.WriteString(`load("@rules_python//python:defs.bzl", "py_library")` + "\n\n")
 
 	pyFiles := filterByExt(files, ".py")
@@ -235,7 +235,7 @@ func (g *Generator) renderPythonLibrary(b *strings.Builder, files []string, pkgL
 	b.WriteString(")\n")
 }
 
-func (g *Generator) renderGoFilegroup(b *strings.Builder, files []string, pkgLabel string) {
+func (g *Generator) renderGoFilegroup(b *strings.Builder, files []string, _ string) {
 	goFiles := filterByExt(files, ".go")
 	if len(goFiles) == 0 {
 		return
@@ -248,7 +248,7 @@ func (g *Generator) renderGoFilegroup(b *strings.Builder, files []string, pkgLab
 	b.WriteString(")\n")
 }
 
-func (g *Generator) renderCppLibrary(b *strings.Builder, files []string, pkgLabel string) {
+func (g *Generator) renderCppLibrary(b *strings.Builder, files []string, _ string) {
 	hdrs := filterByExt(files, ".h")
 	srcs := filterByExt(files, ".cc")
 	if len(srcs) == 0 && len(hdrs) == 0 {

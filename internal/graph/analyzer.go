@@ -55,7 +55,7 @@ type Layer struct {
 	Nodes []string
 }
 
-// Analyzer performs various analyses on graphs.
+// Analyzer performs various analyzes on graphs.
 type Analyzer struct {
 	graph *Graph
 }

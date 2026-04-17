@@ -21,7 +21,6 @@ var (
 	graphOutput    string
 	graphScope     string
 	graphFile      string
-	graphAnalyze   string
 	graphShowStats bool
 
 	graphCmd = &cobra.Command{
@@ -68,7 +67,7 @@ Examples:
 	graphAnalyzeCmd = &cobra.Command{
 		Use:   "analyze",
 		Short: "Analyze dependency graph",
-		Long: `Perform various analyses on the dependency graph.
+		Long: `Perform various analyzes on the dependency graph.
 
 Examples:
   buffalo graph analyze --cycles     # Find circular dependencies
@@ -108,7 +107,7 @@ func init() {
 	graphAnalyzeCmd.Flags().Bool("heavy", false, "find files with most dependencies")
 	graphAnalyzeCmd.Flags().Bool("coupling", false, "calculate coupling metrics")
 	graphAnalyzeCmd.Flags().Bool("layers", false, "suggest architectural layers")
-	graphAnalyzeCmd.Flags().Bool("all", false, "run all analyses")
+	graphAnalyzeCmd.Flags().Bool("all", false, "run all analyzes")
 }
 
 func runGraph(cmd *cobra.Command, args []string) error {
@@ -168,7 +167,7 @@ func runGraph(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to create output directory: %w", err)
 		}
 
-		if err := os.WriteFile(graphOutput, output.Bytes(), 0644); err != nil {
+		if err := os.WriteFile(graphOutput, output.Bytes(), 0600); err != nil {
 			return fmt.Errorf("failed to write output file: %w", err)
 		}
 		log.Info("Graph written", logger.String("file", graphOutput), logger.String("format", graphFormat))

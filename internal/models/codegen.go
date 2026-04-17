@@ -312,19 +312,8 @@ func pythonBool(s string) string {
 	return "False"
 }
 
-// goDefaultValue returns Go-appropriate default commentary (for struct tags / comments).
-func goDefaultValue(f FieldDef) string {
-	if f.DefaultValue != "" {
-		return f.DefaultValue
-	}
-	return ""
-}
-
 // deprecatedComment returns a deprecation notice if applicable.
-func deprecatedComment(deprecated bool, msg string) string {
-	if !deprecated {
-		return ""
-	}
+func deprecatedComment(_ bool, msg string) string {
 	if msg != "" {
 		return fmt.Sprintf("Deprecated: %s", msg)
 	}
@@ -469,7 +458,7 @@ func generatePythonEnum(e EnumDef) string {
 }
 
 // generateGoEnum produces a Go const block with typed int32 constants.
-func generateGoEnum(e EnumDef, pkg string) string {
+func generateGoEnum(e EnumDef, _ string) string {
 	var b strings.Builder
 
 	if e.Comment != "" {

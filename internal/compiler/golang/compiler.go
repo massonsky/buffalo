@@ -211,13 +211,10 @@ func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.Compil
 	}
 
 	// Build go_opt with module path
-	goOpt := fmt.Sprintf("paths=source_relative")
+	goOpt := "paths=source_relative"
 	if c.options.GoModule != "" {
 		// Get relative path from proto file to determine package
-		relPath := filepath.Dir(file.Path)
-		if relPath != "." {
-			relPath = strings.ReplaceAll(relPath, "\\", "/")
-		}
+		_ = filepath.Dir(file.Path)
 		goOpt = fmt.Sprintf("module=%s", c.options.GoModule)
 	}
 
@@ -299,7 +296,7 @@ require (
 `, c.options.GoModule, requireBlock.String())
 
 	// Write go.mod file
-	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
+	if err := os.WriteFile(goModPath, []byte(goModContent), 0600); err != nil {
 		return fmt.Errorf("failed to write go.mod: %v", err)
 	}
 
@@ -340,7 +337,7 @@ func (c *Compiler) analyzeGoImports(outputDir string) map[string]string {
 	requiredDeps := make(map[string]string)
 
 	// Walk through all .go files
-	filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}

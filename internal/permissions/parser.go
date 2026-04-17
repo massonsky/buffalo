@@ -64,7 +64,7 @@ func (p *Parser) ParseDirectory(ctx context.Context, dir string) ([]*ServicePerm
 	return allPermissions, nil
 }
 
-func (p *Parser) parseScanner(scanner *bufio.Scanner, filename string) ([]*ServicePermissions, error) {
+func (p *Parser) parseScanner(scanner *bufio.Scanner, _ string) ([]*ServicePermissions, error) {
 	var services []*ServicePermissions
 	var currentService *ServicePermissions
 	var currentMethod string
@@ -311,7 +311,7 @@ func parseRateLimit(text string) *RateLimit {
 	return nil
 }
 
-func stringToInt(s string, result *int) (int, error) {
+func stringToInt(s string, result *int) (int, error) { //nolint:unparam // error return kept for interface compatibility
 	var n int
 	for _, c := range s {
 		if c >= '0' && c <= '9' {

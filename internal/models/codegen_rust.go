@@ -312,7 +312,7 @@ func (g *RustDieselGenerator) GenerateModel(model ModelDef, opts GenerateOptions
 	// Insertable (New) struct
 	newName := "New" + className
 	b.WriteString(fmt.Sprintf("/// Insertable form of %s.\n", className))
-	b.WriteString(fmt.Sprintf("#[derive(Debug, Clone, Insertable, Serialize, Deserialize)]\n"))
+	b.WriteString("#[derive(Debug, Clone, Insertable, Serialize, Deserialize)]\n")
 	b.WriteString(fmt.Sprintf("#[diesel(table_name = %s)]\n", tableName))
 	b.WriteString(fmt.Sprintf("pub struct %s {\n", newName))
 	for _, f := range model.Fields {

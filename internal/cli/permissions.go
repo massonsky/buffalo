@@ -82,7 +82,7 @@ Supports multiple output frameworks:
 			if err := os.MkdirAll(filepath.Dir(output), 0755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(output, []byte(code), 0644); err != nil {
+			if err := os.WriteFile(output, []byte(code), 0600); err != nil {
 				return errors.Wrap(err, errors.ErrIO, "failed to write output")
 			}
 			log.Info("✅ Generated", logger.String("file", output))
@@ -149,7 +149,7 @@ Creates a table showing which roles/scopes have access to each method.`,
 			if err := os.MkdirAll(filepath.Dir(output), 0755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(output, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(output, []byte(content), 0600); err != nil {
 				return errors.Wrap(err, errors.ErrIO, "failed to write output")
 			}
 			log.Info("✅ Generated matrix", logger.String("file", output))

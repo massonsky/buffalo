@@ -233,7 +233,7 @@ func runUpgradeProcess(ctx context.Context, log *logger.Logger, upgrader *upgrad
 	// Confirm unless forced or dry-run
 	if !upgradeForce && !upgradeDryRun {
 		if !confirmUpgrade(check) {
-			fmt.Println("Upgrade cancelled")
+			fmt.Println("Upgrade canceled")
 			return
 		}
 	}
@@ -311,7 +311,7 @@ func confirmUpgrade(check *upgrade.UpgradeCheck) bool {
 	fmt.Printf("Upgrade from %s to %s? [y/N]: ", check.CurrentVersion, check.LatestVersion)
 
 	var response string
-	fmt.Scanln(&response)
+	_, _ = fmt.Scanln(&response)
 
 	return strings.ToLower(strings.TrimSpace(response)) == "y"
 }

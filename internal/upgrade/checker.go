@@ -323,12 +323,12 @@ func compareVersions(v1, v2 string) int {
 		if i < len(parts1) {
 			// Handle pre-release suffixes (e.g., "1-beta")
 			part := strings.Split(parts1[i], "-")[0]
-			fmt.Sscanf(part, "%d", &n1)
+			_, _ = fmt.Sscanf(part, "%d", &n1)
 		}
 
 		if i < len(parts2) {
 			part := strings.Split(parts2[i], "-")[0]
-			fmt.Sscanf(part, "%d", &n2)
+			_, _ = fmt.Sscanf(part, "%d", &n2)
 		}
 
 		if n1 < n2 {

@@ -89,9 +89,9 @@ func runClear(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Print("\nAre you sure? (y/N): ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if response != "y" && response != "Y" {
-			log.Info("❌ Cancelled")
+			log.Info("❌ Canceled")
 			return nil
 		}
 	}

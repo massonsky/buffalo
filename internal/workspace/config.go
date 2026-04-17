@@ -63,7 +63,7 @@ func SaveConfig(path string, cfg *Config) error {
 
 	header := "# Buffalo Workspace Configuration\n# https://github.com/massonsky/buffalo\n\n"
 
-	if err := os.WriteFile(path, []byte(header+string(data)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(header+string(data)), 0600); err != nil {
 		return errors.Wrap(err, errors.ErrIO, "failed to write workspace config")
 	}
 
@@ -165,7 +165,7 @@ func (c *Config) Validate() *ValidationResult {
 
 		// Check dependencies exist
 		for _, dep := range p.DependsOn {
-			if !names[dep] && dep != p.Name {
+			if !names[dep] && dep != p.Name { //nolint:staticcheck // SA9003: validated in second pass below
 				// Will be checked after all projects are processed
 			}
 		}

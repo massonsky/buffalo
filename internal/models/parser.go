@@ -65,17 +65,11 @@ var enumValueRe = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*(-?\d+)\s*;`)
 // nestedMessageRe matches nested message blocks: message Name { ... }
 var nestedMessageRe = regexp.MustCompile(`(?m)^\s*message\s+(\w+)\s*\{`)
 
-// commentRe matches single-line comments.
-var commentRe = regexp.MustCompile(`(?m)^\s*//\s*(.*)$`)
-
 // serviceBlockRe matches service blocks (to skip them).
 var serviceBlockRe = regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
 
 // extendBlockRe matches extend blocks (to skip them).
 var extendBlockRe = regexp.MustCompile(`(?m)^\s*extend\s+[\w.]+\s*\{`)
-
-// reservedLineRe matches reserved field declarations inside messages.
-var reservedLineRe = regexp.MustCompile(`(?m)^\s*reserved\s+[^;]+;`)
 
 // syntaxRe matches the syntax declaration.
 var syntaxRe = regexp.MustCompile(`(?m)^\s*syntax\s*=\s*"([^"]+)"\s*;`)
@@ -843,7 +837,7 @@ func extractLeadingComment(content string, pos int) string {
 // Internal: parse model-level options
 // ──────────────────────────────────────────────────────────────────
 
-func parseModelOptions(body string, md *ModelDef) error {
+func parseModelOptions(body string, md *ModelDef) error { //nolint:unparam // error return kept for future use
 	kvs := kvRe.FindAllStringSubmatch(body, -1)
 	for _, kv := range kvs {
 		key := kv[1]
@@ -885,7 +879,7 @@ func parseModelOptions(body string, md *ModelDef) error {
 // Internal: parse field-level options
 // ──────────────────────────────────────────────────────────────────
 
-func parseFieldOptions(body string, fd *FieldDef) error {
+func parseFieldOptions(body string, fd *FieldDef) error { //nolint:unparam // error return kept for future use
 	kvs := kvRe.FindAllStringSubmatch(body, -1)
 	for _, kv := range kvs {
 		key := kv[1]

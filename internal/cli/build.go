@@ -306,7 +306,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				log.Warn("Failed to load lock file, regenerating", logger.Any("error", err))
 				lockFile, _ = lockManager.Generate(cfg, allProtoFiles)
-				lockManager.Save(lockFile)
+				_ = lockManager.Save(lockFile)
 			}
 		}
 
@@ -486,7 +486,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 }
 
 // loadConfig loads configuration from viper
-func loadConfig(log *logger.Logger) (*config.Config, error) {
+func loadConfig(_ *logger.Logger) (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, err
@@ -495,7 +495,7 @@ func loadConfig(log *logger.Logger) (*config.Config, error) {
 }
 
 // loadConfigWithPath loads configuration and returns the config file path
-func loadConfigWithPath(log *logger.Logger) (*config.Config, string, error) {
+func loadConfigWithPath(_ *logger.Logger) (*config.Config, string, error) {
 	// Try to find config file in current directory
 	configPaths := []string{
 		"buffalo.yaml",

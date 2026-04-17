@@ -175,7 +175,7 @@ func (it *Integrator) discoverViaQuery(ctx context.Context, patterns []string) (
 }
 
 // discoverViaFiles scans BUILD files on disk.
-func (it *Integrator) discoverViaFiles(ctx context.Context) ([]BazelTarget, error) {
+func (it *Integrator) discoverViaFiles(_ context.Context) ([]BazelTarget, error) {
 	buildFiles, err := FindBuildFiles(it.workspace.Root)
 	if err != nil {
 		return nil, fmt.Errorf("bazel: scan BUILD files: %w", err)

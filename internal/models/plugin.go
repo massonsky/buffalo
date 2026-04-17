@@ -53,8 +53,7 @@ func (p *ModelsPlugin) Execute(ctx context.Context, input *plugin.Input) (*plugi
 	}
 
 	// Load ORM settings from plugin options
-	var cfg *pluginModelsConfig
-	cfg = p.buildConfig()
+	cfg := p.buildConfig()
 
 	// ── Parse all proto files for model definitions ──
 	var allModels []ModelDef
@@ -205,7 +204,7 @@ func (p *ModelsPlugin) generateForLanguage(
 	outputDir string,
 	pb2ImportPrefix string,
 	models []ModelDef,
-	input *plugin.Input,
+	_ *plugin.Input,
 ) ([]string, error) {
 	gen, err := NewModelCodeGenerator(lang, orm)
 	if err != nil {

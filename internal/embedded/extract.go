@@ -48,7 +48,7 @@ func ExtractAllProtos(workspaceDir string) (protoPath string, err error) {
 			return fmt.Errorf("mkdir %s: %w", filepath.Dir(target), err)
 		}
 
-		if err := os.WriteFile(target, data, 0644); err != nil {
+		if err := os.WriteFile(target, data, 0600); err != nil {
 			return fmt.Errorf("write %s: %w", target, err)
 		}
 
@@ -137,7 +137,7 @@ func ExtractBazelRules(workspaceDir string) (rulesPath string, err error) {
 			return fmt.Errorf("mkdir %s: %w", filepath.Dir(target), err)
 		}
 
-		if err := os.WriteFile(target, data, 0644); err != nil {
+		if err := os.WriteFile(target, data, 0600); err != nil {
 			return fmt.Errorf("write %s: %w", target, err)
 		}
 

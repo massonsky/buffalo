@@ -64,11 +64,7 @@ func (c *Compiler) Validate() error {
 
 	// Check generator-specific tools
 	switch c.options.Generator {
-	case "prost":
-		// prost is typically used as a Cargo dependency, not a CLI tool
-		// We'll generate code via protoc with prost plugin
-		return nil
-	case "rust-protobuf":
+	case "rust-protobuf", "protoc-gen-rs":
 		if err := c.checkTool("protoc-gen-rs", "--version"); err != nil {
 			return errors.Wrap(err, errors.ErrConfig, "protoc-gen-rs not found, install: cargo install protobuf-codegen")
 		}

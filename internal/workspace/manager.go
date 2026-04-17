@@ -147,12 +147,8 @@ func (m *Manager) selectProjects(opts BuildOptions) []*Project {
 
 	if opts.Affected {
 		affected, _ := m.GetAffected(opts.Since)
-		for _, p := range affected.DirectlyAffected {
-			projects = append(projects, p)
-		}
-		for _, p := range affected.TransitivelyAffected {
-			projects = append(projects, p)
-		}
+		projects = append(projects, affected.DirectlyAffected...)
+		projects = append(projects, affected.TransitivelyAffected...)
 		return projects
 	}
 

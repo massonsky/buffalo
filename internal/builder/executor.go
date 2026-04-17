@@ -59,12 +59,11 @@ type Executor interface {
 
 // executor implements Executor
 type executor struct {
-	log             Logger
-	metrics         *metrics.Collector
-	config          *config.Config // Add config field
-	compilers       map[string]compiler.Compiler
-	versionManager  *versioning.Manager
-	languageConfigs map[string]interface{} // Language-specific configs
+	log            Logger
+	metrics        *metrics.Collector
+	config         *config.Config // Add config field
+	compilers      map[string]compiler.Compiler
+	versionManager *versioning.Manager
 }
 
 type compileOutcome struct {
@@ -415,7 +414,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 	return &compileOutcome{generated: result.GeneratedFiles, warnings: result.Warnings}, nil
 }
 
-func (e *executor) postProcessLanguages(ctx context.Context, plan *ExecutionPlan, result *ExecutionResult) error {
+func (e *executor) postProcessLanguages(ctx context.Context, plan *ExecutionPlan, result *ExecutionResult) error { //nolint:unparam // error return kept for future use
 	for _, lang := range plan.Languages {
 		switch lang {
 		case "typescript":
@@ -489,18 +488,6 @@ func resolveImportProtoPath(importPaths []string, importProtoPath string) (strin
 	return "", false
 }
 
-func setToSortedSlice(values map[string]struct{}) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(values))
-	for v := range values {
-		out = append(out, v)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func uniqueSorted(values []string) []string {
 	if len(values) == 0 {
 		return values
@@ -539,30 +526,4 @@ func collectTypescriptSourceFiles(outputDir string) []string {
 		return nil
 	})
 	return uniqueSorted(files)
-}
-
-// parallelExecute executes tasks in parallel with error handling
-func (e *executor) parallelExecute(ctx context.Context, tasks []func() error) []error {
-	var wg sync.WaitGroup
-	errorChan := make(chan error, len(tasks))
-
-	for _, task := range tasks {
-		wg.Add(1)
-		go func(t func() error) {
-			defer wg.Done()
-			if err := t(); err != nil {
-				errorChan <- err
-			}
-		}(task)
-	}
-
-	wg.Wait()
-	close(errorChan)
-
-	var errors []error
-	for err := range errorChan {
-		errors = append(errors, err)
-	}
-
-	return errors
 }

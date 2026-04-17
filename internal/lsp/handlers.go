@@ -559,11 +559,3 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, params json.Ra
 
 	return nil, nil
 }
-
-// Helper to avoid import cycle
-func logger_String(key, value string) interface{} {
-	return struct {
-		Key   string
-		Value string
-	}{key, value}
-}

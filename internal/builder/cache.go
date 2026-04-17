@@ -174,18 +174,3 @@ func (c *cacheManager) computeFileHash(path string) (string, error) {
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:]), nil
 }
-
-// computeDepsHash computes combined hash of dependencies
-func (c *cacheManager) computeDepsHash(deps []string) (string, error) {
-	h := sha256.New()
-
-	for _, dep := range deps {
-		data, err := utils.ReadFile(dep)
-		if err != nil {
-			return "", errors.Wrap(err, errors.ErrIO, "failed to read dependency file")
-		}
-		h.Write(data)
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
-}

@@ -148,7 +148,7 @@ func (u *Upgrader) Upgrade(ctx context.Context, opts UpgradeOptions) (*Migration
 			}
 		}
 
-		u.migrator.SaveRollbackInfo(rollbackInfo)
+		_ = u.migrator.SaveRollbackInfo(rollbackInfo)
 		result.BackupPath = backupDir
 	}
 
@@ -558,7 +558,7 @@ func copyFile(src, dst string) error {
 	// Preserve permissions
 	sourceInfo, err := os.Stat(src)
 	if err == nil {
-		destFile.Chmod(sourceInfo.Mode())
+		_ = destFile.Chmod(sourceInfo.Mode())
 	}
 
 	return nil

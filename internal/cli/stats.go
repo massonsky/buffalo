@@ -144,28 +144,28 @@ func runStats(cmd *cobra.Command, args []string) error {
 		pythonDir := filepath.Join(baseDir, cfg.Output.Directories["python"])
 		if info, err := os.Stat(pythonDir); err == nil && info.IsDir() {
 			stats.GeneratedCode.Python.Exists = true
-			countFilesRecursive(pythonDir, &stats.GeneratedCode.Python.Files, &stats.GeneratedCode.Python.Size)
+			_ = countFilesRecursive(pythonDir, &stats.GeneratedCode.Python.Files, &stats.GeneratedCode.Python.Size)
 		}
 
 		// Go
 		goDir := filepath.Join(baseDir, cfg.Output.Directories["go"])
 		if info, err := os.Stat(goDir); err == nil && info.IsDir() {
 			stats.GeneratedCode.Go.Exists = true
-			countFilesRecursive(goDir, &stats.GeneratedCode.Go.Files, &stats.GeneratedCode.Go.Size)
+			_ = countFilesRecursive(goDir, &stats.GeneratedCode.Go.Files, &stats.GeneratedCode.Go.Size)
 		}
 
 		// Rust
 		rustDir := filepath.Join(baseDir, cfg.Output.Directories["rust"])
 		if info, err := os.Stat(rustDir); err == nil && info.IsDir() {
 			stats.GeneratedCode.Rust.Exists = true
-			countFilesRecursive(rustDir, &stats.GeneratedCode.Rust.Files, &stats.GeneratedCode.Rust.Size)
+			_ = countFilesRecursive(rustDir, &stats.GeneratedCode.Rust.Files, &stats.GeneratedCode.Rust.Size)
 		}
 
 		// C++
 		cppDir := filepath.Join(baseDir, cfg.Output.Directories["cpp"])
 		if info, err := os.Stat(cppDir); err == nil && info.IsDir() {
 			stats.GeneratedCode.Cpp.Exists = true
-			countFilesRecursive(cppDir, &stats.GeneratedCode.Cpp.Files, &stats.GeneratedCode.Cpp.Size)
+			_ = countFilesRecursive(cppDir, &stats.GeneratedCode.Cpp.Files, &stats.GeneratedCode.Cpp.Size)
 		}
 
 		stats.GeneratedCode.TotalFiles = stats.GeneratedCode.Python.Files +
@@ -184,7 +184,7 @@ func runStats(cmd *cobra.Command, args []string) error {
 		cacheDir := cfg.Build.Cache.Directory
 		if info, err := os.Stat(cacheDir); err == nil && info.IsDir() {
 			stats.Cache.Exists = true
-			countFilesRecursive(cacheDir, &stats.Cache.Files, &stats.Cache.Size)
+			_ = countFilesRecursive(cacheDir, &stats.Cache.Files, &stats.Cache.Size)
 		}
 	}
 

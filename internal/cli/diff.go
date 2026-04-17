@@ -269,7 +269,7 @@ type FileDiff struct {
 	NewLines []string
 }
 
-func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, error) {
+func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, error) { //nolint:unparam // error return kept for future use
 	diffs := []FileDiff{}
 
 	// Map to track all files
@@ -283,7 +283,7 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 			continue
 		}
 
-		filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
 			}
@@ -302,7 +302,7 @@ func compareDirectories(oldDir, newDir string, languages []string) ([]FileDiff, 
 			continue
 		}
 
-		filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(langDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
 			}
@@ -419,7 +419,7 @@ func printSummary(w io.Writer, diffs []FileDiff, showSame bool, colorize bool) {
 	}
 }
 
-func printUnified(w io.Writer, diffs []FileDiff, contextLines int, showSame bool, colorize bool) {
+func printUnified(w io.Writer, diffs []FileDiff, _ int, showSame bool, colorize bool) {
 	for _, diff := range diffs {
 		if diff.Status == "unchanged" && !showSame {
 			continue
@@ -494,7 +494,7 @@ func printUnified(w io.Writer, diffs []FileDiff, contextLines int, showSame bool
 	}
 }
 
-func printSideBySide(w io.Writer, diffs []FileDiff, contextLines int, showSame bool, colorize bool) {
+func printSideBySide(w io.Writer, diffs []FileDiff, _ int, showSame bool, colorize bool) {
 	for _, diff := range diffs {
 		if diff.Status == "unchanged" && !showSame {
 			continue

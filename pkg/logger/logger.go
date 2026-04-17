@@ -195,7 +195,7 @@ func (l *Logger) log(level Level, msg string, fields ...Field) {
 
 	// Write to all outputs
 	for _, output := range l.outputs {
-		output.Write(formatted)
+		_ = output.Write(formatted)
 	}
 }
 

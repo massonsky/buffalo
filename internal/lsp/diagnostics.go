@@ -73,14 +73,8 @@ var validMapKeyTypes = map[string]bool{
 
 // Additional regex patterns for syntax diagnostics.
 var (
-	// Detects incomplete option statements.
-	incompleteOptionPattern = regexp.MustCompile(`^\s*option\s+[^;]*$`)
-
 	// Detects invalid field declarations.
 	invalidFieldDeclPattern = regexp.MustCompile(`^\s*(repeated|optional|required)?\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*$`)
-
-	// Detects lines that look like statements but miss semicolons.
-	statementNoSemicolon = regexp.MustCompile(`^\s*(syntax|package|import|option)\s+.+[^;{}\s]\s*$`)
 
 	// Detects malformed RPC declarations.
 	rpcFullPattern = regexp.MustCompile(`^\s*rpc\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(\s*(stream\s+)?([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)\s*returns\s*\(\s*(stream\s+)?([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)`)
@@ -91,14 +85,8 @@ var (
 	// Detects syntax statement.
 	syntaxFullPattern = regexp.MustCompile(`^\s*syntax\s*=\s*["']([^"']*)["']\s*;\s*$`)
 
-	// Detects unterminated strings.
-	unterminatedStringPattern = regexp.MustCompile(`["'][^"']*$`)
-
 	// Detects map field declaration.
 	mapFieldFullPattern = regexp.MustCompile(`^\s*map\s*<\s*([^,]+?)\s*,\s*([^>]+?)\s*>\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(\d+)\s*`)
-
-	// Detects duplicate field number assignment (for multi-line scanning).
-	fieldNumberPattern = regexp.MustCompile(`=\s*(\d+)\s*[;\[\s]`)
 )
 
 // SyntaxDiagnostics performs deep syntax analysis on a proto document.
@@ -169,10 +157,9 @@ const (
 )
 
 type scopeEntry struct {
-	kind     scopeKind
-	name     string
-	line     int
-	bracePos int
+	kind scopeKind
+	name string
+	line int
 }
 
 func newSyntaxContext(doc *Document) *syntaxContext {
@@ -560,9 +547,8 @@ func (a *ProtoAnalyzer) trackScopes(ctx *syntaxContext, lineNum int, line, clean
 		if !matched && strings.HasPrefix(cleanLine, "extend") {
 			ctx.pushScope(scopeExtend, "extend", lineNum)
 			opens--
-			matched = true
 		}
-		if !matched && ctx.currentScope == scopeService && rpcPattern.MatchString(cleanLine) {
+		if ctx.currentScope == scopeService && rpcPattern.MatchString(cleanLine) {
 			// RPC body: rpc Foo(Req) returns (Resp) {
 			ctx.pushScope(scopeRPCBody, "rpc", lineNum)
 			opens--
@@ -1056,7 +1042,7 @@ func (a *ProtoAnalyzer) analyzeCrossReferences(ctx *syntaxContext) {
 		}
 
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "}" {
+		if trimmed == "}" { //nolint:staticcheck // SA9003: basic tracking placeholder
 			// Simple tracking - not perfect but sufficient for basic analysis
 		}
 	}
@@ -1130,7 +1116,7 @@ func countBracesOutsideStrings(line string) (opens int, closes int) {
 			inString = false
 		}
 	}
-	return
+	return opens, closes
 }
 
 // truncateStr truncates a string to maxLen characters with ellipsis.

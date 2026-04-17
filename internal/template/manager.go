@@ -28,11 +28,11 @@ type TemplateConfig struct {
 // Manager manages code generation templates
 type Manager struct {
 	templates map[string]*Template
-	log       logger.Logger
+	log       *logger.Logger
 }
 
 // NewManager creates a new template manager
-func NewManager(log logger.Logger) *Manager {
+func NewManager(log *logger.Logger) *Manager {
 	return &Manager{
 		templates: make(map[string]*Template),
 		log:       log,
@@ -190,7 +190,7 @@ func (m *Manager) findTemplateFiles(tmpl *Template) ([]string, error) {
 			if len(pattern) > 3 && pattern[:3] == "**/" {
 				cleanPattern = pattern[3:]
 			}
-			
+
 			matched, _ := filepath.Match(cleanPattern, filepath.Base(path))
 			if matched && !seen[path] {
 				files = append(files, path)
@@ -206,7 +206,7 @@ func (m *Manager) findTemplateFiles(tmpl *Template) ([]string, error) {
 }
 
 // renderTemplateFile renders a single template file
-func (m *Manager) renderTemplateFile(ctx context.Context, tmpl *Template, templateFile string, data interface{}, outputPath string) error {
+func (m *Manager) renderTemplateFile(_ context.Context, tmpl *Template, templateFile string, data interface{}, outputPath string) error {
 	// Read template file
 	content, err := os.ReadFile(templateFile)
 	if err != nil {
@@ -224,7 +224,7 @@ func (m *Manager) renderTemplateFile(ctx context.Context, tmpl *Template, templa
 
 	// Prepare template data - merge data map with vars
 	templateData := make(map[string]interface{})
-	
+
 	// If data is a map, merge it directly
 	if dataMap, ok := data.(map[string]interface{}); ok {
 		for k, v := range dataMap {
@@ -233,7 +233,7 @@ func (m *Manager) renderTemplateFile(ctx context.Context, tmpl *Template, templa
 	} else {
 		templateData["Data"] = data
 	}
-	
+
 	// Add vars
 	templateData["Vars"] = tmpl.Vars
 

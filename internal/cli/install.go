@@ -158,7 +158,7 @@ func installFromCLI(ctx context.Context, manager *dependency.Manager, name strin
 }
 
 func installFromConfig(ctx context.Context, manager *dependency.Manager, cfg *config.Config, name string, opts dependency.InstallOptions, log *logger.Logger) error {
-	if cfg.Dependencies == nil || len(cfg.Dependencies) == 0 {
+	if len(cfg.Dependencies) == 0 {
 		return fmt.Errorf("no dependencies found in config")
 	}
 
@@ -192,7 +192,7 @@ func installFromConfig(ctx context.Context, manager *dependency.Manager, cfg *co
 }
 
 func installAll(ctx context.Context, manager *dependency.Manager, cfg *config.Config, opts dependency.InstallOptions, log *logger.Logger) error {
-	if cfg.Dependencies == nil || len(cfg.Dependencies) == 0 {
+	if len(cfg.Dependencies) == 0 {
 		log.Info("No dependencies to install")
 		return nil
 	}

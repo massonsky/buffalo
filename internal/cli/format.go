@@ -157,7 +157,7 @@ func formatFile(file string, write bool, indent int, log *logger.Logger) (bool, 
 	}
 
 	if write {
-		if err := os.WriteFile(file, []byte(formatted), 0644); err != nil {
+		if err := os.WriteFile(file, []byte(formatted), 0600); err != nil {
 			return false, err
 		}
 		log.Debug("Formatted", logger.String("file", file))
@@ -169,7 +169,7 @@ func formatFile(file string, write bool, indent int, log *logger.Logger) (bool, 
 // formatProtoContent formats proto file content
 func formatProtoContent(content string, indent int) string {
 	lines := strings.Split(content, "\n")
-	var result []string
+	result := make([]string, 0, len(lines))
 	currentIndent := 0
 	indentStr := strings.Repeat(" ", indent)
 

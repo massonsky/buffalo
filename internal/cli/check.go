@@ -165,7 +165,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 		// Выводим критичные отсутствующие зависимости
 		if len(criticalMissing) > 0 {
-			log.Error(fmt.Sprintf("\n  ❌ Критичные требования не установлены:"))
+			log.Error("\n  ❌ Критичные требования не установлены:")
 			for _, result := range criticalMissing {
 				log.Error(fmt.Sprintf("     • %s", result.Requirement.Name))
 				if result.Error != nil {
@@ -183,7 +183,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 		// Выводим предупреждения о некритичных зависимостях
 		if len(warningMissing) > 0 && checkVerbose {
-			log.Warn(fmt.Sprintf("\n  ⚠️  Опциональные компоненты не установлены:"))
+			log.Warn("\n  ⚠️  Опциональные компоненты не установлены:")
 			for _, result := range warningMissing {
 				log.Warn(fmt.Sprintf("     • %s", result.Requirement.Name))
 				if result.InstallCommand != "" {

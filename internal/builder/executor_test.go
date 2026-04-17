@@ -212,7 +212,7 @@ func TestExecutor_ExecuteWithCancellation(t *testing.T) {
 	}()
 
 	_, err := executor.Execute(ctx, plan)
-	// Execution might complete before cancellation or be cancelled
+	// Execution might complete before cancellation or be canceled
 	// Both are valid outcomes, so we don't check the error
 	_ = err
 }

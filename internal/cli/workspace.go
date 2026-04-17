@@ -552,7 +552,7 @@ func formatTags(tags []string) string {
 	if len(tags) == 0 {
 		return "[]"
 	}
-	var quoted []string
+	quoted := make([]string, 0, len(tags))
 	for _, t := range tags {
 		quoted = append(quoted, fmt.Sprintf(`"%s"`, t))
 	}

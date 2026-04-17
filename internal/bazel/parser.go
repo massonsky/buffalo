@@ -233,7 +233,7 @@ func ResolveProtoFiles(ws *Workspace, target BazelTarget) []string {
 				baseDir = "."
 			}
 			absBase := filepath.Join(ws.Root, baseDir)
-			filepath.Walk(absBase, func(path string, info os.FileInfo, err error) error {
+			_ = filepath.Walk(absBase, func(path string, info os.FileInfo, err error) error {
 				if err != nil || info.IsDir() {
 					return nil
 				}
