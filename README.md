@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.24+-00ADD8.svg)](https://go.dev/)
-[![Version](https://img.shields.io/badge/version-1.21.0-green.svg)](https://github.com/massonsky/buffalo/releases)
+[![Version](https://img.shields.io/badge/version-1.30.2-green.svg)](https://github.com/massonsky/buffalo/releases)
 [![Stars](https://img.shields.io/github/stars/massonsky/buffalo?style=social)](https://github.com/massonsky/buffalo)
 [![Issues](https://img.shields.io/github/issues/massonsky/buffalo)](https://github.com/massonsky/buffalo/issues)
 
@@ -18,6 +18,7 @@
 
 - ⚡ **Скорость**: кэш, инкрементальные и параллельные сборки
 - 🌍 **Мультиязычность**: Python / Go / Rust / C++
+- 🏗️ **Bazel-native**: `rules_buffalo` — встраивается в Bazel build graph через bzlmod
 - 🧩 **Расширяемость**: плагины, шаблоны, workspace
 - 🔐 **Security-first**: permissions audit + matrix
 - 📈 **Наблюдаемость**: stats, metrics, dependency graph
@@ -30,6 +31,14 @@
 buffalo init myproject
 cd myproject
 buffalo build
+```
+
+С Bazel:
+
+```bash
+buffalo init --bazel myproject
+cd myproject
+bazel build //:proto_gen
 ```
 
 Хочешь быстрее в прод? Начни с [Quick Start](docs/readme/QUICK_START.md).
@@ -50,6 +59,9 @@ graph LR
     B --> I[permissions]
     B --> J[models]
     J --> K[ORM-aware model generation]
+    B --> L[Bazel]
+    L --> M[buffalo_proto_compile]
+    L --> N[buffalo_proto_gen]
 ```
 
 ## 🧠 Карта возможностей
@@ -61,6 +73,11 @@ mindmap
       Incremental cache
       Parallel workers
       Watch mode
+    Bazel
+      rules_buffalo
+      buffalo_proto_compile
+      buffalo_proto_gen
+      bzlmod
     Modeling
       buffalo.models
       ORMs
@@ -77,6 +94,50 @@ mindmap
       workspace
       affected builds
 ```
+
+---
+
+## 🏗️ Bazel-интеграция
+
+Buffalo встраивается в Bazel build graph как нативное правило через bzlmod.
+
+```bash
+# Инициализация — извлекает rules_buffalo в .buffalo/bazel/rules_buffalo/
+buffalo init --bazel
+```
+
+Добавь в `MODULE.bazel`:
+
+```python
+bazel_dep(name = "rules_buffalo", version = "1.0.0")
+local_path_override(
+    module_name = "rules_buffalo",
+    path = ".buffalo/bazel/rules_buffalo",
+)
+```
+
+Используй в `BUILD.bazel`:
+
+```python
+load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_compile")
+
+# Hermetic: bazel build //:proto_gen
+buffalo_proto_compile(
+    name = "proto_gen",
+    srcs = glob(["proto/**/*.proto"]),
+    config = "buffalo.yaml",
+    languages = ["go", "rust", "python"],
+)
+```
+
+Для генерации в source tree (dev-workflow):
+
+```bash
+bazel run //:buffalo_gen
+bazel run //:buffalo_gen -- --verbose
+```
+
+Подробнее: [bazel/rules_buffalo/README.md](bazel/rules_buffalo/README.md)
 
 ---
 
@@ -109,6 +170,7 @@ mindmap
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 - [docs/METRICS_GUIDE.md](docs/METRICS_GUIDE.md)
 - [docs/ROADMAP.md](docs/ROADMAP.md)
+- [bazel/rules_buffalo/README.md](bazel/rules_buffalo/README.md) — Bazel rules
 
 ---
 
