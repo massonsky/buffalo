@@ -50,8 +50,14 @@ function Ensure-Directory {
 }
 
 function Get-Version {
-    $commit = Get-GitCommit
-    return "1.30.$commit"
+    $prefix = "1.32"
+    $latest = git tag -l "v${prefix}.*" --sort=-v:refname 2>$null | Where-Object { $_ -match "^v\d+\.\d+\.\d+$" } | Select-Object -First 1
+    if ($latest -and $latest -match "^v\d+\.\d+\.(\d+)$") {
+        $patch = [int]$Matches[1] + 1
+    } else {
+        $patch = 0
+    }
+    return "${prefix}.${patch}"
 }
 
 function Get-BuildTime {

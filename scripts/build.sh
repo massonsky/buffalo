@@ -44,9 +44,15 @@ ensure_directory() {
 }
 
 get_version() {
-    local commit
-    commit=$(get_git_commit)
-    echo "1.30.${commit}"
+    local prefix="1.32"
+    local latest
+    latest=$(git tag -l "v${prefix}.*" --sort=-v:refname 2>/dev/null | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -1)
+    if [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.([0-9]+)$ ]]; then
+        local patch=$(( ${BASH_REMATCH[1]} + 1 ))
+    else
+        local patch=0
+    fi
+    echo "${prefix}.${patch}"
 }
 
 get_build_time() {

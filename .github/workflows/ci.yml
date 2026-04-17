@@ -2,7 +2,7 @@
 #
 # Flow:
 #   1. Push to dev/devb triggers lint, test (3 OS), build (5 platforms)
-#   2. If all green → auto-merge to main → create tag v1.30.<hash>
+#   2. If all green → auto-merge to main → create semver tag v1.33.<patch>
 #   3. Tag push triggers release.yml → GitHub Release with binaries
 
 name: CI
@@ -18,7 +18,7 @@ permissions:
 
 env:
   GO_VERSION: "1.24"
-  VERSION_PREFIX: "1.32"
+  VERSION_PREFIX: "1.33"
 
 jobs:
   lint:

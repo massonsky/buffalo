@@ -25,14 +25,15 @@ func init() {
 
 func runVersion(cmd *cobra.Command, args []string) {
 	if versionShort {
-		fmt.Println(version.Version)
+		fmt.Println(version.Short())
 		return
 	}
 
 	fmt.Printf("🦬 Buffalo - Protobuf/gRPC Multi-Language Builder\n\n")
-	fmt.Printf("Version:    %s\n", version.Version)
+	fmt.Printf("Version:    %s\n", version.FullVersion())
 	fmt.Printf("Commit:     %s\n", version.GitCommit)
 	fmt.Printf("Build Date: %s\n", version.BuildDate)
 	fmt.Printf("Go Version: %s\n", version.GoVersion)
 	fmt.Printf("Platform:   %s\n", version.Platform)
+	fmt.Printf("\nInstall:    go install github.com/massonsky/buffalo/cmd/buffalo@v%s\n", version.Version)
 }

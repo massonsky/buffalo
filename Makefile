@@ -11,16 +11,19 @@ INSTALL_PREFIX?=/usr/local
 INSTALL_BIN=$(INSTALL_PREFIX)/bin
 
 # Version detection (cross-platform)
-# Format: 1.30.<short-commit-hash> (e.g. 1.30.6a1a03a)
-VERSION_PREFIX=1.30
+# Format: semver from latest git tag (e.g. 1.32.5)
+VERSION_PREFIX=1.32
 ifeq ($(OS),Windows_NT)
     GIT_COMMIT=$(shell git rev-parse --short HEAD 2>NUL || echo unknown)
-    VERSION=$(VERSION_PREFIX).$(GIT_COMMIT)
+    LATEST_PATCH=$(shell powershell -NoProfile -Command "$$t=git tag -l 'v$(VERSION_PREFIX).*' --sort=-v:refname 2>$$null | Where-Object {$$_ -match '^v\d+\.\d+\.\d+$$'} | Select-Object -First 1; if($$t -match '(\d+)$$'){[int]$$Matches[1]+1}else{0}")
+    VERSION=$(VERSION_PREFIX).$(LATEST_PATCH)
     BUILD_TIME=$(shell powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd_HH:mm:ss'" 2>NUL || echo unknown)
     BINARY_EXT=.exe
 else
     GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-    VERSION=$(VERSION_PREFIX).$(GIT_COMMIT)
+    LATEST_TAG=$(shell git tag -l "v$(VERSION_PREFIX).*" --sort=-v:refname 2>/dev/null | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1)
+    LATEST_PATCH=$(shell echo "$(LATEST_TAG)" | sed -n 's/^v[0-9]*\.[0-9]*\.//p')
+    VERSION=$(VERSION_PREFIX).$(shell echo $$(( $(if $(LATEST_PATCH),$(LATEST_PATCH),0) + 1 )) 2>/dev/null || echo 0)
     BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S' 2>/dev/null || echo unknown)
     BINARY_EXT=
 endif
