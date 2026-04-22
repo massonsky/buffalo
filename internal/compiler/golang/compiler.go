@@ -151,7 +151,9 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 
 	// Build protoc command for Go
 	args := c.buildProtocArgs(file, opts, protoDir, false)
-	args = append(args, protoFilePath)
+	importPaths := compiler.MergeImportPaths(opts, file)
+	protocInput := compiler.ResolveProtoFileArg(protoFilePath, importPaths)
+	args = append(args, protocInput)
 
 	c.log.Debug("Running protoc for Go",
 		logger.String("command", c.options.ProtocPath),
@@ -170,7 +172,7 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 	// Generate gRPC code if enabled
 	if c.options.GenerateGrpc {
 		grpcArgs := c.buildProtocArgs(file, opts, protoDir, true)
-		grpcArgs = append(grpcArgs, protoFilePath)
+		grpcArgs = append(grpcArgs, protocInput)
 
 		c.log.Debug("Running protoc for Go gRPC",
 			logger.String("command", c.options.ProtocPath),

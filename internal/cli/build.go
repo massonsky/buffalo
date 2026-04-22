@@ -20,6 +20,7 @@ var (
 	buildOutputDir       string
 	buildLanguages       []string
 	buildProtoPath       []string
+	buildImportPath      []string
 	buildDryRun          bool
 	buildSkipSystemCheck bool
 	buildSkipLock        bool
@@ -63,6 +64,7 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildOutputDir, "output", "o", "", "output directory for generated code")
 	buildCmd.Flags().StringSliceVarP(&buildLanguages, "lang", "l", []string{}, "target languages (python,go,rust,cpp,typescript)")
 	buildCmd.Flags().StringSliceVarP(&buildProtoPath, "proto-path", "p", []string{}, "paths to search for proto files")
+	buildCmd.Flags().StringSliceVarP(&buildImportPath, "import-path", "I", []string{}, "additional --proto_path entries used only for resolving imports (not scanned for sources)")
 	buildCmd.Flags().BoolVar(&buildDryRun, "dry-run", false, "show what would be built without building")
 	buildCmd.Flags().BoolVar(&buildSkipSystemCheck, "skip-system-check", false, "skip system readiness check before build")
 	buildCmd.Flags().BoolVar(&buildSkipLock, "skip-lock", false, "skip lock file and build directly from config")
@@ -95,6 +97,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 	if len(buildProtoPath) > 0 {
 		cfg.Proto.Paths = buildProtoPath
+	}
+	if len(buildImportPath) > 0 {
+		cfg.Proto.ImportPaths = append(cfg.Proto.ImportPaths, buildImportPath...)
 	}
 
 	// Get enabled languages

@@ -282,8 +282,8 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 		args = append(args, "--python_out="+outputDir)
 		args = append(args, "--grpc_python_out="+outputDir)
 
-		// Add the proto file
-		args = append(args, protoFilePath)
+		// Add the proto file (resolved relative to a matching --proto_path)
+		args = append(args, compiler.ResolveProtoFileArg(protoFilePath, importPaths))
 
 		c.log.Debug("Running python -m grpc_tools.protoc",
 			logger.Any("args", args))
@@ -300,9 +300,12 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 			filepath.Join(outputDir, baseName+"_pb2.py"),
 			filepath.Join(outputDir, baseName+"_pb2_grpc.py"))
 	} else {
+		importPaths := compiler.MergeImportPaths(opts, file)
+		protocInput := compiler.ResolveProtoFileArg(protoFilePath, importPaths)
+
 		// Use standard protoc
 		args := c.buildProtocArgs(file, opts, outputDir, protoDir, false)
-		args = append(args, protoFilePath)
+		args = append(args, protocInput)
 
 		c.log.Debug("Running protoc for Python",
 			logger.String("command", c.options.ProtocPath),
@@ -322,7 +325,7 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 		// Generate gRPC code if enabled
 		if c.options.GenerateGrpc {
 			grpcArgs := c.buildProtocArgs(file, opts, outputDir, protoDir, true)
-			grpcArgs = append(grpcArgs, protoFilePath)
+			grpcArgs = append(grpcArgs, protocInput)
 
 			c.log.Debug("Running protoc for Python gRPC",
 				logger.String("command", c.options.ProtocPath),

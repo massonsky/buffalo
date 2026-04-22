@@ -13,6 +13,8 @@ Provides two integration modes:
    Use this for development workflows.
 """
 
+load("@rules_python//python:defs.bzl", "py_binary")
+
 # ── Providers ─────────────────────────────────────────────────────────────────
 
 BuffaloProtoInfo = provider(
@@ -28,27 +30,30 @@ BuffaloProtoInfo = provider(
 
 def _buffalo_proto_compile_impl(ctx):
     output_dir = ctx.actions.declare_directory(ctx.attr.out)
+    buffalo_bin = ctx.files.buffalo[0]
 
-    # Build command parts — shell-safe, one per element
-    cmd_parts = [
-        "buffalo", "build",
+    args = [
+        "build",
         "--skip-system-check",
         "--skip-lock",
     ]
 
     if ctx.file.config:
-        cmd_parts.extend(["--config", ctx.file.config.path])
+        args.extend(["--config", ctx.file.config.path])
 
-    cmd_parts.extend(["-o", output_dir.path])
+    args.extend(["-o", output_dir.path])
 
     for lang in ctx.attr.languages:
-        cmd_parts.extend(["-l", lang])
+        args.extend(["-l", lang])
 
     for p in ctx.attr.proto_paths:
-        cmd_parts.extend(["-p", p])
+        args.extend(["-p", p])
+
+    for p in ctx.attr.import_paths:
+        args.extend(["-I", p])
 
     if ctx.attr.verbose:
-        cmd_parts.append("--verbose")
+        args.append("--verbose")
 
     # Collect all inputs
     inputs = list(ctx.files.srcs)
@@ -59,7 +64,9 @@ def _buffalo_proto_compile_impl(ctx):
     ctx.actions.run_shell(
         outputs = [output_dir],
         inputs = inputs,
-        command = " ".join(cmd_parts),
+        tools = [buffalo_bin],
+        arguments = [buffalo_bin.path] + args,
+        command = 'buffalo="$1"; shift; "$buffalo" "$@"',
         mnemonic = "BuffaloCompile",
         progress_message = "Buffalo: compiling %d proto files [%s]" % (
             len(ctx.files.srcs),
@@ -95,7 +102,11 @@ buffalo_proto_compile = rule(
         ),
         "proto_paths": attr.string_list(
             default = ["proto"],
-            doc = "Directories to search for proto imports.",
+            doc = "Directories scanned for proto source files (passed to buffalo as -p).",
+        ),
+        "import_paths": attr.string_list(
+            default = [],
+            doc = "Directories used only for resolving proto imports, not scanned for sources (passed to buffalo as -I).",
         ),
         "deps": attr.label_list(
             allow_files = True,
@@ -108,6 +119,11 @@ buffalo_proto_compile = rule(
         "verbose": attr.bool(
             default = False,
             doc = "Enable verbose Buffalo output.",
+        ),
+        "buffalo": attr.label(
+            allow_single_file = True,
+            default = Label("@buffalo_toolchain//:buffalo_bin"),
+            doc = "Buffalo binary label. Defaults to the binary discovered by the buffalo module extension.",
         ),
     },
     doc = """Compiles proto files using Buffalo.
@@ -133,6 +149,7 @@ def buffalo_proto_gen(
         config = "buffalo.yaml",
         languages = [],
         proto_paths = [],
+        import_paths = [],
         extra_args = [],
         visibility = None,
         **kwargs):
@@ -159,9 +176,11 @@ def buffalo_proto_gen(
         args.extend(["-l", lang])
     for p in proto_paths:
         args.extend(["-p", p])
+    for p in import_paths:
+        args.extend(["-I", p])
     args.extend(extra_args)
 
-    native.py_binary(
+    py_binary(
         name = name,
         srcs = [Label("//buffalo:gen_runner.py")],
         main = Label("//buffalo:gen_runner.py"),

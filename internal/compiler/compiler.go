@@ -3,6 +3,8 @@ package compiler
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 )
 
 // ProtoFile represents a protobuf file to compile
@@ -89,4 +91,43 @@ func MergeImportPaths(opts CompileOptions, file ProtoFile) []string {
 	}
 
 	return result
+}
+
+// ResolveProtoFileArg returns the proto file path that should be passed to
+// protoc as the input argument, expressed relative to the longest matching
+// --proto_path entry. This avoids the "Input is shadowed in the --proto_path"
+// error when the file is reachable via multiple paths (e.g. the file is given
+// as `proto/foo.proto` while `--proto_path=proto` is also passed, making the
+// file also reachable as `foo.proto`).
+//
+// If no import path is a prefix of filePath, filePath is returned unchanged.
+func ResolveProtoFileArg(filePath string, importPaths []string) string {
+	clean := filepath.ToSlash(filepath.Clean(filePath))
+	bestRel := ""
+	bestLen := -1
+	for _, p := range importPaths {
+		if p == "" {
+			continue
+		}
+		base := filepath.ToSlash(filepath.Clean(p))
+		if base == "." {
+			continue
+		}
+		prefix := base + "/"
+		if strings.HasPrefix(clean, prefix) {
+			if len(base) > bestLen {
+				bestLen = len(base)
+				bestRel = strings.TrimPrefix(clean, prefix)
+			}
+		} else if clean == base {
+			if len(base) > bestLen {
+				bestLen = len(base)
+				bestRel = filepath.Base(clean)
+			}
+		}
+	}
+	if bestRel == "" {
+		return filePath
+	}
+	return bestRel
 }
