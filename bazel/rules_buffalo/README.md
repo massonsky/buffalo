@@ -22,68 +22,67 @@ use_repo(buffalo, "buffalo_toolchain")
 
 ## Prerequisites
 
-`rules_buffalo` bootstraps required runtime tools into the Bazel external
-toolchain repository used by sandboxed actions.
+`rules_buffalo` is **hermetic by default**: Bazel itself downloads pinned,
+prebuilt binaries of `protoc`, the Go plugins, and the Buffalo CLI from
+upstream releases. **No host `go`, no host `protoc`, no host plugins are
+required.**
 
-Important: runtime tools used by `buffalo_proto_compile` are staged in the
-Bazel toolchain repository and executed from there, ensuring deterministic,
-hermetic builds regardless of host environment.
+What is downloaded automatically on first build:
 
-**Default mode (compatibility):**
+| Tool | Source |
+|------|--------|
+| `protoc` | `protocolbuffers/protobuf` GitHub Releases |
+| `protoc-gen-go` | `protocolbuffers/protobuf-go` GitHub Releases |
+| `protoc-gen-go-grpc` | `grpc/grpc-go` GitHub Releases |
+| `buffalo` CLI | `massonsky/buffalo` GitHub Releases (configurable) |
 
-Requires host tools for initial bootstrap only:
+Supported host platforms: linux/amd64, linux/arm64, darwin/amd64,
+darwin/arm64, windows/amd64 (windows/arm64 falls back to amd64).
 
-- `go` in `PATH` (for auto-install of Go-based tools)
-- `python`/`python3`/`py` in `PATH` (for grpc tools bootstrap)
-- `cargo` in `PATH` (for auto-install of Rust tools)
-- `rustc` in `PATH` (for Rust code generation)
-- `npm` in `PATH` (for TypeScript support, optional)
-- C++ compiler (`clang++`, `g++`, or MSVC `cl.exe` on Windows) for C++ support (optional)
+### Plugins not yet hermetic
 
-First `bazel build` automatically installs:
+Until their respective integrations are wired up, the following still fall
+back to host tools when used:
 
-- `buffalo` (via `go install` into toolchain repo)
-- `protoc-gen-go` (via `go install` into toolchain repo)
-- `protoc-gen-go-grpc` (via `go install` into toolchain repo)
-- `protoc-gen-prost` (via `cargo install` into toolchain repo, for Rust)
-- `protoc-gen-tonic` (via `cargo install` into toolchain repo, for Rust gRPC, optional)
-- Python `grpcio-tools` / `protobuf` for `grpc_tools.protoc` (via `pip install --target` into toolchain repo)
+- `protoc-gen-grpc_python` — bootstrapped from host `python` + `pip`
+  (`grpcio-tools`). Will move to `rules_python` in a follow-up.
+- `protoc-gen-prost` / `protoc-gen-tonic` — bootstrapped from host `cargo`.
+  Will move to `rules_rust` in a follow-up.
 
-**Strict mode** (`BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1`):
+If you don't generate Python or Rust code, you don't need Python or Rust on
+your host.
 
-No host tool dependencies. All tools are downloaded from URLs specified in environment variables.
+### Pinning versions
 
-## Strict hermetic sandbox mode
+Defaults can be overridden via environment variables (set them in `.bazelrc`
+with `common --repo_env=NAME=value`):
 
-By default, compatibility mode is enabled (automatic bootstrap via `go`/`python`).
-Bootstrap tooling is installed into the Bazel toolchain repository, allowing
-reproducible sandbox execution.
+| Variable | Default |
+|----------|---------|
+| `BUFFALO_TOOLCHAIN_PROTOC_VERSION` | `25.1` |
+| `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_VERSION` | `1.34.2` |
+| `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_VERSION` | `1.5.1` |
+| `BUFFALO_TOOLCHAIN_BUFFALO_VERSION` | `4.0.0` |
+| `BUFFALO_TOOLCHAIN_BUFFALO_REPO` | `massonsky/buffalo` |
 
-For strict hermetic sandbox mode, set:
+### Pinning to internal mirrors / arbitrary URLs
 
-- `BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1`
-
-In strict mode, all runtime tooling must be provided via download URLs and is downloaded into the
-toolchain repository (sandbox input), with no runtime dependency on host-installed
-Buffalo/protoc/plugins or host `go`/`python`.
-
-Required environment variables in strict mode:
+Set a direct URL for any tool to skip the auto-picked upstream URL
+(useful for air-gapped CI):
 
 - `BUFFALO_TOOLCHAIN_BUFFALO_URL`
 - `BUFFALO_TOOLCHAIN_PROTOC_URL`
 - `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_URL`
 - `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_URL`
 - `BUFFALO_TOOLCHAIN_PROTOC_GEN_GRPC_PYTHON_URL`
+- `BUFFALO_TOOLCHAIN_PROTOC_GEN_PROST_URL`
+- `BUFFALO_TOOLCHAIN_PROTOC_GEN_TONIC_URL`
 
-### Compatibility mode (default)
+### Strict mode
 
-By default, `BUFFALO_TOOLCHAIN_STRICT_SANDBOX` is disabled. In this mode:
-
-1. Tools are auto-installed from source on first Bazel run
-2. `protoc` is bootstrapped via `pip install --target grpcio-tools`
-3. Go-based tools (`buffalo`, `protoc-gen-go`, `protoc-gen-go-grpc`) are installed via `go install`
-4. Requires: `go` in PATH, `python`/`python3`/`py` in PATH
-5. Generated actions still run with tools staged in Bazel sandbox (hermetic execution)
+`BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1` disables every host fallback. In this
+mode `protoc-gen-grpc_python` (and Rust plugins, if used) **must** be
+provided via the URL env vars above; otherwise the build fails.
 
 ## Rules
 
@@ -166,12 +165,16 @@ Returned by `buffalo_proto_compile`:
 
 ### Python
 
-- `grpc_tools.protoc` - Protocol Buffer and gRPC code generation (bootstrapped via pip)
+- `grpc_tools.protoc` — Protocol Buffer + gRPC code generation. Currently
+  bootstrapped from host `python` + `pip` (will become hermetic via
+  `rules_python`).
 
 ### Rust
 
-- `protoc-gen-prost` - Protocol Buffer code generation (default, via cargo install)
-- `protoc-gen-tonic` - gRPC support with Tokio runtime (optional, via cargo install)
+- `protoc-gen-prost` — Protocol Buffer code generation (default, via host
+  `cargo install`; will become hermetic via `rules_rust`).
+- `protoc-gen-tonic` — gRPC support with Tokio runtime (optional, via host
+  `cargo install`).
 
 ### TypeScript
 
