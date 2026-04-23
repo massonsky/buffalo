@@ -2,6 +2,11 @@
 
 Bazel rules for [Buffalo](https://github.com/massonsky/buffalo) — multi-language protobuf/gRPC code generator.
 
+**Fully hermetic.** Bazel itself downloads everything: `protoc`, the Go
+plugins, the Python gRPC plugin (with its own hermetic Python interpreter),
+and the Buffalo CLI. **No host `go`, no host `python`, no host `protoc`,
+no host plugins are required.**
+
 ## Setup (bzlmod)
 
 In your `MODULE.bazel`:
@@ -9,80 +14,48 @@ In your `MODULE.bazel`:
 ```python
 bazel_dep(name = "rules_buffalo", version = "1.0.0")
 
-# For local development:
+# Optional — only needed for local development of rules_buffalo itself.
 local_path_override(
     module_name = "rules_buffalo",
     path = "path/to/rules_buffalo",
 )
 
-# Register buffalo toolchain (finds binary in PATH)
 buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
 use_repo(buffalo, "buffalo_toolchain")
 ```
 
-## Prerequisites
-
-`rules_buffalo` is **hermetic by default**: Bazel itself downloads pinned,
-prebuilt binaries of `protoc`, the Go plugins, and the Buffalo CLI from
-upstream releases. **No host `go`, no host `protoc`, no host plugins are
-required.**
-
-What is downloaded automatically on first build:
+That's it. On first build Bazel downloads:
 
 | Tool | Source |
 |------|--------|
 | `protoc` | `protocolbuffers/protobuf` GitHub Releases |
 | `protoc-gen-go` | `protocolbuffers/protobuf-go` GitHub Releases |
 | `protoc-gen-go-grpc` | `grpc/grpc-go` GitHub Releases |
-| `buffalo` CLI | `massonsky/buffalo` GitHub Releases (configurable) |
+| `protoc-gen-grpc_python` | `grpcio-tools` wheel into hermetic Python from `rules_python` |
+| `buffalo` CLI | `massonsky/buffalo` GitHub Releases |
 
 Supported host platforms: linux/amd64, linux/arm64, darwin/amd64,
 darwin/arm64, windows/amd64 (windows/arm64 falls back to amd64).
 
-### Plugins not yet hermetic
+### Pinning versions (optional)
 
-Until their respective integrations are wired up, the following still fall
-back to host tools when used:
+Defaults are good. To pin a different version, add a `toolchain` tag:
 
-- `protoc-gen-grpc_python` — bootstrapped from host `python` + `pip`
-  (`grpcio-tools`). Will move to `rules_python` in a follow-up.
-- `protoc-gen-prost` / `protoc-gen-tonic` — bootstrapped from host `cargo`.
-  Will move to `rules_rust` in a follow-up.
+```python
+buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
+buffalo.toolchain(
+    buffalo_version            = "4.1.0",
+    protoc_version             = "28.2",
+    protoc_gen_go_version      = "1.34.2",
+    protoc_gen_go_grpc_version = "1.5.1",
+    grpcio_tools_version       = "1.64.1",
+    protobuf_version           = "5.27.1",
+)
+use_repo(buffalo, "buffalo_toolchain")
+```
 
-If you don't generate Python or Rust code, you don't need Python or Rust on
-your host.
-
-### Pinning versions
-
-Defaults can be overridden via environment variables (set them in `.bazelrc`
-with `common --repo_env=NAME=value`):
-
-| Variable | Default |
-|----------|---------|
-| `BUFFALO_TOOLCHAIN_PROTOC_VERSION` | `25.1` |
-| `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_VERSION` | `1.34.2` |
-| `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_VERSION` | `1.5.1` |
-| `BUFFALO_TOOLCHAIN_BUFFALO_VERSION` | `4.0.0` |
-| `BUFFALO_TOOLCHAIN_BUFFALO_REPO` | `massonsky/buffalo` |
-
-### Pinning to internal mirrors / arbitrary URLs
-
-Set a direct URL for any tool to skip the auto-picked upstream URL
-(useful for air-gapped CI):
-
-- `BUFFALO_TOOLCHAIN_BUFFALO_URL`
-- `BUFFALO_TOOLCHAIN_PROTOC_URL`
-- `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_URL`
-- `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_URL`
-- `BUFFALO_TOOLCHAIN_PROTOC_GEN_GRPC_PYTHON_URL`
-- `BUFFALO_TOOLCHAIN_PROTOC_GEN_PROST_URL`
-- `BUFFALO_TOOLCHAIN_PROTOC_GEN_TONIC_URL`
-
-### Strict mode
-
-`BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1` disables every host fallback. In this
-mode `protoc-gen-grpc_python` (and Rust plugins, if used) **must** be
-provided via the URL env vars above; otherwise the build fails.
+All attributes are optional; omitted ones use the defaults baked into
+`rules_buffalo`.
 
 ## Rules
 
@@ -98,7 +71,7 @@ buffalo_proto_compile(
     name = "proto_gen",
     srcs = glob(["proto/**/*.proto"]),
     config = "buffalo.yaml",
-    languages = ["go", "rust", "python"],
+    languages = ["go", "python"],
 )
 ```
 
@@ -106,11 +79,11 @@ Per-language targets for fine-grained dependencies:
 
 ```python
 buffalo_proto_compile(
-    name = "proto_gen_rust",
+    name = "proto_gen_python",
     srcs = glob(["proto/**/*.proto"]),
     config = "buffalo.yaml",
-    languages = ["rust"],
-    out = "proto_gen_rust",
+    languages = ["python"],
+    out = "proto_gen_python",
 )
 ```
 
@@ -125,7 +98,7 @@ load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_gen")
 buffalo_proto_gen(
     name = "buffalo_gen",
     config = "buffalo.yaml",
-    languages = ["go", "rust", "python"],
+    languages = ["go", "python"],
 )
 ```
 
@@ -140,7 +113,7 @@ bazel run //:buffalo_gen -- --verbose
 
 - `srcs` (`label_list`, required): proto source files
 - `config` (`label`, default: `None`): Buffalo config file (`buffalo.yaml`)
-- `languages` (`string_list`, default: `["go", "python", "rust"]`): target languages
+- `languages` (`string_list`, default: `["go", "python"]`): target languages
 - `proto_paths` (`string_list`, default: `["proto"]`): proto import directories
 - `deps` (`label_list`, default: `[]`): additional proto dependencies
 - `out` (`string`, default: `"gen"`): output directory name
@@ -158,29 +131,14 @@ Returned by `buffalo_proto_compile`:
 
 ## Supported Languages
 
-### Go
+| Language | Status | Plugin |
+|----------|--------|--------|
+| Go | ✅ Hermetic | `protoc-gen-go` + `protoc-gen-go-grpc` |
+| Python | ✅ Hermetic | `grpc_tools.protoc` via hermetic CPython |
+| C++ | ✅ Hermetic | built into `protoc` |
+| Rust | 🚧 Planned | `protoc-gen-prost` / `protoc-gen-tonic` via `rules_rust` |
+| TypeScript | 🚧 Planned | via `rules_nodejs` |
 
-- `protoc-gen-go` - Protocol Buffer code generation
-- `protoc-gen-go-grpc` - gRPC support via google.golang.org/grpc
-
-### Python
-
-- `grpc_tools.protoc` — Protocol Buffer + gRPC code generation. Currently
-  bootstrapped from host `python` + `pip` (will become hermetic via
-  `rules_python`).
-
-### Rust
-
-- `protoc-gen-prost` — Protocol Buffer code generation (default, via host
-  `cargo install`; will become hermetic via `rules_rust`).
-- `protoc-gen-tonic` — gRPC support with Tokio runtime (optional, via host
-  `cargo install`).
-
-### TypeScript
-
-- Requires `npm` and Node.js toolchain (installed separately)
-
-### C++
-
-- Requires C++ compiler (`clang++`, `g++`, or MSVC) in PATH
-- Uses protobuf C++ runtime library
+Rust and TypeScript will be added in follow-up commits with their respective
+`rules_rust` and `rules_nodejs` integrations. Until then they are not
+available in the hermetic toolchain.

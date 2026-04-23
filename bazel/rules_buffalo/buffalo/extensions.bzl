@@ -1,12 +1,66 @@
 """Module extensions for rules_buffalo (bzlmod)."""
 
-load(":repositories.bzl", "buffalo_toolchain_repo")
+load(
+    ":repositories.bzl",
+    "DEFAULT_BUFFALO_REPO",
+    "DEFAULT_BUFFALO_VERSION",
+    "DEFAULT_GRPCIO_TOOLS_VERSION",
+    "DEFAULT_PROTOBUF_PY_VERSION",
+    "DEFAULT_PROTOC_GEN_GO_GRPC_VERSION",
+    "DEFAULT_PROTOC_GEN_GO_VERSION",
+    "DEFAULT_PROTOC_VERSION",
+    "buffalo_toolchain_repo",
+)
+
+_TOOLCHAIN_TAG = tag_class(
+    attrs = {
+        "buffalo_version": attr.string(default = DEFAULT_BUFFALO_VERSION),
+        "buffalo_repo": attr.string(default = DEFAULT_BUFFALO_REPO),
+        "protoc_version": attr.string(default = DEFAULT_PROTOC_VERSION),
+        "protoc_gen_go_version": attr.string(default = DEFAULT_PROTOC_GEN_GO_VERSION),
+        "protoc_gen_go_grpc_version": attr.string(default = DEFAULT_PROTOC_GEN_GO_GRPC_VERSION),
+        "grpcio_tools_version": attr.string(default = DEFAULT_GRPCIO_TOOLS_VERSION),
+        "protobuf_version": attr.string(default = DEFAULT_PROTOBUF_PY_VERSION),
+    },
+    doc = "Configures pinned tool versions for the Buffalo toolchain.",
+)
 
 def _buffalo_impl(module_ctx):
-    """Registers the buffalo toolchain repository."""
-    buffalo_toolchain_repo(name = "buffalo_toolchain")
+    cfg = struct(
+        buffalo_version = DEFAULT_BUFFALO_VERSION,
+        buffalo_repo = DEFAULT_BUFFALO_REPO,
+        protoc_version = DEFAULT_PROTOC_VERSION,
+        protoc_gen_go_version = DEFAULT_PROTOC_GEN_GO_VERSION,
+        protoc_gen_go_grpc_version = DEFAULT_PROTOC_GEN_GO_GRPC_VERSION,
+        grpcio_tools_version = DEFAULT_GRPCIO_TOOLS_VERSION,
+        protobuf_version = DEFAULT_PROTOBUF_PY_VERSION,
+    )
+    for mod in module_ctx.modules:
+        for tag in mod.tags.toolchain:
+            cfg = struct(
+                buffalo_version = tag.buffalo_version,
+                buffalo_repo = tag.buffalo_repo,
+                protoc_version = tag.protoc_version,
+                protoc_gen_go_version = tag.protoc_gen_go_version,
+                protoc_gen_go_grpc_version = tag.protoc_gen_go_grpc_version,
+                grpcio_tools_version = tag.grpcio_tools_version,
+                protobuf_version = tag.protobuf_version,
+            )
+
+    buffalo_toolchain_repo(
+        name = "buffalo_toolchain",
+        buffalo_version = cfg.buffalo_version,
+        buffalo_repo = cfg.buffalo_repo,
+        protoc_version = cfg.protoc_version,
+        protoc_gen_go_version = cfg.protoc_gen_go_version,
+        protoc_gen_go_grpc_version = cfg.protoc_gen_go_grpc_version,
+        grpcio_tools_version = cfg.grpcio_tools_version,
+        protobuf_version = cfg.protobuf_version,
+        python_interpreter = Label("@python_3_12_host//:python"),
+    )
 
 buffalo = module_extension(
     implementation = _buffalo_impl,
-    doc = "Module extension that locates the Buffalo binary and creates a toolchain repository.",
+    tag_classes = {"toolchain": _TOOLCHAIN_TAG},
+    doc = "Provisions Buffalo CLI + protoc + Go/Python plugins as a hermetic toolchain.",
 )

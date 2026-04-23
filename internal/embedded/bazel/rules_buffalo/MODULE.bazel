@@ -6,8 +6,16 @@ module(
 
 bazel_dep(name = "rules_python", version = "1.7.0")
 
-# Locate the buffalo binary on the host system. The dev macro and helper
-# repositories still use this, while buffalo_proto_compile invokes the
-# `buffalo` CLI directly from the action environment.
+# Hermetic Python interpreter used by the buffalo toolchain to install
+# grpcio-tools (Python gRPC plugin) without depending on host Python.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    python_version = "3.12",
+    is_default = False,
+    ignore_root_user_error = True,
+)
+use_repo(python, "python_3_12_host")
+
+# Hermetic Buffalo + protoc + Go/Python plugin toolchain.
 buffalo = use_extension("//buffalo:extensions.bzl", "buffalo")
 use_repo(buffalo, "buffalo_toolchain")
