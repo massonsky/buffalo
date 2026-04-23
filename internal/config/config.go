@@ -10,8 +10,17 @@ import (
 	"github.com/spf13/viper"
 )
 
+// CurrentSchemaVersion is the schema version produced by this build of Buffalo.
+// Configs without `schema_version` are treated as v1 for backward compatibility.
+// Bump this constant whenever the YAML shape changes in a non-backward-compatible way.
+const CurrentSchemaVersion = 2
+
 // Config represents the Buffalo configuration
 type Config struct {
+	// SchemaVersion identifies the buffalo.yaml schema. Use `buffalo config migrate`
+	// to upgrade older files. Missing field is interpreted as v1.
+	SchemaVersion int `mapstructure:"schema_version" json:"schema_version,omitempty" desc:"Configuration schema version. Current: 2."`
+
 	Project      ProjectConfig           `mapstructure:"project"`
 	Proto        ProtoConfig             `mapstructure:"proto"`
 	Output       OutputConfig            `mapstructure:"output"`
@@ -311,6 +320,18 @@ func normalizeLanguageOutputDir(baseDir string, langOutput string) string {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	// Validate schema version. Missing -> v1 (legacy). Newer than supported -> hard error.
+	if c.SchemaVersion != 0 && c.SchemaVersion > CurrentSchemaVersion {
+		return errors.New(errors.ErrConfig, fmt.Sprintf(
+			"schema_version %d is newer than supported (%d). Please upgrade buffalo.",
+			c.SchemaVersion, CurrentSchemaVersion))
+	}
+	if c.SchemaVersion != 0 && c.SchemaVersion < CurrentSchemaVersion {
+		return errors.New(errors.ErrConfig, fmt.Sprintf(
+			"schema_version %d is outdated (current: %d). Run `buffalo config migrate` to upgrade.",
+			c.SchemaVersion, CurrentSchemaVersion))
+	}
+
 	// Validate project
 	if c.Project.Name == "" {
 		return errors.New(errors.ErrConfig, "project.name is required")

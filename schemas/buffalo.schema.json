@@ -1,0 +1,545 @@
+{
+  "$defs": {
+    "BaseFieldConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "auto_generate": {
+          "type": "boolean"
+        },
+        "auto_now": {
+          "type": "boolean"
+        },
+        "auto_now_add": {
+          "type": "boolean"
+        },
+        "comment": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "primary_key": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BazelConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "auto_detect": {
+          "type": "boolean"
+        },
+        "bazel_path": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "generate_build_files": {
+          "type": "boolean"
+        },
+        "go_module_path": {
+          "type": "string"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "strip_import_prefix": {
+          "type": "string"
+        },
+        "use_query": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "BuildConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "cache": {
+          "$ref": "#/$defs/CacheConfig"
+        },
+        "incremental": {
+          "type": "boolean"
+        },
+        "workers": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "CacheConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "CppConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "models_output": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "orm": {
+          "type": "boolean"
+        },
+        "orm_plugin": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Dependency": {
+      "additionalProperties": false,
+      "properties": {
+        "excludes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "includes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/DependencySource"
+        },
+        "subpath": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DependencySource": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "models_output": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "orm": {
+          "type": "boolean"
+        },
+        "orm_plugin": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "LanguagesConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "cpp": {
+          "$ref": "#/$defs/CppConfig"
+        },
+        "go": {
+          "$ref": "#/$defs/GoConfig"
+        },
+        "python": {
+          "$ref": "#/$defs/PythonConfig"
+        },
+        "rust": {
+          "$ref": "#/$defs/RustConfig"
+        },
+        "typescript": {
+          "$ref": "#/$defs/TypescriptConfig"
+        }
+      },
+      "type": "object"
+    },
+    "LoggingConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ModelsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "base_model_fields": {
+          "items": {
+            "$ref": "#/$defs/BaseFieldConfig"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "generate_models_from_proto": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "OutputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "base_dir": {
+          "type": "string"
+        },
+        "directories": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "preserve_proto_structure": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "PluginConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "hooks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ProjectConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ProtoConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "exclude": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "import_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PythonConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "exclude_imports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "models_output": {
+          "type": "string"
+        },
+        "orm": {
+          "type": "boolean"
+        },
+        "orm_plugin": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "pb2_import_prefix": {
+          "type": "string"
+        },
+        "workdir": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RustConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "models_output": {
+          "type": "string"
+        },
+        "orm": {
+          "type": "boolean"
+        },
+        "orm_plugin": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TemplateConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "patterns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "vars": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "TypescriptConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "models_output": {
+          "type": "string"
+        },
+        "options": {
+          "$ref": "#/$defs/TypescriptOptionsConfig"
+        },
+        "orm": {
+          "type": "boolean"
+        },
+        "orm_plugin": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "plugins": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TypescriptOptionsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "es_modules": {
+          "type": "boolean"
+        },
+        "generate_grpc": {
+          "type": "boolean"
+        },
+        "generate_grpc_web": {
+          "type": "boolean"
+        },
+        "generate_nice_grpc": {
+          "type": "boolean"
+        },
+        "generator": {
+          "type": "string"
+        },
+        "output_index": {
+          "type": "boolean"
+        },
+        "protoc_gen_ts_path": {
+          "type": "string"
+        },
+        "ts_proto_path": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "VersioningConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "keep_versions": {
+          "type": "integer"
+        },
+        "output_format": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/massonsky/buffalo/schemas/buffalo.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Schema for buffalo.yaml. Schema version: 2.",
+  "properties": {
+    "bazel": {
+      "$ref": "#/$defs/BazelConfig"
+    },
+    "build": {
+      "$ref": "#/$defs/BuildConfig"
+    },
+    "dependencies": {
+      "items": {
+        "$ref": "#/$defs/Dependency"
+      },
+      "type": "array"
+    },
+    "languages": {
+      "$ref": "#/$defs/LanguagesConfig"
+    },
+    "logging": {
+      "$ref": "#/$defs/LoggingConfig"
+    },
+    "models": {
+      "$ref": "#/$defs/ModelsConfig"
+    },
+    "output": {
+      "$ref": "#/$defs/OutputConfig"
+    },
+    "plugins": {
+      "items": {
+        "$ref": "#/$defs/PluginConfig"
+      },
+      "type": "array"
+    },
+    "project": {
+      "$ref": "#/$defs/ProjectConfig"
+    },
+    "proto": {
+      "$ref": "#/$defs/ProtoConfig"
+    },
+    "schema_version": {
+      "description": "Configuration schema version. Current: 2.",
+      "type": "integer"
+    },
+    "templates": {
+      "items": {
+        "$ref": "#/$defs/TemplateConfig"
+      },
+      "type": "array"
+    },
+    "versioning": {
+      "$ref": "#/$defs/VersioningConfig"
+    }
+  },
+  "title": "Buffalo Configuration",
+  "type": "object"
+}
