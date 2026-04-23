@@ -25,6 +25,19 @@ type FindFilesOptions struct {
 	Recursive   bool     // Search recursively in subdirectories
 	IncludeDirs bool     // Include directories in results
 	Exclude     []string // Patterns to exclude
+
+	// FollowSymlinks, when false (default), causes the walker to skip any
+	// symbolic link encountered (both files and directories). This protects
+	// proto/source trees from being silently extended into arbitrary
+	// filesystem locations via attacker-controlled symlinks. When true,
+	// symlinks are still validated against ContainmentRoot if it is set.
+	FollowSymlinks bool
+
+	// ContainmentRoot, when non-empty, requires every accepted entry's
+	// resolved path (after EvalSymlinks) to live inside this root. The root
+	// itself is canonicalised in the same way before comparison. An empty
+	// ContainmentRoot disables this check.
+	ContainmentRoot string
 }
 
 // FindFiles finds files in a directory matching the given options.
@@ -43,9 +56,31 @@ func FindFiles(root string, opts FindFilesOptions) ([]FileInfo, error) {
 
 	var results []FileInfo
 
+	containmentRoot := ""
+	if opts.ContainmentRoot != "" {
+		resolved, err := filepath.EvalSymlinks(opts.ContainmentRoot)
+		if err != nil {
+			return nil, errors.Wrap(err, errors.ErrIO,
+				"failed to resolve containment root: %s", opts.ContainmentRoot)
+		}
+		containmentRoot = filepath.Clean(resolved)
+	}
+
 	walkFn := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return errors.Wrap(err, errors.ErrIO, "error walking path: %s", path)
+		}
+
+		// Symlink handling — runs before any other check so we never inspect
+		// a target that the attacker controls.
+		if info.Mode()&os.ModeSymlink != 0 {
+			r := handleSymlink(path, info, opts.FollowSymlinks, containmentRoot)
+			if r == filepath.SkipDir {
+				return filepath.SkipDir
+			}
+			if r != nil {
+				return nil
+			}
 		}
 
 		// Skip directories if not included
@@ -57,13 +92,10 @@ func FindFiles(root string, opts FindFilesOptions) ([]FileInfo, error) {
 		}
 
 		// Check exclusion patterns
-		for _, pattern := range opts.Exclude {
-			if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
+		if skip, sErr := matchExclude(path, info, opts.Exclude); sErr != nil {
+			return sErr
+		} else if skip {
+			return nil
 		}
 
 		// Check file pattern
@@ -95,6 +127,58 @@ func FindFiles(root string, opts FindFilesOptions) ([]FileInfo, error) {
 	}
 
 	return results, nil
+}
+
+// handleSymlink decides what FindFiles should do when it encounters a
+// symbolic link. Returns nil to let the caller continue normal processing,
+// filepath.SkipDir to skip a symlinked directory, or a non-nil sentinel error
+// (currently always nil for "skip this entry").
+func handleSymlink(path string, info os.FileInfo, follow bool, containmentRoot string) error {
+	if !follow {
+		if info.IsDir() {
+			return filepath.SkipDir
+		}
+		return errSkipFile
+	}
+	if containmentRoot == "" {
+		return nil
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return errSkipFile
+	}
+	rel, err := filepath.Rel(containmentRoot, filepath.Clean(resolved))
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		if info.IsDir() {
+			return filepath.SkipDir
+		}
+		return errSkipFile
+	}
+	return nil
+}
+
+// errSkipFile is returned from handleSymlink to signal "skip this single
+// entry" to FindFiles. It's converted back to nil by the walkFn before being
+// passed to filepath.Walk.
+var errSkipFile = errSkipFileType{}
+
+type errSkipFileType struct{}
+
+func (errSkipFileType) Error() string { return "skip file" }
+
+// matchExclude returns (skip, sentinelErr). When skip is true the entry must
+// not be added to results. sentinelErr is filepath.SkipDir when an entire
+// excluded directory should be pruned.
+func matchExclude(path string, info os.FileInfo, patterns []string) (bool, error) {
+	for _, pattern := range patterns {
+		if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
+			if info.IsDir() {
+				return true, filepath.SkipDir
+			}
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // FileExists checks if a file or directory exists.

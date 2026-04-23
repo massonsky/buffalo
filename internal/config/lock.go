@@ -329,6 +329,68 @@ func (m *LockFileManager) Load() (*LockFile, error) {
 	return &lock, nil
 }
 
+// Verify compares the on-disk lock file against the current config and proto
+// files. It returns a list of human-readable mismatch reasons; an empty slice
+// means the lock file is fully consistent. The lock file itself is returned
+// when present so callers can still apply resolved values without rewriting.
+//
+// Verify is the strict-mode counterpart of NeedsRegeneration: it never
+// rewrites or regenerates the lock file, making it safe to use under
+// --frozen-lockfile in CI.
+func (m *LockFileManager) Verify(cfg *Config, protoFiles []string) (*LockFile, []string, error) {
+	lock, err := m.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var mismatches []string
+
+	currentHash, err := m.calculateConfigHash()
+	if err != nil {
+		return lock, nil, fmt.Errorf("failed to hash config: %w", err)
+	}
+	if lock.ConfigHash != currentHash {
+		mismatches = append(mismatches,
+			fmt.Sprintf("config hash differs (lock=%s current=%s)", short(lock.ConfigHash), short(currentHash)))
+	}
+
+	if lock.Proto.TotalFiles != len(protoFiles) {
+		mismatches = append(mismatches,
+			fmt.Sprintf("proto file count differs (lock=%d current=%d)", lock.Proto.TotalFiles, len(protoFiles)))
+	}
+
+	configDir := filepath.Dir(m.configPath)
+	for _, p := range protoFiles {
+		rel, _ := filepath.Rel(configDir, p)
+		if rel == "" {
+			rel = p
+		}
+		recorded, ok := lock.Proto.Files[rel]
+		if !ok {
+			mismatches = append(mismatches, fmt.Sprintf("new proto file not in lock: %s", rel))
+			continue
+		}
+		fresh, herr := m.hashProtoFile(p)
+		if herr != nil {
+			mismatches = append(mismatches, fmt.Sprintf("failed to hash %s: %v", rel, herr))
+			continue
+		}
+		if fresh.Hash != recorded.Hash {
+			mismatches = append(mismatches,
+				fmt.Sprintf("proto file changed: %s (lock=%s current=%s)", rel, short(recorded.Hash), short(fresh.Hash)))
+		}
+	}
+
+	return lock, mismatches, nil
+}
+
+func short(h string) string {
+	if len(h) <= 12 {
+		return h
+	}
+	return h[:12]
+}
+
 // calculateConfigHash calculates SHA256 hash of the config file
 func (m *LockFileManager) calculateConfigHash() (string, error) {
 	return hashFile(m.configPath)

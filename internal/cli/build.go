@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/massonsky/buffalo/internal/bazel"
 	"github.com/massonsky/buffalo/internal/builder"
@@ -11,6 +12,7 @@ import (
 	"github.com/massonsky/buffalo/internal/embedded"
 	"github.com/massonsky/buffalo/internal/plugin"
 	"github.com/massonsky/buffalo/internal/system"
+	"github.com/massonsky/buffalo/pkg/errors"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/utils"
 	"github.com/spf13/cobra"
@@ -25,6 +27,7 @@ var (
 	buildSkipSystemCheck bool
 	buildSkipLock        bool
 	buildForceLock       bool
+	buildFrozenLock      bool
 	buildBazel           bool
 	buildBazelPatterns   []string
 
@@ -69,6 +72,7 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildSkipSystemCheck, "skip-system-check", false, "skip system readiness check before build")
 	buildCmd.Flags().BoolVar(&buildSkipLock, "skip-lock", false, "skip lock file and build directly from config")
 	buildCmd.Flags().BoolVar(&buildForceLock, "force-lock", false, "force regenerate lock file")
+	buildCmd.Flags().BoolVar(&buildFrozenLock, "frozen-lockfile", false, "fail if buffalo.lock is missing or stale (CI mode)")
 	buildCmd.Flags().BoolVar(&buildBazel, "bazel", false, "enable Bazel integration (discover proto_library targets, generate BUILD.bazel)")
 	buildCmd.Flags().StringSliceVar(&buildBazelPatterns, "bazel-pattern", []string{}, "Bazel target patterns to scan (default //...)")
 }
@@ -284,37 +288,65 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if !buildSkipLock {
 		lockManager := config.NewLockFileManager(configPath)
 
-		needsRegen, reason, err := lockManager.NeedsRegeneration()
-		if err != nil {
-			log.Warn("Failed to check lock file", logger.Any("error", err))
-			needsRegen = true
-			reason = "check failed"
-		}
-
-		if buildForceLock || needsRegen {
+		switch {
+		case buildFrozenLock:
 			if buildForceLock {
-				log.Info("🔒 Regenerating lock file (forced)")
-			} else {
-				log.Info("🔒 Regenerating lock file", logger.String("reason", reason))
+				return errors.New(errors.ErrInvalidArgument,
+					"--frozen-lockfile is incompatible with --force-lock")
+			}
+			if _, statErr := os.Stat(lockManager.GetLockPath()); statErr != nil {
+				return errors.Wrap(statErr, errors.ErrConfig,
+					"--frozen-lockfile requires %s to exist; run 'buffalo build' once to generate it",
+					lockManager.GetLockPath())
+			}
+			lf, mismatches, vErr := lockManager.Verify(cfg, allProtoFiles)
+			if vErr != nil {
+				return errors.Wrap(vErr, errors.ErrConfig, "failed to verify lock file")
+			}
+			if len(mismatches) > 0 {
+				for _, m := range mismatches {
+					log.Error("🔒 lock mismatch: " + m)
+				}
+				return errors.New(errors.ErrConfig,
+					"buffalo.lock is out of date (%d mismatch(es)); rerun without --frozen-lockfile and commit the updated lockfile",
+					len(mismatches))
+			}
+			log.Info("🔒 Lock file verified", logger.String("path", lockManager.GetLockPath()))
+			lockFile = lf
+
+		default:
+			needsRegen, reason, err := lockManager.NeedsRegeneration()
+			if err != nil {
+				log.Warn("Failed to check lock file", logger.Any("error", err))
+				needsRegen = true
+				reason = "check failed"
 			}
 
-			lockFile, err = lockManager.Generate(cfg, allProtoFiles)
-			if err != nil {
-				log.Warn("Failed to generate lock file", logger.Any("error", err))
-			} else {
-				if err := lockManager.Save(lockFile); err != nil {
-					log.Warn("Failed to save lock file", logger.Any("error", err))
+			if buildForceLock || needsRegen {
+				if buildForceLock {
+					log.Info("🔒 Regenerating lock file (forced)")
 				} else {
-					log.Info("🔒 Lock file saved", logger.String("path", lockManager.GetLockPath()))
+					log.Info("🔒 Regenerating lock file", logger.String("reason", reason))
 				}
-			}
-		} else {
-			log.Debug("Lock file is up to date")
-			lockFile, err = lockManager.Load()
-			if err != nil {
-				log.Warn("Failed to load lock file, regenerating", logger.Any("error", err))
-				lockFile, _ = lockManager.Generate(cfg, allProtoFiles)
-				_ = lockManager.Save(lockFile)
+
+				lockFile, err = lockManager.Generate(cfg, allProtoFiles)
+				if err != nil {
+					log.Warn("Failed to generate lock file", logger.Any("error", err))
+				} else {
+					if err := lockManager.Save(lockFile); err != nil {
+						log.Warn("Failed to save lock file", logger.Any("error", err))
+					} else {
+						log.Info("🔒 Lock file saved", logger.String("path", lockManager.GetLockPath()))
+					}
+				}
+			} else {
+				log.Debug("Lock file is up to date")
+				lockFile, err = lockManager.Load()
+				if err != nil {
+					log.Warn("Failed to load lock file, regenerating", logger.Any("error", err))
+					lockFile, _ = lockManager.Generate(cfg, allProtoFiles)
+					_ = lockManager.Save(lockFile)
+				}
 			}
 		}
 

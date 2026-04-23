@@ -73,6 +73,77 @@ func TestFindFiles(t *testing.T) {
 	}
 }
 
+func TestFindFiles_SkipsSymlinks(t *testing.T) {
+	if os.Getenv("CI_NO_SYMLINK") != "" {
+		t.Skip("symlink creation disabled")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	// real proto inside root
+	innerDir := filepath.Join(root, "inner")
+	if err := os.MkdirAll(innerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(innerDir, "good.proto"), []byte("syntax=\"proto3\";"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// outside the root
+	leak := filepath.Join(outside, "leak.proto")
+	if err := os.WriteFile(leak, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// symlink inside root pointing OUTSIDE
+	link := filepath.Join(root, "leak.proto")
+	if err := os.Symlink(leak, link); err != nil {
+		t.Skipf("symlinks not supported in this environment: %v", err)
+	}
+
+	res, err := FindFiles(root, FindFilesOptions{Pattern: "*.proto", Recursive: true})
+	if err != nil {
+		t.Fatalf("FindFiles: %v", err)
+	}
+	for _, f := range res {
+		if filepath.Base(f.Path) == "leak.proto" {
+			t.Fatalf("symlink to %s was not skipped: %+v", leak, f)
+		}
+	}
+}
+
+func TestFindFiles_FollowSymlinksWithinRoot(t *testing.T) {
+	if os.Getenv("CI_NO_SYMLINK") != "" {
+		t.Skip("symlink creation disabled")
+	}
+	root := t.TempDir()
+	target := filepath.Join(root, "real.proto")
+	if err := os.WriteFile(target, []byte("syntax=\"proto3\";"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "alias.proto")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks not supported: %v", err)
+	}
+
+	res, err := FindFiles(root, FindFilesOptions{
+		Pattern:         "*.proto",
+		Recursive:       true,
+		FollowSymlinks:  true,
+		ContainmentRoot: root,
+	})
+	if err != nil {
+		t.Fatalf("FindFiles: %v", err)
+	}
+	var sawLink bool
+	for _, f := range res {
+		if filepath.Base(f.Path) == "alias.proto" {
+			sawLink = true
+		}
+	}
+	if !sawLink {
+		t.Fatalf("expected in-root symlink to be accepted, got %+v", res)
+	}
+}
+
 func TestFileExists(t *testing.T) {
 	tempDir := t.TempDir()
 	existingFile := filepath.Join(tempDir, "exists.txt")
