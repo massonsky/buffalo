@@ -30,30 +30,33 @@ BuffaloProtoInfo = provider(
 
 def _buffalo_proto_compile_impl(ctx):
     output_dir = ctx.actions.declare_directory(ctx.attr.out)
-    buffalo_bin = ctx.files.buffalo[0]
 
-    args = [
-        "build",
-        "--skip-system-check",
-        "--skip-lock",
-    ]
+    args = ctx.actions.args()
+    args.add("build")
+    args.add("--skip-system-check")
+    args.add("--skip-lock")
 
     if ctx.file.config:
-        args.extend(["--config", ctx.file.config.path])
+        args.add("--config")
+        args.add(ctx.file.config.path)
 
-    args.extend(["-o", output_dir.path])
+    args.add("-o")
+    args.add(output_dir.path)
 
     for lang in ctx.attr.languages:
-        args.extend(["-l", lang])
+        args.add("-l")
+        args.add(lang)
 
     for p in ctx.attr.proto_paths:
-        args.extend(["-p", p])
+        args.add("-p")
+        args.add(p)
 
     for p in ctx.attr.import_paths:
-        args.extend(["-I", p])
+        args.add("-I")
+        args.add(p)
 
     if ctx.attr.verbose:
-        args.append("--verbose")
+        args.add("--verbose")
 
     # Collect all inputs
     inputs = list(ctx.files.srcs)
@@ -61,12 +64,11 @@ def _buffalo_proto_compile_impl(ctx):
         inputs.append(ctx.file.config)
     inputs.extend(ctx.files.deps)
 
-    ctx.actions.run_shell(
+    ctx.actions.run(
         outputs = [output_dir],
         inputs = inputs,
-        tools = [buffalo_bin],
-        arguments = [buffalo_bin.path] + args,
-        command = 'buffalo="$1"; shift; "$buffalo" "$@"',
+        executable = ctx.executable._runner,
+        arguments = [args],
         mnemonic = "BuffaloCompile",
         progress_message = "Buffalo: compiling %d proto files [%s]" % (
             len(ctx.files.srcs),
@@ -96,17 +98,22 @@ buffalo_proto_compile = rule(
             allow_single_file = [".yaml", ".yml"],
             doc = "Buffalo configuration file (buffalo.yaml).",
         ),
+        "_runner": attr.label(
+            default = Label("//buffalo:gen_runner"),
+            executable = True,
+            cfg = "exec",
+        ),
         "languages": attr.string_list(
             default = ["go", "python", "rust"],
             doc = "Target languages for code generation.",
         ),
         "proto_paths": attr.string_list(
             default = ["proto"],
-            doc = "Directories scanned for proto source files (passed to buffalo as -p).",
+            doc = "Directories to search for proto imports.",
         ),
         "import_paths": attr.string_list(
             default = [],
-            doc = "Directories used only for resolving proto imports, not scanned for sources (passed to buffalo as -I).",
+            doc = "Additional import-only directories passed to Buffalo via -I.",
         ),
         "deps": attr.label_list(
             allow_files = True,
@@ -119,11 +126,6 @@ buffalo_proto_compile = rule(
         "verbose": attr.bool(
             default = False,
             doc = "Enable verbose Buffalo output.",
-        ),
-        "buffalo": attr.label(
-            allow_single_file = True,
-            default = Label("@buffalo_toolchain//:buffalo_bin"),
-            doc = "Buffalo binary label. Defaults to the binary discovered by the buffalo module extension.",
         ),
     },
     doc = """Compiles proto files using Buffalo.
@@ -145,14 +147,14 @@ Example:
 # ── buffalo_proto_gen (source-tree run target) ────────────────────────────────
 
 def buffalo_proto_gen(
-        name,
-        config = "buffalo.yaml",
-        languages = [],
-        proto_paths = [],
-        import_paths = [],
-        extra_args = [],
-        visibility = None,
-        **kwargs):
+    name,
+    config = "buffalo.yaml",
+    languages = [],
+    proto_paths = [],
+    import_paths = [],
+    extra_args = [],
+    visibility = None,
+    **kwargs):
     """Creates a `bazel run` target that invokes Buffalo in the workspace root.
 
     Generated code goes into the source tree (e.g., gen/).
@@ -168,6 +170,7 @@ def buffalo_proto_gen(
         config: Path to buffalo.yaml (relative to workspace root).
         languages: List of target languages (e.g., ["go", "rust"]).
         proto_paths: Directories to search for proto imports.
+        import_paths: Additional import-only directories passed to Buffalo via -I.
         extra_args: Additional CLI arguments for `buffalo build`.
         visibility: Bazel visibility.
     """
