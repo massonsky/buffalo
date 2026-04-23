@@ -346,6 +346,14 @@ func (c *Config) Validate() error {
 	if c.Output.BaseDir == "" {
 		return errors.New(errors.ErrConfig, "output.base_dir is required")
 	}
+	if err := c.validateContainedPath("output.base_dir", c.Output.BaseDir); err != nil {
+		return err
+	}
+	if c.Build.Cache.Directory != "" {
+		if err := c.validateContainedPath("build.cache.directory", c.Build.Cache.Directory); err != nil {
+			return err
+		}
+	}
 
 	// Validate at least one language is enabled
 	if !c.Languages.Python.Enabled &&
@@ -530,4 +538,46 @@ func (c *Config) resolveRelPath(p string) string {
 		return p
 	}
 	return filepath.Join(c.ConfigDir, p)
+}
+
+// validateContainedPath rejects output paths that would escape the project
+// root (the directory containing buffalo.yaml). Both relative `..` traversal
+// and absolute paths pointing outside the project root are blocked.
+//
+// When ConfigDir is empty (config built in memory or loaded without a known
+// root) only the syntactic `..` check is applied.
+func (c *Config) validateContainedPath(field, p string) error {
+	if p == "" {
+		return nil
+	}
+	clean := filepath.Clean(p)
+
+	// Reject any traversal segment regardless of base.
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return errors.New(errors.ErrConfig, fmt.Sprintf(
+			"%s must stay within the project root: %q escapes via '..'", field, p))
+	}
+
+	if c.ConfigDir == "" {
+		return nil
+	}
+
+	root, err := filepath.Abs(c.ConfigDir)
+	if err != nil {
+		return errors.Wrap(err, errors.ErrConfig, fmt.Sprintf("resolve project root for %s", field))
+	}
+	target := clean
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(root, target)
+	}
+	target, err = filepath.Abs(target)
+	if err != nil {
+		return errors.Wrap(err, errors.ErrConfig, fmt.Sprintf("resolve %s", field))
+	}
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New(errors.ErrConfig, fmt.Sprintf(
+			"%s (%s) must be inside the project root (%s)", field, target, root))
+	}
+	return nil
 }
