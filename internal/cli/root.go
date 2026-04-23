@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/massonsky/buffalo/internal/config"
 	"github.com/massonsky/buffalo/internal/version"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/spf13/cobra"
@@ -63,20 +64,11 @@ func initConfig() {
 		viper.SetConfigType("yaml")
 	}
 
-	// Read in environment variables that match
-	viper.SetEnvPrefix("BUFFALO")
-	// Map nested keys (foo.bar.baz) to env vars (BUFFALO_FOO_BAR_BAZ).
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
-
-	// Explicit binds for nested keys that AutomaticEnv cannot discover until
-	// the YAML is loaded. This makes overrides like
-	//   BUFFALO_LANGUAGES_GO_ENABLED=true
-	//   BUFFALO_LANGUAGES_PYTHON_PACKAGE=myproto
-	// work even when no buffalo.yaml is present.
-	for _, k := range envBindKeys {
-		_ = viper.BindEnv(k)
-	}
+	// Read in environment variables that match. ApplyEnv sets prefix,
+	// the dotted-key replacer and binds every nested key declared in
+	// internal/config so overrides like BUFFALO_LANGUAGES_GO_ENABLED work
+	// even without a buffalo.yaml on disk.
+	config.ApplyEnv(viper.GetViper())
 
 	// If a config file is found, read it in
 	if err := viper.ReadInConfig(); err == nil {
@@ -133,42 +125,4 @@ func GetLogger() *logger.Logger {
 		initLogger()
 	}
 	return log
-}
-
-// envBindKeys lists nested viper keys that should be bound to BUFFALO_*
-// environment variables eagerly (before any YAML is loaded). Keep in sync
-// with internal/config.Config when new fields are added.
-var envBindKeys = []string{
-	"project.name",
-	"project.version",
-	"output.base_dir",
-	"build.workers",
-	"build.cache.enabled",
-	"build.cache.directory",
-	"logging.level",
-	"logging.format",
-	"logging.output",
-
-	"languages.go.enabled",
-	"languages.go.module",
-	"languages.go.generator",
-
-	"languages.python.enabled",
-	"languages.python.package",
-	"languages.python.generator",
-	"languages.python.workdir",
-
-	"languages.rust.enabled",
-	"languages.rust.generator",
-
-	"languages.cpp.enabled",
-	"languages.cpp.namespace",
-
-	"languages.typescript.enabled",
-	"languages.typescript.generator",
-	"languages.typescript.output",
-
-	"bazel.enabled",
-	"bazel.bazel_path",
-	"bazel.auto_detect",
 }

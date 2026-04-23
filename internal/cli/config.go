@@ -89,11 +89,12 @@ print the migrated file to stdout without modifying the source.`,
 		RunE: runConfigMigrate,
 	}
 
-	configFile    string
-	configForce   bool
-	configFormat  string
-	configProfile string
-	configDryRun  bool
+	configFile         string
+	configForce        bool
+	configFormat       string
+	configSchemaFormat string
+	configProfile      string
+	configDryRun       bool
 )
 
 func init() {
@@ -118,7 +119,7 @@ func init() {
 	configInitCmd.Flags().StringVar(&configProfile, "profile", "full", "config profile: minimal, full, bazel")
 
 	// Schema command flags
-	configSchemaCmd.Flags().StringVar(&configFormat, "format", "json", "output format: json (JSON Schema) or yaml (default config)")
+	configSchemaCmd.Flags().StringVar(&configSchemaFormat, "format", "json", "output format: json (JSON Schema) or yaml (default config)")
 	configSchemaCmd.Flags().StringVar(&configProfile, "profile", "full", "YAML profile when --format=yaml: minimal, full, bazel")
 
 	// Migrate command flags
@@ -477,7 +478,7 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigSchema(cmd *cobra.Command, args []string) error {
-	switch strings.ToLower(configFormat) {
+	switch strings.ToLower(configSchemaFormat) {
 	case "json", "":
 		data, err := config.GenerateJSONSchema()
 		if err != nil {
@@ -497,7 +498,7 @@ func runConfigSchema(cmd *cobra.Command, args []string) error {
 		_, err = os.Stdout.Write(data)
 		return err
 	default:
-		return fmt.Errorf("unknown --format=%q (expected json or yaml)", configFormat)
+		return fmt.Errorf("unknown --format=%q (expected json or yaml)", configSchemaFormat)
 	}
 }
 

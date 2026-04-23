@@ -251,6 +251,7 @@ func Load() (*Config, error) {
 func LoadFromFile(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
+	ApplyEnv(v)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, errors.Wrap(err, errors.ErrConfig, "failed to read config file")

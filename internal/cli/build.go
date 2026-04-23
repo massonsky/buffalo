@@ -493,17 +493,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// loadConfig loads configuration from viper
-func loadConfig(_ *logger.Logger) (*config.Config, error) {
-	// If --config flag was explicitly provided, always use it
-	if cfgFile != "" {
-		return config.LoadFromFile(cfgFile)
-	}
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
+// loadConfig loads configuration. It mirrors loadConfigWithPath's discovery
+// logic (explicit -c flag → standard names → viper) so every command goes
+// through the same code path and benefits from BUFFALO_* env overrides via
+// config.LoadFromFile.
+func loadConfig(log *logger.Logger) (*config.Config, error) {
+	cfg, _, err := loadConfigWithPath(log)
+	return cfg, err
 }
 
 // loadConfigWithPath loads configuration and returns the config file path
