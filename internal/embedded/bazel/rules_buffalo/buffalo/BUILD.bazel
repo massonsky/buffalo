@@ -1,6 +1,15 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+
 package(default_visibility = ["//visibility:public"])
 
+py_binary(
+    name = "gen_runner",
+    srcs = ["gen_runner.py"],
+    main = "gen_runner.py",
+)
+
 exports_files([
+    "config_output_dir.py",
     "defs.bzl",
     "extensions.bzl",
     "repositories.bzl",

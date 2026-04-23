@@ -3,3 +3,11 @@ module(
     version = "1.0.0",
     compatibility_level = 1,
 )
+
+bazel_dep(name = "rules_python", version = "1.7.0")
+
+# Locate the buffalo binary on the host system. The dev macro and helper
+# repositories still use this, while buffalo_proto_compile invokes the
+# `buffalo` CLI directly from the action environment.
+buffalo = use_extension("//buffalo:extensions.bzl", "buffalo")
+use_repo(buffalo, "buffalo_toolchain")
