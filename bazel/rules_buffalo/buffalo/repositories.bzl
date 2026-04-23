@@ -14,6 +14,9 @@ _TOOL_URL_ENVS = {
     "protoc-gen-go": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_URL",
     "protoc-gen-go-grpc": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_URL",
     "protoc-gen-grpc_python": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GRPC_PYTHON_URL",
+    "rustc": "BUFFALO_TOOLCHAIN_RUSTC_URL",
+    "protoc-gen-tonic": "BUFFALO_TOOLCHAIN_PROTOC_GEN_TONIC_URL",
+    "protoc-gen-prost": "BUFFALO_TOOLCHAIN_PROTOC_GEN_PROST_URL",
 }
 
 def _require_tool(rctx, name, install_hint):
@@ -26,8 +29,8 @@ def _env(rctx, key, default = ""):
     return rctx.os.environ.get(key, default)
 
 def _strict_mode(rctx):
-    value = _env(rctx, _STRICT_MODE_ENV, "1").lower()
-    return value not in ["0", "false", "no", "off"]
+    value = _env(rctx, _STRICT_MODE_ENV, "0").lower()
+    return value in ["1", "true", "yes", "on"]
 
 def _download_tool_from_env(rctx, tool_name, suffix):
     env_name = _TOOL_URL_ENVS[tool_name]
@@ -153,6 +156,103 @@ def _install_grpc_tools_python(rctx, is_windows):
 
     fail("Failed to bootstrap grpcio-tools/protobuf for Bazel Buffalo sandbox.\n{}".format(last_error))
 
+def _check_rust(rctx):
+    """Check for Rust toolchain (rustc)."""
+    rustc = rctx.which("rustc")
+    if not rustc:
+        return None
+    result = rctx.execute([str(rustc), "--version"])
+    if result.return_code == 0:
+        return rustc
+    return None
+
+def _check_typescript(rctx):
+    """Check for Node.js / npm for TypeScript compilation."""
+    npm = rctx.which("npm")
+    if npm:
+        return npm
+    return None
+
+def _check_cpp_compiler(rctx):
+    """Check for C++ compiler (clang++, g++, or MSVC cl.exe)."""
+    candidates = ["clang++", "g++", "c++"]
+    if rctx.os.name.lower().startswith("windows"):
+        candidates.insert(0, "cl.exe")
+    
+    for candidate in candidates:
+        compiler = rctx.which(candidate)
+        if compiler:
+            return compiler
+    return None
+
+def _bootstrap_language_tools(rctx, is_windows):
+    """Bootstrap non-Go, non-Python language tools."""
+    status = []
+    
+    # Check Rust
+    rustc = _check_rust(rctx)
+    if rustc:
+        status.append("✓ rustc found: {}".format(rustc))
+    else:
+        status.append("✗ rustc not found (Rust code generation will be unavailable)")
+    
+    # Check TypeScript/Node.js
+    npm = _check_typescript(rctx)
+    if npm:
+        status.append("✓ npm found: {}".format(npm))
+    else:
+        status.append("✗ npm not found (TypeScript code generation will be unavailable)")
+    
+    # Check C++
+    cpp = _check_cpp_compiler(rctx)
+    if cpp:
+        status.append("✓ C++ compiler found: {}".format(cpp))
+    else:
+        status.append("✗ C++ compiler not found (C++ code generation will be unavailable)")
+    
+    return struct(
+        rust = rustc,
+        typescript = npm,
+        cpp = cpp,
+        status = status,
+    )
+
+def _install_rust_tools(rctx, suffix):
+    """Install Rust protobuf code generators."""
+    cargo = rctx.which("cargo")
+    if not cargo:
+        return None
+
+    cargobin = str(rctx.path("_buffalo_rust_bin"))
+    env = {
+        "CARGO_INSTALL_ROOT": cargobin,
+        "CARGO_HOME": str(rctx.path("_buffalo_cargo_home")),
+        "RUSTUP_HOME": str(rctx.path("_buffalo_rustup_home")),
+    }
+
+    # Install protoc-gen-prost (for prost)
+    _run_or_fail(
+        rctx,
+        [str(cargo), "install", "protoc-gen-prost"],
+        "Failed to auto-install protoc-gen-prost via `cargo install`.",
+        environment = env,
+    )
+
+    # Install protoc-gen-tonic (for gRPC with tonic)
+    result = rctx.execute(
+        [str(cargo), "install", "protoc-gen-tonic"],
+        environment = env,
+    )
+    if result.return_code != 0:
+        # protoc-gen-tonic may fail on some platforms; that's OK
+        pass
+
+    prost_bin = rctx.path("_buffalo_rust_bin/bin/protoc-gen-prost{}".format(suffix))
+    if not prost_bin.exists:
+        fail("Failed to install protoc-gen-prost into Bazel toolchain: {}".format(prost_bin))
+
+    return prost_bin
+
 def _buffalo_toolchain_repo_impl(rctx):
     is_windows = rctx.os.name.lower().startswith("windows")
     suffix = ".exe" if is_windows else ""
@@ -228,6 +328,14 @@ def _buffalo_toolchain_repo_impl(rctx):
             if existing_plugin:
                 protoc_gen_grpc_python = existing_plugin
 
+    # Bootstrap Rust tools in compatibility mode
+    protoc_gen_prost = _download_tool_from_env(rctx, "protoc-gen-prost", suffix)
+    protoc_gen_tonic = _download_tool_from_env(rctx, "protoc-gen-tonic", suffix)
+
+    if not strict:
+        if not protoc_gen_prost:
+            protoc_gen_prost = _install_rust_tools(rctx, suffix)
+
     files = {
         "buffalo{}".format(suffix): buffalo,
         "protoc{}".format(suffix): protoc,
@@ -237,6 +345,12 @@ def _buffalo_toolchain_repo_impl(rctx):
 
     if protoc_gen_grpc_python:
         files["protoc-gen-grpc_python{}".format(suffix)] = protoc_gen_grpc_python
+
+    if protoc_gen_prost:
+        files["protoc-gen-prost{}".format(suffix)] = protoc_gen_prost
+
+    if protoc_gen_tonic:
+        files["protoc-gen-tonic{}".format(suffix)] = protoc_gen_tonic
 
     for target_name, source in files.items():
         rctx.symlink(source, target_name)
@@ -250,48 +364,62 @@ def _buffalo_toolchain_repo_impl(rctx):
         else:
             rctx.file(grpc_python_name, "#!/usr/bin/env sh\necho 'protoc-gen-grpc_python is not provisioned in non-strict mode.' >&2\nexit 1\n", executable = True)
 
-    rctx.file("BUILD.bazel", content = """\
-package(default_visibility = ["//visibility:public"])
+    # Build exports_files and aliases dynamically based on available tools
+    exports = [
+        '    "{}"'.format("buffalo{}".format(suffix)),
+        '    "{}"'.format("protoc{}".format(suffix)),
+        '    "{}"'.format("protoc-gen-go{}".format(suffix)),
+        '    "{}"'.format("protoc-gen-go-grpc{}".format(suffix)),
+        '    "{}"'.format("protoc-gen-grpc_python{}".format(suffix)),
+    ]
+
+    aliases = [
+        '''alias(
+    name = "buffalo_bin",
+    actual = ":buffalo{}",
+)'''.format(suffix),
+        '''alias(
+    name = "protoc_bin",
+    actual = ":protoc{}",
+)'''.format(suffix),
+        '''alias(
+    name = "protoc_gen_go_bin",
+    actual = ":protoc-gen-go{}",
+)'''.format(suffix),
+        '''alias(
+    name = "protoc_gen_go_grpc_bin",
+    actual = ":protoc-gen-go-grpc{}",
+)'''.format(suffix),
+        '''alias(
+    name = "protoc_gen_grpc_python_bin",
+    actual = ":protoc-gen-grpc_python{}",
+)'''.format(suffix),
+    ]
+
+    if protoc_gen_prost:
+        exports.append('    "{}"'.format("protoc-gen-prost{}".format(suffix)))
+        aliases.append('''alias(
+    name = "protoc_gen_prost_bin",
+    actual = ":protoc-gen-prost{}",
+)'''.format(suffix))
+
+    if protoc_gen_tonic:
+        exports.append('    "{}"'.format("protoc-gen-tonic{}".format(suffix)))
+        aliases.append('''alias(
+    name = "protoc_gen_tonic_bin",
+    actual = ":protoc-gen-tonic{}",
+)'''.format(suffix))
+
+    build_content = """package(default_visibility = ["//visibility:public"])
 
 exports_files([
-    "{buffalo}",
-    "{protoc}",
-    "{protoc_gen_go}",
-    "{protoc_gen_go_grpc}",
-    "{protoc_gen_grpc_python}",
+{}
 ])
 
-alias(
-    name = "buffalo_bin",
-    actual = ":{buffalo}",
-)
+{}
+""".format(",\n".join(exports), "\n\n".join(aliases))
 
-alias(
-    name = "protoc_bin",
-    actual = ":{protoc}",
-)
-
-alias(
-    name = "protoc_gen_go_bin",
-    actual = ":{protoc_gen_go}",
-)
-
-alias(
-    name = "protoc_gen_go_grpc_bin",
-    actual = ":{protoc_gen_go_grpc}",
-)
-
-alias(
-    name = "protoc_gen_grpc_python_bin",
-    actual = ":{protoc_gen_grpc_python}",
-)
-""".format(
-        buffalo = "buffalo{}".format(suffix),
-        protoc = "protoc{}".format(suffix),
-        protoc_gen_go = "protoc-gen-go{}".format(suffix),
-        protoc_gen_go_grpc = "protoc-gen-go-grpc{}".format(suffix),
-        protoc_gen_grpc_python = "protoc-gen-grpc_python{}".format(suffix),
-    ))
+    rctx.file("BUILD.bazel", content = build_content)
 
 buffalo_toolchain_repo = repository_rule(
     implementation = _buffalo_toolchain_repo_impl,
@@ -307,6 +435,9 @@ buffalo_toolchain_repo = repository_rule(
         _TOOL_URL_ENVS["protoc-gen-go"],
         _TOOL_URL_ENVS["protoc-gen-go-grpc"],
         _TOOL_URL_ENVS["protoc-gen-grpc_python"],
+        _TOOL_URL_ENVS["protoc-gen-prost"],
+        _TOOL_URL_ENVS["protoc-gen-tonic"],
+        _TOOL_URL_ENVS["rustc"],
     ],
     doc = "Bootstraps Buffalo and required protoc tooling into the Bazel toolchain repository for sandbox execution.",
 )

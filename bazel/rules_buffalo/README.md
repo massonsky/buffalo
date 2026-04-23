@@ -22,33 +22,50 @@ use_repo(buffalo, "buffalo_toolchain")
 
 ## Prerequisites
 
-`rules_buffalo` now bootstraps required runtime tools into the Bazel external
+`rules_buffalo` bootstraps required runtime tools into the Bazel external
 toolchain repository used by sandboxed actions.
 
-Important: runtime tools used by `buffalo_proto_compile` are **not** taken
-directly from host PATH. They are installed into (and executed from) the
-toolchain repository.
+Important: runtime tools used by `buffalo_proto_compile` are staged in the
+Bazel toolchain repository and executed from there, ensuring deterministic,
+hermetic builds regardless of host environment.
 
-Bootstrapped dependencies:
+**Default mode (compatibility):**
+
+Requires host tools for initial bootstrap only:
+
+- `go` in `PATH` (for auto-install of Go-based tools)
+- `python`/`python3`/`py` in `PATH` (for grpc tools bootstrap)
+- `cargo` in `PATH` (for auto-install of Rust tools)
+- `rustc` in `PATH` (for Rust code generation)
+- `npm` in `PATH` (for TypeScript support, optional)
+- C++ compiler (`clang++`, `g++`, or MSVC `cl.exe` on Windows) for C++ support (optional)
+
+First `bazel build` automatically installs:
 
 - `buffalo` (via `go install` into toolchain repo)
 - `protoc-gen-go` (via `go install` into toolchain repo)
 - `protoc-gen-go-grpc` (via `go install` into toolchain repo)
+- `protoc-gen-prost` (via `cargo install` into toolchain repo, for Rust)
+- `protoc-gen-tonic` (via `cargo install` into toolchain repo, for Rust gRPC, optional)
 - Python `grpcio-tools` / `protobuf` for `grpc_tools.protoc` (via `pip install --target` into toolchain repo)
 
-If bootstrap is not possible, setup fails with an actionable error message.
+**Strict mode** (`BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1`):
 
-Minimal host prerequisites:
-
-- `go` in `PATH` (for auto-install of Go-based tools)
-- `python`/`python3`/`py` in `PATH` (for grpc tools bootstrap)
+No host tool dependencies. All tools are downloaded from URLs specified in environment variables.
 
 ## Strict hermetic sandbox mode
 
-By default, strict sandbox mode is enabled (`BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1`).
-In this mode, runtime tooling must be provided via URLs and is downloaded into the
+By default, compatibility mode is enabled (automatic bootstrap via `go`/`python`).
+Bootstrap tooling is installed into the Bazel toolchain repository, allowing
+reproducible sandbox execution.
+
+For strict hermetic sandbox mode, set:
+
+- `BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1`
+
+In strict mode, all runtime tooling must be provided via download URLs and is downloaded into the
 toolchain repository (sandbox input), with no runtime dependency on host-installed
-Buffalo/protoc/plugins.
+Buffalo/protoc/plugins or host `go`/`python`.
 
 Required environment variables in strict mode:
 
@@ -58,12 +75,15 @@ Required environment variables in strict mode:
 - `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_URL`
 - `BUFFALO_TOOLCHAIN_PROTOC_GEN_GRPC_PYTHON_URL`
 
-Optional compatibility mode:
+### Compatibility mode (default)
 
-- `BUFFALO_TOOLCHAIN_STRICT_SANDBOX=0`
+By default, `BUFFALO_TOOLCHAIN_STRICT_SANDBOX` is disabled. In this mode:
 
-Compatibility mode keeps older bootstrap behavior (host `go`/`python` may be used
-to prepare tools), but generated actions still run with tools staged in sandbox.
+1. Tools are auto-installed from source on first Bazel run
+2. `protoc` is bootstrapped via `pip install --target grpcio-tools`
+3. Go-based tools (`buffalo`, `protoc-gen-go`, `protoc-gen-go-grpc`) are installed via `go install`
+4. Requires: `go` in PATH, `python`/`python3`/`py` in PATH
+5. Generated actions still run with tools staged in Bazel sandbox (hermetic execution)
 
 ## Rules
 
@@ -136,3 +156,28 @@ Returned by `buffalo_proto_compile`:
 - `generated_dir` — Tree artifact with generated sources
 - `languages` — Languages that were generated
 - `proto_srcs` — Original proto source files
+
+## Supported Languages
+
+### Go
+
+- `protoc-gen-go` - Protocol Buffer code generation
+- `protoc-gen-go-grpc` - gRPC support via google.golang.org/grpc
+
+### Python
+
+- `grpc_tools.protoc` - Protocol Buffer and gRPC code generation (bootstrapped via pip)
+
+### Rust
+
+- `protoc-gen-prost` - Protocol Buffer code generation (default, via cargo install)
+- `protoc-gen-tonic` - gRPC support with Tokio runtime (optional, via cargo install)
+
+### TypeScript
+
+- Requires `npm` and Node.js toolchain (installed separately)
+
+### C++
+
+- Requires C++ compiler (`clang++`, `g++`, or MSVC) in PATH
+- Uses protobuf C++ runtime library

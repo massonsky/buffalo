@@ -177,7 +177,24 @@ jobs:
 
       - name: Create tag
         if: steps.check_tag.outputs.exists == 'false'
+        id: create_tag
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           git tag -a "${TAG}" -m "release: ${TAG}"
           git push origin "${TAG}"
+          echo "tag_created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Release workflow
+        if: steps.create_tag.outputs.tag_created == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'buffalo-release.yml',
+              ref: 'main',
+              inputs: {
+                tag: '${{ steps.version.outputs.tag }}'
+              }
+            })

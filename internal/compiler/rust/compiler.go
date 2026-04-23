@@ -64,6 +64,15 @@ func (c *Compiler) Validate() error {
 
 	// Check generator-specific tools
 	switch c.options.Generator {
+	case "prost":
+		if err := c.checkTool("protoc-gen-prost", "--version"); err != nil {
+			return errors.Wrap(err, errors.ErrConfig, "protoc-gen-prost not found, install: cargo install protoc-gen-prost")
+		}
+		if c.options.GenerateGrpc {
+			if err := c.checkTool("protoc-gen-tonic", "--version"); err != nil {
+				return errors.Wrap(err, errors.ErrConfig, "protoc-gen-tonic not found (optional for gRPC), install: cargo install protoc-gen-tonic")
+			}
+		}
 	case "rust-protobuf", "protoc-gen-rs":
 		if err := c.checkTool("protoc-gen-rs", "--version"); err != nil {
 			return errors.Wrap(err, errors.ErrConfig, "protoc-gen-rs not found, install: cargo install protobuf-codegen")
@@ -92,21 +101,11 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 		Success:        false,
 	}
 
-	if c.options.Generator == "prost" {
-		warning, err := c.validateProstCargoSetup(files)
-		if err != nil {
-			return nil, errors.Wrap(err, errors.ErrCompilation, "failed to validate Cargo integration for Rust/prost")
-		}
-
-		result.Warnings = append(result.Warnings, warning)
-		result.Success = true
-		return result, nil
-	}
-
 	for _, file := range files {
 		c.log.Debug("Compiling proto file to Rust",
 			logger.String("file", file.Path),
-			logger.String("output", opts.OutputDir))
+			logger.String("output", opts.OutputDir),
+			logger.String("generator", c.options.Generator))
 
 		generatedFiles, err := c.compileFile(ctx, file, opts)
 		if err != nil {
@@ -202,16 +201,16 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 	var generatedFiles []string
 
 	switch c.options.Generator {
-	case "rust-protobuf":
+	case "prost":
 		// Create output directory if it doesn't exist
 		if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create output directory: %v", err)
 		}
 
-		// Use protoc with rust plugin
-		args := c.buildProtocArgs(file, opts)
+		// Use protoc with prost plugin
+		args := c.buildProtocArgs(file, opts, "prost")
 
-		c.log.Debug("Running protoc for Rust",
+		c.log.Debug("Running protoc for Rust (prost)",
 			logger.String("command", c.options.ProtocPath),
 			logger.Any("args", args))
 
@@ -225,11 +224,28 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 		outputPath := c.GetOutputPath(file, opts)
 		generatedFiles = append(generatedFiles, outputPath)
 
-	case "prost":
-		// Prost generation is handled through Cargo build.rs integration.
-		// Validation happens in Compile(), so by the time we are here there is
-		// nothing direct for Buffalo to invoke per-file.
-		return generatedFiles, nil
+	case "rust-protobuf":
+		// Create output directory if it doesn't exist
+		if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create output directory: %v", err)
+		}
+
+		// Use protoc with rust-protobuf plugin
+		args := c.buildProtocArgs(file, opts, "rust-protobuf")
+
+		c.log.Debug("Running protoc for Rust (rust-protobuf)",
+			logger.String("command", c.options.ProtocPath),
+			logger.Any("args", args))
+
+		cmd := exec.CommandContext(ctx, c.options.ProtocPath, args...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("protoc failed: %v\nOutput: %s", err, string(output))
+		}
+
+		// Add generated .rs file
+		outputPath := c.GetOutputPath(file, opts)
+		generatedFiles = append(generatedFiles, outputPath)
 
 	default:
 		return nil, errors.New(errors.ErrConfig, "unknown Rust generator: %s", c.options.Generator)
@@ -238,8 +254,8 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 	return generatedFiles, nil
 }
 
-// buildProtocArgs builds the protoc command arguments for rust-protobuf
-func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.CompileOptions) []string {
+// buildProtocArgs builds the protoc command arguments
+func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.CompileOptions, generator string) []string {
 	args := []string{}
 
 	// Always add current directory as proto path
@@ -255,8 +271,16 @@ func (c *Compiler) buildProtocArgs(file compiler.ProtoFile, opts compiler.Compil
 		}
 	}
 
-	// Add output directory
-	args = append(args, "--rs_out="+opts.OutputDir)
+	// Add plugin-specific output arguments
+	switch generator {
+	case "prost":
+		args = append(args, "--prost_out="+opts.OutputDir)
+		if c.options.GenerateGrpc {
+			args = append(args, "--tonic_out="+opts.OutputDir)
+		}
+	case "rust-protobuf":
+		args = append(args, "--rs_out="+opts.OutputDir)
+	}
 
 	// Add the proto file
 	args = append(args, file.Path)
