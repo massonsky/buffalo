@@ -21,11 +21,15 @@ _TOOLCHAIN_TAG = tag_class(
         "protoc_gen_go_grpc_version": attr.string(default = DEFAULT_PROTOC_GEN_GO_GRPC_VERSION),
         "grpcio_tools_version": attr.string(default = DEFAULT_GRPCIO_TOOLS_VERSION),
         "protobuf_version": attr.string(default = DEFAULT_PROTOBUF_PY_VERSION),
+        "integrity": attr.string_dict(
+            default = {},
+            doc = "Optional sha256 integrity overrides; see buffalo_toolchain_repo for the key format.",
+        ),
     },
     doc = "Configures pinned tool versions for the Buffalo toolchain.",
 )
 
-def _buffalo_impl(module_ctx):
+def _select_config(module_ctx):
     cfg = struct(
         buffalo_version = DEFAULT_BUFFALO_VERSION,
         buffalo_repo = DEFAULT_BUFFALO_REPO,
@@ -34,19 +38,30 @@ def _buffalo_impl(module_ctx):
         protoc_gen_go_grpc_version = DEFAULT_PROTOC_GEN_GO_GRPC_VERSION,
         grpcio_tools_version = DEFAULT_GRPCIO_TOOLS_VERSION,
         protobuf_version = DEFAULT_PROTOBUF_PY_VERSION,
+        integrity = {},
     )
+
+    # Last-wins: the root module's tag overrides any tags from transitive deps.
+    seen_root = False
     for mod in module_ctx.modules:
         for tag in mod.tags.toolchain:
-            cfg = struct(
-                buffalo_version = tag.buffalo_version,
-                buffalo_repo = tag.buffalo_repo,
-                protoc_version = tag.protoc_version,
-                protoc_gen_go_version = tag.protoc_gen_go_version,
-                protoc_gen_go_grpc_version = tag.protoc_gen_go_grpc_version,
-                grpcio_tools_version = tag.grpcio_tools_version,
-                protobuf_version = tag.protobuf_version,
-            )
+            if mod.is_root or not seen_root:
+                cfg = struct(
+                    buffalo_version = tag.buffalo_version,
+                    buffalo_repo = tag.buffalo_repo,
+                    protoc_version = tag.protoc_version,
+                    protoc_gen_go_version = tag.protoc_gen_go_version,
+                    protoc_gen_go_grpc_version = tag.protoc_gen_go_grpc_version,
+                    grpcio_tools_version = tag.grpcio_tools_version,
+                    protobuf_version = tag.protobuf_version,
+                    integrity = dict(tag.integrity),
+                )
+                if mod.is_root:
+                    seen_root = True
+    return cfg
 
+def _buffalo_impl(module_ctx):
+    cfg = _select_config(module_ctx)
     buffalo_toolchain_repo(
         name = "buffalo_toolchain",
         buffalo_version = cfg.buffalo_version,
@@ -56,6 +71,7 @@ def _buffalo_impl(module_ctx):
         protoc_gen_go_grpc_version = cfg.protoc_gen_go_grpc_version,
         grpcio_tools_version = cfg.grpcio_tools_version,
         protobuf_version = cfg.protobuf_version,
+        integrity = cfg.integrity,
         python_interpreter = Label("@python_3_12_host//:python"),
     )
 

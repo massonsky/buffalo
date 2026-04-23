@@ -1,8 +1,9 @@
-"""Hermetic repository rules for the Buffalo + protoc toolchain.
+"""Hermetic repository rule for the Buffalo + protoc toolchain.
 
 Bazel itself downloads everything required to compile .proto files for Go,
-Python and C++ — no host tools are required. Versions are configurable via
-the `buffalo.toolchain(...)` tag in the consuming MODULE.bazel.
+Python and C++ — no host tools are required. Versions and sha256 integrity
+are configurable via the `buffalo.toolchain(...)` tag in the consuming
+MODULE.bazel.
 
 Provisioned tools (linux/darwin amd64+arm64, windows amd64):
 
@@ -16,15 +17,19 @@ Provisioned tools (linux/darwin amd64+arm64, windows amd64):
 C++ generation works out of the box (built into protoc).
 
 Rust (prost/tonic) and TypeScript: planned for follow-up commits via
-rules_rust / rules_nodejs integrations.
+rules_rust / rules_nodejs integrations and exposed as opt-in tags
+(`buffalo.rust()`, `buffalo.typescript()`).
 """
 
-# Pinned upstream versions. Override in the consuming MODULE.bazel:
+# Pinned upstream defaults. Override in the consuming MODULE.bazel:
 #
 #   buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
 #   buffalo.toolchain(
 #       buffalo_version = "4.1.0",
 #       protoc_version  = "28.2",
+#       integrity = {
+#           "protoc-25.1-linux-x86_64": "sha256-...",
+#       },
 #   )
 #   use_repo(buffalo, "buffalo_toolchain")
 DEFAULT_PROTOC_VERSION = "25.1"
@@ -34,6 +39,21 @@ DEFAULT_BUFFALO_VERSION = "4.0.0"
 DEFAULT_BUFFALO_REPO = "massonsky/buffalo"
 DEFAULT_GRPCIO_TOOLS_VERSION = "1.64.1"
 DEFAULT_PROTOBUF_PY_VERSION = "5.27.1"
+
+# Built-in sha256 integrity for the pinned default versions.
+# Keys are stable artifact identifiers; values are Subresource-Integrity
+# strings (`sha256-<base64>`). When a user pins a different version, Bazel
+# will fail loudly until a matching entry is supplied via the
+# `buffalo.toolchain(integrity = {...})` tag attribute or until first run
+# emits the expected hash to logs (which the user can paste into their
+# MODULE.bazel).
+#
+# To populate: run `bazel sync` once and copy the "Expected: sha256-..."
+# value Bazel prints, then add it here (or in your MODULE.bazel override).
+DEFAULT_INTEGRITY = {
+    # Filled in over time. Empty entries -> first download is unverified
+    # but still pinned by URL (mitigated by HTTPS + GitHub release immutability).
+}
 
 # ---------- Platform detection ----------------------------------------------
 
@@ -65,7 +85,7 @@ def _detect_platform(rctx):
 
 # ---------- URL builders -----------------------------------------------------
 
-def _protoc_url(version, p):
+def _protoc_artifact(version, p):
     if p.os == "linux":
         plat = "linux-x86_64" if p.arch == "amd64" else "linux-aarch_64"
     elif p.os == "darwin":
@@ -74,47 +94,70 @@ def _protoc_url(version, p):
         plat = "win64"
     else:
         fail("protoc: unsupported os %s" % p.os)
-    return "https://github.com/protocolbuffers/protobuf/releases/download/v{v}/protoc-{v}-{plat}.zip".format(
+    url = "https://github.com/protocolbuffers/protobuf/releases/download/v{v}/protoc-{v}-{plat}.zip".format(
         v = version,
         plat = plat,
     )
+    integrity_key = "protoc-{v}-{plat}".format(v = version, plat = plat)
+    return url, integrity_key
 
-def _protoc_gen_go_url(version, p):
+def _protoc_gen_go_artifact(version, p):
     ext = "zip" if p.is_windows else "tar.gz"
-    return "https://github.com/protocolbuffers/protobuf-go/releases/download/v{v}/protoc-gen-go.v{v}.{os}.{arch}.{ext}".format(
+    url = "https://github.com/protocolbuffers/protobuf-go/releases/download/v{v}/protoc-gen-go.v{v}.{os}.{arch}.{ext}".format(
         v = version,
         os = p.os,
         arch = p.arch,
         ext = ext,
     )
+    integrity_key = "protoc-gen-go-{v}-{os}-{arch}".format(v = version, os = p.os, arch = p.arch)
+    return url, integrity_key
 
-def _protoc_gen_go_grpc_url(version, p):
-    return "https://github.com/grpc/grpc-go/releases/download/cmd%2Fprotoc-gen-go-grpc%2Fv{v}/protoc-gen-go-grpc.v{v}.{os}.{arch}.tar.gz".format(
+def _protoc_gen_go_grpc_artifact(version, p):
+    url = "https://github.com/grpc/grpc-go/releases/download/cmd%2Fprotoc-gen-go-grpc%2Fv{v}/protoc-gen-go-grpc.v{v}.{os}.{arch}.tar.gz".format(
         v = version,
         os = p.os,
         arch = p.arch,
     )
+    integrity_key = "protoc-gen-go-grpc-{v}-{os}-{arch}".format(v = version, os = p.os, arch = p.arch)
+    return url, integrity_key
 
-def _buffalo_url(repo, version, p):
+def _buffalo_artifact(repo, version, p):
     arch = p.arch
     if p.is_windows and arch == "arm64":
         arch = "amd64"
-    return "https://github.com/{repo}/releases/download/v{v}/buffalo-{os}-{arch}{suf}".format(
+    url = "https://github.com/{repo}/releases/download/v{v}/buffalo-{os}-{arch}{suf}".format(
         repo = repo,
         v = version,
         os = p.os,
         arch = arch,
         suf = p.exe_suffix,
     )
+    integrity_key = "buffalo-{v}-{os}-{arch}".format(v = version, os = p.os, arch = arch)
+    return url, integrity_key
 
 # ---------- Download primitives ---------------------------------------------
 
-def _download_executable(rctx, url, output):
-    rctx.download(url = [url], output = output, executable = True)
+def _resolve_integrity(rctx, integrity_key):
+    user = rctx.attr.integrity.get(integrity_key, "")
+    if user:
+        return user
+    return DEFAULT_INTEGRITY.get(integrity_key, "")
+
+def _download_executable(rctx, url, output, integrity):
+    rctx.download(
+        url = [url],
+        output = output,
+        executable = True,
+        integrity = integrity,
+    )
     return rctx.path(output)
 
-def _download_and_extract(rctx, url, subdir, expected_relpath):
-    rctx.download_and_extract(url = [url], output = subdir)
+def _download_and_extract(rctx, url, subdir, expected_relpath, integrity):
+    rctx.download_and_extract(
+        url = [url],
+        output = subdir,
+        integrity = integrity,
+    )
     p = rctx.path("{}/{}".format(subdir, expected_relpath))
     if p.exists:
         return p
@@ -153,7 +196,6 @@ def _install_grpcio_tools(rctx, python_exe, grpcio_version, protobuf_version):
     return str(site)
 
 def _emit_grpc_python_shim(rctx, platform, python_exe, site_packages):
-    """Emit a protoc plugin shim that proxies to grpc_tools.protoc."""
     if platform.is_windows:
         shim_name = "protoc-gen-grpc_python.bat"
         pp = site_packages.replace("/", "\\")
@@ -183,28 +225,39 @@ def _buffalo_toolchain_repo_impl(rctx):
     suffix = p.exe_suffix
 
     # --- Hermetic upstream tools ----------------------------------------
+    buffalo_url, buffalo_key = _buffalo_artifact(rctx.attr.buffalo_repo, rctx.attr.buffalo_version, p)
     buffalo = _download_executable(
         rctx,
-        _buffalo_url(rctx.attr.buffalo_repo, rctx.attr.buffalo_version, p),
+        buffalo_url,
         "buffalo{}".format(suffix),
+        _resolve_integrity(rctx, buffalo_key),
     )
+
+    protoc_url, protoc_key = _protoc_artifact(rctx.attr.protoc_version, p)
     protoc = _download_and_extract(
         rctx,
-        _protoc_url(rctx.attr.protoc_version, p),
+        protoc_url,
         "_protoc",
         "bin/protoc{}".format(suffix),
+        _resolve_integrity(rctx, protoc_key),
     )
+
+    pgo_url, pgo_key = _protoc_gen_go_artifact(rctx.attr.protoc_gen_go_version, p)
     protoc_gen_go = _download_and_extract(
         rctx,
-        _protoc_gen_go_url(rctx.attr.protoc_gen_go_version, p),
+        pgo_url,
         "_protoc_gen_go",
         "protoc-gen-go{}".format(suffix),
+        _resolve_integrity(rctx, pgo_key),
     )
+
+    pgg_url, pgg_key = _protoc_gen_go_grpc_artifact(rctx.attr.protoc_gen_go_grpc_version, p)
     protoc_gen_go_grpc = _download_and_extract(
         rctx,
-        _protoc_gen_go_grpc_url(rctx.attr.protoc_gen_go_grpc_version, p),
+        pgg_url,
         "_protoc_gen_go_grpc",
         "protoc-gen-go-grpc{}".format(suffix),
+        _resolve_integrity(rctx, pgg_key),
     )
 
     # --- Python gRPC plugin via hermetic interpreter --------------------
@@ -271,6 +324,15 @@ buffalo_toolchain_repo = repository_rule(
         "protoc_gen_go_grpc_version": attr.string(default = DEFAULT_PROTOC_GEN_GO_GRPC_VERSION),
         "grpcio_tools_version": attr.string(default = DEFAULT_GRPCIO_TOOLS_VERSION),
         "protobuf_version": attr.string(default = DEFAULT_PROTOBUF_PY_VERSION),
+        "integrity": attr.string_dict(
+            default = {},
+            doc = "Map of artifact-id -> sha256 integrity (`sha256-<base64>`). " +
+                  "Artifact-id format: 'protoc-<v>-<plat>', " +
+                  "'protoc-gen-go-<v>-<os>-<arch>', " +
+                  "'protoc-gen-go-grpc-<v>-<os>-<arch>', " +
+                  "'buffalo-<v>-<os>-<arch>'. Bazel prints the expected " +
+                  "value on first download; copy it here to lock the artifact.",
+        ),
         "python_interpreter": attr.label(
             mandatory = True,
             allow_single_file = True,

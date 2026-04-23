@@ -9,19 +9,30 @@ no host plugins are required.**
 
 ## Setup (bzlmod)
 
-In your `MODULE.bazel`:
+`rules_buffalo` is not yet published to the Bazel Central Registry. Use
+`git_override` to consume it from GitHub directly:
 
 ```python
+# MODULE.bazel
 bazel_dep(name = "rules_buffalo", version = "1.0.0")
-
-# Optional — only needed for local development of rules_buffalo itself.
-local_path_override(
+git_override(
     module_name = "rules_buffalo",
-    path = "path/to/rules_buffalo",
+    remote = "https://github.com/massonsky/buffalo.git",
+    commit = "<pin a commit SHA from devb or main>",
+    strip_prefix = "bazel/rules_buffalo",
 )
 
 buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
 use_repo(buffalo, "buffalo_toolchain")
+```
+
+For local development of `rules_buffalo` itself:
+
+```python
+local_path_override(
+    module_name = "rules_buffalo",
+    path = "path/to/rules_buffalo",
+)
 ```
 
 That's it. On first build Bazel downloads:
@@ -56,6 +67,36 @@ use_repo(buffalo, "buffalo_toolchain")
 
 All attributes are optional; omitted ones use the defaults baked into
 `rules_buffalo`.
+
+### Pinning sha256 integrity (production)
+
+For reproducible, tamper-proof builds, lock the sha256 of every downloaded
+artifact via the `integrity` attribute. On first build Bazel prints the
+expected integrity hash for each artifact; copy them into your
+`MODULE.bazel`:
+
+```python
+buffalo.toolchain(
+    integrity = {
+        "protoc-25.1-win64":                   "sha256-...",
+        "protoc-25.1-linux-x86_64":            "sha256-...",
+        "protoc-gen-go-1.34.2-linux-amd64":    "sha256-...",
+        "protoc-gen-go-grpc-1.5.1-linux-amd64": "sha256-...",
+        "buffalo-4.0.0-linux-amd64":           "sha256-...",
+    },
+)
+```
+
+Key format:
+- `protoc-<v>-<plat>` (plat = `linux-x86_64`, `linux-aarch_64`, `osx-x86_64`,
+  `osx-aarch_64`, `win64`)
+- `protoc-gen-go-<v>-<os>-<arch>`
+- `protoc-gen-go-grpc-<v>-<os>-<arch>`
+- `buffalo-<v>-<os>-<arch>`
+
+Without integrity entries, downloads still work and are pinned by URL
+(HTTPS + immutable GitHub releases), but they are not cryptographically
+verified.
 
 ## Rules
 
