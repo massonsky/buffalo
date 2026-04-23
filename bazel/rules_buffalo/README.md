@@ -18,7 +18,7 @@ commit SHA needed):
 bazel_dep(name = "rules_buffalo", version = "1.0.0")
 archive_override(
     module_name = "rules_buffalo",
-    urls = ["https://github.com/massonsky/buffalo/archive/refs/tags/v1.0.0.tar.gz"],
+    urls = ["https://github.com/massonsky/buffalo/archive/refs/tags/v1.33.14.tar.gz"],
     strip_prefix = "buffalo-1.0.0/bazel/rules_buffalo",
     # integrity = "sha256-...",  # optional but recommended for production
 )
@@ -190,7 +190,7 @@ Returned by `buffalo_proto_compile`:
 | Python | ✅ Hermetic | `grpc_tools.protoc` via hermetic CPython |
 | C++ | ✅ Hermetic | built into `protoc` |
 | Rust | ✅ Hermetic (opt-in) | `protoc-gen-prost` + `protoc-gen-tonic` |
-| TypeScript | 🚧 Planned | via `aspect_rules_js` |
+| TypeScript | ✅ Hermetic (opt-in) | `ts-proto` via hermetic Node.js |
 
 ### Enabling Rust
 
@@ -217,5 +217,27 @@ Prebuilt binaries are sourced from
 [`neoeinstein/protoc-gen-prost`](https://github.com/neoeinstein/protoc-gen-prost)
 for linux/darwin (amd64+arm64) and windows (amd64).
 
-TypeScript will be added in a follow-up commit via `aspect_rules_js`. Until
-then it is not available in the hermetic toolchain.
+### Enabling TypeScript
+
+TypeScript is opt-in. Add a `buffalo.typescript()` tag to enable the
+hermetic [`ts-proto`](https://github.com/stephenh/ts-proto) plugin. A
+prebuilt Node.js runtime is downloaded from `nodejs.org` and `ts-proto` is
+installed into a private `node_modules` directory inside the toolchain repo:
+
+```python
+buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
+buffalo.typescript()  # enables ts-proto with default Node + ts-proto versions
+use_repo(buffalo, "buffalo_toolchain")
+```
+
+Optional version pinning:
+
+```python
+buffalo.typescript(
+    node_version = "20.18.0",
+    ts_proto_version = "1.181.2",
+)
+```
+
+Supported platforms: linux/darwin (x64+arm64) and windows (x64). No global
+Node.js installation is required on the host.

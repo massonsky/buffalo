@@ -36,6 +36,9 @@ DEFAULT_PROTOC_GEN_PROST_VERSION = "0.4.0"
 DEFAULT_PROTOC_GEN_TONIC_VERSION = "0.4.1"
 DEFAULT_PROTOC_GEN_PROST_REPO = "neoeinstein/protoc-gen-prost"
 
+DEFAULT_NODE_VERSION = "20.18.0"
+DEFAULT_TS_PROTO_VERSION = "1.181.2"
+
 DEFAULT_INTEGRITY = {}
 
 # ---------- Platform detection ----------------------------------------------
@@ -137,6 +140,107 @@ def _rust_plugin_artifact(repo, plugin_name, version, p):
         ext = ext,
     )
     return url, "{name}-{v}-{triple}".format(name = plugin_name, v = version, triple = p.rust_triple)
+
+def _node_artifact(version, p):
+    """Returns (url, integrity_key, archive_dir, node_relpath, npm_relpath)."""
+    if p.os == "linux":
+        plat = "linux-x64" if p.arch == "amd64" else "linux-arm64"
+        ext = "tar.xz"
+    elif p.os == "darwin":
+        plat = "darwin-x64" if p.arch == "amd64" else "darwin-arm64"
+        ext = "tar.xz"
+    elif p.os == "windows":
+        plat = "win-x64"
+        ext = "zip"
+    else:
+        fail("node: unsupported os %s" % p.os)
+
+    archive_basename = "node-v{v}-{plat}".format(v = version, plat = plat)
+    url = "https://nodejs.org/dist/v{v}/{base}.{ext}".format(v = version, base = archive_basename, ext = ext)
+    if p.is_windows:
+        node_rel = "{}/node.exe".format(archive_basename)
+        npm_rel = "{}/npm.cmd".format(archive_basename)
+    else:
+        node_rel = "{}/bin/node".format(archive_basename)
+        npm_rel = "{}/bin/npm".format(archive_basename)
+    return struct(
+        url = url,
+        integrity_key = "node-{v}-{plat}".format(v = version, plat = plat),
+        archive_dir = archive_basename,
+        node_relpath = node_rel,
+        npm_relpath = npm_rel,
+    )
+
+# ---------- Hermetic TypeScript plugin --------------------------------------
+
+def _provision_node(rctx, p, version):
+    spec = _node_artifact(version, p)
+    rctx.download_and_extract(
+        url = [spec.url],
+        output = "_node",
+        integrity = _resolve_integrity(rctx, spec.integrity_key),
+    )
+    node_path = rctx.path("_node/{}".format(spec.node_relpath))
+    npm_path = rctx.path("_node/{}".format(spec.npm_relpath))
+    if not node_path.exists:
+        fail("Node binary not found after extracting %s: %s" % (spec.url, node_path))
+    if not npm_path.exists:
+        fail("npm binary not found after extracting %s: %s" % (spec.url, npm_path))
+    return struct(node = node_path, npm = npm_path, archive_dir = spec.archive_dir)
+
+def _install_ts_proto(rctx, p, node_info, ts_proto_version):
+    """Install ts-proto into a private node_modules using hermetic Node."""
+    project_dir = rctx.path("_buffalo_ts_proto")
+    rctx.file(
+        "_buffalo_ts_proto/package.json",
+        "{{\n  \"name\": \"buffalo-ts-proto-host\",\n  \"version\": \"0.0.0\",\n  \"private\": true,\n  \"dependencies\": {{\n    \"ts-proto\": \"{}\"\n  }}\n}}\n".format(ts_proto_version),
+        executable = False,
+    )
+
+    npm_cmd = str(node_info.npm)
+    if p.is_windows:
+        # On Windows npm is a .cmd; rctx.execute can run it directly.
+        args = [npm_cmd, "install", "--no-audit", "--no-fund", "--no-progress", "--loglevel=error"]
+    else:
+        # Use node to run npm-cli.js explicitly to avoid PATH/env issues.
+        npm_cli = rctx.path("_node/{}/lib/node_modules/npm/bin/npm-cli.js".format(node_info.archive_dir))
+        args = [str(node_info.node), str(npm_cli), "install", "--no-audit", "--no-fund", "--no-progress", "--loglevel=error"]
+
+    res = rctx.execute(args, working_directory = str(project_dir), timeout = 600)
+    if res.return_code != 0:
+        fail("Failed to install ts-proto into hermetic Node.\nstdout:\n{}\nstderr:\n{}".format(
+            res.stdout,
+            res.stderr,
+        ))
+
+    plugin_js = rctx.path("_buffalo_ts_proto/node_modules/ts-proto/protoc-gen-ts_proto")
+    if not plugin_js.exists:
+        # ts-proto >=1.x ships the binary as protoc-gen-ts_proto.js in build/
+        plugin_js = rctx.path("_buffalo_ts_proto/node_modules/ts-proto/build/plugin.js")
+    if not plugin_js.exists:
+        fail("ts-proto plugin entrypoint not found in installed package.")
+    return plugin_js
+
+def _emit_ts_proto_shim(rctx, p, node_path, plugin_js):
+    if p.is_windows:
+        shim_name = "protoc-gen-ts_proto.bat"
+        node = str(node_path).replace("/", "\\")
+        plugin = str(plugin_js).replace("/", "\\")
+        content = (
+            "@echo off\r\n" +
+            "\"{node}\" \"{plugin}\" %*\r\n"
+        ).format(node = node, plugin = plugin)
+    else:
+        shim_name = "protoc-gen-ts_proto"
+        content = (
+            "#!/usr/bin/env sh\n" +
+            "exec '{node}' '{plugin}' \"$@\"\n"
+        ).format(
+            node = str(node_path).replace("'", "'\\''"),
+            plugin = str(plugin_js).replace("'", "'\\''"),
+        )
+    rctx.file(shim_name, content, executable = True)
+    return shim_name
 
 # ---------- Download primitives ---------------------------------------------
 
@@ -324,6 +428,20 @@ def _buffalo_toolchain_repo_impl(rctx):
             "protoc-gen-tonic is disabled. Add buffalo.rust() to MODULE.bazel to enable.",
         )
 
+    # --- Optional: TypeScript plugin (opt-in via buffalo.typescript() tag)
+    ts_proto_target = None
+    if rctx.attr.enable_typescript:
+        node_info = _provision_node(rctx, p, rctx.attr.node_version)
+        plugin_js = _install_ts_proto(rctx, p, node_info, rctx.attr.ts_proto_version)
+        ts_proto_target = _emit_ts_proto_shim(rctx, p, node_info.node, plugin_js)
+    else:
+        ts_proto_target = _emit_disabled_stub(
+            rctx,
+            p,
+            "protoc-gen-ts_proto",
+            "protoc-gen-ts_proto is disabled. Add buffalo.typescript() to MODULE.bazel to enable.",
+        )
+
     # --- Stage tools under stable filenames -----------------------------
     files = {
         "buffalo{}".format(suffix): buffalo,
@@ -345,6 +463,7 @@ def _buffalo_toolchain_repo_impl(rctx):
         grpc_python_target,
         prost_target,
         tonic_target,
+        ts_proto_target,
     ]
     aliases = [
         ("buffalo_bin", "buffalo{}".format(suffix)),
@@ -354,6 +473,7 @@ def _buffalo_toolchain_repo_impl(rctx):
         ("protoc_gen_grpc_python_bin", grpc_python_target),
         ("protoc_gen_prost_bin", prost_target),
         ("protoc_gen_tonic_bin", tonic_target),
+        ("protoc_gen_ts_proto_bin", ts_proto_target),
     ]
     exports_block = ",\n".join(['    "{}"'.format(n) for n in exports])
     aliases_block = "\n\n".join([
@@ -386,6 +506,9 @@ buffalo_toolchain_repo = repository_rule(
         "protoc_gen_prost_version": attr.string(default = DEFAULT_PROTOC_GEN_PROST_VERSION),
         "protoc_gen_tonic_version": attr.string(default = DEFAULT_PROTOC_GEN_TONIC_VERSION),
         "protoc_gen_prost_repo": attr.string(default = DEFAULT_PROTOC_GEN_PROST_REPO),
+        "enable_typescript": attr.bool(default = False),
+        "node_version": attr.string(default = DEFAULT_NODE_VERSION),
+        "ts_proto_version": attr.string(default = DEFAULT_TS_PROTO_VERSION),
         "integrity": attr.string_dict(
             default = {},
             doc = "Map of artifact-id -> sha256 integrity (`sha256-<base64>`). " +
@@ -394,7 +517,8 @@ buffalo_toolchain_repo = repository_rule(
                   "'protoc-gen-go-grpc-<v>-<os>-<arch>', " +
                   "'buffalo-<v>-<os>-<arch>', " +
                   "'protoc-gen-prost-<v>-<triple>', " +
-                  "'protoc-gen-tonic-<v>-<triple>'.",
+                  "'protoc-gen-tonic-<v>-<triple>', " +
+                  "'node-<v>-<plat>'.",
         ),
         "python_interpreter": attr.label(
             mandatory = True,

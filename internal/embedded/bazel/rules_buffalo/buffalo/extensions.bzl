@@ -5,6 +5,7 @@ load(
     "DEFAULT_BUFFALO_REPO",
     "DEFAULT_BUFFALO_VERSION",
     "DEFAULT_GRPCIO_TOOLS_VERSION",
+    "DEFAULT_NODE_VERSION",
     "DEFAULT_PROTOBUF_PY_VERSION",
     "DEFAULT_PROTOC_GEN_GO_GRPC_VERSION",
     "DEFAULT_PROTOC_GEN_GO_VERSION",
@@ -12,6 +13,7 @@ load(
     "DEFAULT_PROTOC_GEN_PROST_VERSION",
     "DEFAULT_PROTOC_GEN_TONIC_VERSION",
     "DEFAULT_PROTOC_VERSION",
+    "DEFAULT_TS_PROTO_VERSION",
     "buffalo_toolchain_repo",
 )
 
@@ -41,6 +43,14 @@ _RUST_TAG = tag_class(
     doc = "Enables the Rust prost/tonic plugins in the Buffalo toolchain.",
 )
 
+_TYPESCRIPT_TAG = tag_class(
+    attrs = {
+        "node_version": attr.string(default = DEFAULT_NODE_VERSION),
+        "ts_proto_version": attr.string(default = DEFAULT_TS_PROTO_VERSION),
+    },
+    doc = "Enables the TypeScript ts-proto plugin (with hermetic Node.js) in the Buffalo toolchain.",
+)
+
 def _select_config(module_ctx):
     cfg = struct(
         buffalo_version = DEFAULT_BUFFALO_VERSION,
@@ -55,10 +65,14 @@ def _select_config(module_ctx):
         protoc_gen_prost_version = DEFAULT_PROTOC_GEN_PROST_VERSION,
         protoc_gen_tonic_version = DEFAULT_PROTOC_GEN_TONIC_VERSION,
         protoc_gen_prost_repo = DEFAULT_PROTOC_GEN_PROST_REPO,
+        enable_typescript = False,
+        node_version = DEFAULT_NODE_VERSION,
+        ts_proto_version = DEFAULT_TS_PROTO_VERSION,
     )
 
     seen_root_toolchain = False
     seen_root_rust = False
+    seen_root_ts = False
     for mod in module_ctx.modules:
         for tag in mod.tags.toolchain:
             if mod.is_root or not seen_root_toolchain:
@@ -75,6 +89,9 @@ def _select_config(module_ctx):
                     protoc_gen_prost_version = cfg.protoc_gen_prost_version,
                     protoc_gen_tonic_version = cfg.protoc_gen_tonic_version,
                     protoc_gen_prost_repo = cfg.protoc_gen_prost_repo,
+                    enable_typescript = cfg.enable_typescript,
+                    node_version = cfg.node_version,
+                    ts_proto_version = cfg.ts_proto_version,
                 )
                 if mod.is_root:
                     seen_root_toolchain = True
@@ -93,9 +110,33 @@ def _select_config(module_ctx):
                     protoc_gen_prost_version = tag.protoc_gen_prost_version,
                     protoc_gen_tonic_version = tag.protoc_gen_tonic_version,
                     protoc_gen_prost_repo = tag.protoc_gen_prost_repo,
+                    enable_typescript = cfg.enable_typescript,
+                    node_version = cfg.node_version,
+                    ts_proto_version = cfg.ts_proto_version,
                 )
                 if mod.is_root:
                     seen_root_rust = True
+        for tag in mod.tags.typescript:
+            if mod.is_root or not seen_root_ts:
+                cfg = struct(
+                    buffalo_version = cfg.buffalo_version,
+                    buffalo_repo = cfg.buffalo_repo,
+                    protoc_version = cfg.protoc_version,
+                    protoc_gen_go_version = cfg.protoc_gen_go_version,
+                    protoc_gen_go_grpc_version = cfg.protoc_gen_go_grpc_version,
+                    grpcio_tools_version = cfg.grpcio_tools_version,
+                    protobuf_version = cfg.protobuf_version,
+                    integrity = cfg.integrity,
+                    enable_rust = cfg.enable_rust,
+                    protoc_gen_prost_version = cfg.protoc_gen_prost_version,
+                    protoc_gen_tonic_version = cfg.protoc_gen_tonic_version,
+                    protoc_gen_prost_repo = cfg.protoc_gen_prost_repo,
+                    enable_typescript = True,
+                    node_version = tag.node_version,
+                    ts_proto_version = tag.ts_proto_version,
+                )
+                if mod.is_root:
+                    seen_root_ts = True
     return cfg
 
 def _buffalo_impl(module_ctx):
@@ -113,6 +154,9 @@ def _buffalo_impl(module_ctx):
         protoc_gen_prost_version = cfg.protoc_gen_prost_version,
         protoc_gen_tonic_version = cfg.protoc_gen_tonic_version,
         protoc_gen_prost_repo = cfg.protoc_gen_prost_repo,
+        enable_typescript = cfg.enable_typescript,
+        node_version = cfg.node_version,
+        ts_proto_version = cfg.ts_proto_version,
         integrity = cfg.integrity,
         python_interpreter = Label("@python_3_12_host//:python"),
     )
@@ -122,6 +166,7 @@ buffalo = module_extension(
     tag_classes = {
         "toolchain": _TOOLCHAIN_TAG,
         "rust": _RUST_TAG,
+        "typescript": _TYPESCRIPT_TAG,
     },
-    doc = "Provisions the hermetic Buffalo toolchain. Use buffalo.toolchain() to pin versions and buffalo.rust() to enable Rust prost/tonic plugins.",
+    doc = "Provisions the hermetic Buffalo toolchain. Use buffalo.toolchain() to pin versions, buffalo.rust() to enable Rust prost/tonic plugins, buffalo.typescript() to enable the ts-proto plugin (Node.js bundled).",
 )

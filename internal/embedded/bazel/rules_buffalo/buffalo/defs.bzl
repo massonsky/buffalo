@@ -50,6 +50,8 @@ def _buffalo_proto_compile_impl(ctx):
         tool_files.append((ctx.file.protoc_gen_prost, ctx.file.protoc_gen_prost.basename))
     if ctx.file.protoc_gen_tonic:
         tool_files.append((ctx.file.protoc_gen_tonic, ctx.file.protoc_gen_tonic.basename))
+    if ctx.file.protoc_gen_ts_proto:
+        tool_files.append((ctx.file.protoc_gen_ts_proto, ctx.file.protoc_gen_ts_proto.basename))
 
     command_parts = [
         "buffalo",
@@ -198,6 +200,8 @@ def _buffalo_proto_compile_impl(ctx):
         inputs.append(ctx.file.protoc_gen_prost)
     if ctx.file.protoc_gen_tonic:
         inputs.append(ctx.file.protoc_gen_tonic)
+    if ctx.file.protoc_gen_ts_proto:
+        inputs.append(ctx.file.protoc_gen_ts_proto)
     if ctx.file.config:
         inputs.append(ctx.file.config)
     if ctx.file._config_output_reader:
@@ -272,6 +276,11 @@ buffalo_proto_compile = rule(
             allow_single_file = True,
             default = Label("@buffalo_toolchain//:protoc_gen_tonic_bin"),
             doc = "Path to the protoc-gen-tonic plugin binary file. Functional only when buffalo.rust() is enabled.",
+        ),
+        "protoc_gen_ts_proto": attr.label(
+            allow_single_file = True,
+            default = Label("@buffalo_toolchain//:protoc_gen_ts_proto_bin"),
+            doc = "Path to the protoc-gen-ts_proto plugin binary file. Functional only when buffalo.typescript() is enabled.",
         ),
         "languages": attr.string_list(
             default = ["go", "python", "rust"],
