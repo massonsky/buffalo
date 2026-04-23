@@ -22,11 +22,26 @@ use_repo(buffalo, "buffalo_toolchain")
 
 ## Prerequisites
 
-Buffalo must be installed and available in `PATH`:
+`rules_buffalo` now bootstraps required runtime tools into the Bazel external
+toolchain repository used by sandboxed actions.
 
-```bash
-go install github.com/massonsky/buffalo/cmd/buffalo@latest
-```
+Important: runtime tools used by `buffalo_proto_compile` are **not** taken
+directly from host PATH. They are installed into (and executed from) the
+toolchain repository.
+
+Bootstrapped dependencies:
+
+- `buffalo` (via `go install` into toolchain repo)
+- `protoc-gen-go` (via `go install` into toolchain repo)
+- `protoc-gen-go-grpc` (via `go install` into toolchain repo)
+- Python `grpcio-tools` / `protobuf` for `grpc_tools.protoc` (via `pip install --target` into toolchain repo)
+
+If bootstrap is not possible, setup fails with an actionable error message.
+
+Minimal host prerequisites:
+
+- `go` in `PATH` (for auto-install of Go-based tools)
+- `python`/`python3`/`py` in `PATH` (for grpc tools bootstrap)
 
 ## Rules
 
@@ -82,15 +97,13 @@ bazel run //:buffalo_gen -- --verbose
 
 ## Attributes
 
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `srcs` | `label_list` | required | Proto source files |
-| `config` | `label` | `None` | Buffalo config file (buffalo.yaml) |
-| `languages` | `string_list` | `["go", "python", "rust"]` | Target languages |
-| `proto_paths` | `string_list` | `["proto"]` | Proto import directories |
-| `deps` | `label_list` | `[]` | Additional proto dependencies |
-| `out` | `string` | `"gen"` | Output directory name |
-| `verbose` | `bool` | `False` | Enable verbose output |
+- `srcs` (`label_list`, required): proto source files
+- `config` (`label`, default: `None`): Buffalo config file (`buffalo.yaml`)
+- `languages` (`string_list`, default: `["go", "python", "rust"]`): target languages
+- `proto_paths` (`string_list`, default: `["proto"]`): proto import directories
+- `deps` (`label_list`, default: `[]`): additional proto dependencies
+- `out` (`string`, default: `"gen"`): output directory name
+- `verbose` (`bool`, default: `False`): enable verbose output
 
 ## Providers
 
