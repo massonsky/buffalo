@@ -1,9 +1,9 @@
 """Hermetic repository rule for the Buffalo + protoc toolchain.
 
 Bazel itself downloads everything required to compile .proto files for Go,
-Python and C++ — no host tools are required. Versions and sha256 integrity
-are configurable via the `buffalo.toolchain(...)` tag in the consuming
-MODULE.bazel.
+Python, C++ and (opt-in) Rust — no host tools are required. Versions and
+sha256 integrity are configurable via the `buffalo.toolchain(...)` and
+`buffalo.rust(...)` tags in the consuming MODULE.bazel.
 
 Provisioned tools (linux/darwin amd64+arm64, windows amd64):
 
@@ -14,24 +14,16 @@ Provisioned tools (linux/darwin amd64+arm64, windows amd64):
                               Python interpreter from rules_python
   * buffalo CLI             — massonsky/buffalo releases
 
-C++ generation works out of the box (built into protoc).
+Optional (enabled by `buffalo.rust()` tag):
 
-Rust (prost/tonic) and TypeScript: planned for follow-up commits via
-rules_rust / rules_nodejs integrations and exposed as opt-in tags
-(`buffalo.rust()`, `buffalo.typescript()`).
+  * protoc-gen-prost        — neoeinstein/protoc-gen-prost releases
+  * protoc-gen-tonic        — neoeinstein/protoc-gen-prost releases
+
+C++ generation works out of the box (built into protoc).
+TypeScript: planned for a follow-up commit via `aspect_rules_js`.
 """
 
-# Pinned upstream defaults. Override in the consuming MODULE.bazel:
-#
-#   buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
-#   buffalo.toolchain(
-#       buffalo_version = "4.1.0",
-#       protoc_version  = "28.2",
-#       integrity = {
-#           "protoc-25.1-linux-x86_64": "sha256-...",
-#       },
-#   )
-#   use_repo(buffalo, "buffalo_toolchain")
+# Pinned upstream defaults.
 DEFAULT_PROTOC_VERSION = "25.1"
 DEFAULT_PROTOC_GEN_GO_VERSION = "1.34.2"
 DEFAULT_PROTOC_GEN_GO_GRPC_VERSION = "1.5.1"
@@ -40,20 +32,11 @@ DEFAULT_BUFFALO_REPO = "massonsky/buffalo"
 DEFAULT_GRPCIO_TOOLS_VERSION = "1.64.1"
 DEFAULT_PROTOBUF_PY_VERSION = "5.27.1"
 
-# Built-in sha256 integrity for the pinned default versions.
-# Keys are stable artifact identifiers; values are Subresource-Integrity
-# strings (`sha256-<base64>`). When a user pins a different version, Bazel
-# will fail loudly until a matching entry is supplied via the
-# `buffalo.toolchain(integrity = {...})` tag attribute or until first run
-# emits the expected hash to logs (which the user can paste into their
-# MODULE.bazel).
-#
-# To populate: run `bazel sync` once and copy the "Expected: sha256-..."
-# value Bazel prints, then add it here (or in your MODULE.bazel override).
-DEFAULT_INTEGRITY = {
-    # Filled in over time. Empty entries -> first download is unverified
-    # but still pinned by URL (mitigated by HTTPS + GitHub release immutability).
-}
+DEFAULT_PROTOC_GEN_PROST_VERSION = "0.4.0"
+DEFAULT_PROTOC_GEN_TONIC_VERSION = "0.4.1"
+DEFAULT_PROTOC_GEN_PROST_REPO = "neoeinstein/protoc-gen-prost"
+
+DEFAULT_INTEGRITY = {}
 
 # ---------- Platform detection ----------------------------------------------
 
@@ -76,11 +59,22 @@ def _detect_platform(rctx):
     else:
         fail("Unsupported host architecture: %s" % rctx.os.arch)
 
+    # Rust target triple for prebuilt prost/tonic plugins.
+    if os_id == "linux":
+        triple = "x86_64-unknown-linux-gnu" if arch_id == "amd64" else "aarch64-unknown-linux-gnu"
+    elif os_id == "darwin":
+        triple = "x86_64-apple-darwin" if arch_id == "amd64" else "aarch64-apple-darwin"
+    elif os_id == "windows":
+        triple = "x86_64-pc-windows-msvc"
+    else:
+        triple = ""
+
     return struct(
         os = os_id,
         arch = arch_id,
         is_windows = (os_id == "windows"),
         exe_suffix = ".exe" if os_id == "windows" else "",
+        rust_triple = triple,
     )
 
 # ---------- URL builders -----------------------------------------------------
@@ -98,8 +92,7 @@ def _protoc_artifact(version, p):
         v = version,
         plat = plat,
     )
-    integrity_key = "protoc-{v}-{plat}".format(v = version, plat = plat)
-    return url, integrity_key
+    return url, "protoc-{v}-{plat}".format(v = version, plat = plat)
 
 def _protoc_gen_go_artifact(version, p):
     ext = "zip" if p.is_windows else "tar.gz"
@@ -109,8 +102,7 @@ def _protoc_gen_go_artifact(version, p):
         arch = p.arch,
         ext = ext,
     )
-    integrity_key = "protoc-gen-go-{v}-{os}-{arch}".format(v = version, os = p.os, arch = p.arch)
-    return url, integrity_key
+    return url, "protoc-gen-go-{v}-{os}-{arch}".format(v = version, os = p.os, arch = p.arch)
 
 def _protoc_gen_go_grpc_artifact(version, p):
     url = "https://github.com/grpc/grpc-go/releases/download/cmd%2Fprotoc-gen-go-grpc%2Fv{v}/protoc-gen-go-grpc.v{v}.{os}.{arch}.tar.gz".format(
@@ -118,8 +110,7 @@ def _protoc_gen_go_grpc_artifact(version, p):
         os = p.os,
         arch = p.arch,
     )
-    integrity_key = "protoc-gen-go-grpc-{v}-{os}-{arch}".format(v = version, os = p.os, arch = p.arch)
-    return url, integrity_key
+    return url, "protoc-gen-go-grpc-{v}-{os}-{arch}".format(v = version, os = p.os, arch = p.arch)
 
 def _buffalo_artifact(repo, version, p):
     arch = p.arch
@@ -132,8 +123,20 @@ def _buffalo_artifact(repo, version, p):
         arch = arch,
         suf = p.exe_suffix,
     )
-    integrity_key = "buffalo-{v}-{os}-{arch}".format(v = version, os = p.os, arch = arch)
-    return url, integrity_key
+    return url, "buffalo-{v}-{os}-{arch}".format(v = version, os = p.os, arch = arch)
+
+def _rust_plugin_artifact(repo, plugin_name, version, p):
+    if not p.rust_triple:
+        fail("Unsupported platform for Rust plugin %s: %s/%s" % (plugin_name, p.os, p.arch))
+    ext = "zip" if p.is_windows else "tar.xz"
+    url = "https://github.com/{repo}/releases/download/{name}-v{v}/{name}-v{v}-{triple}.{ext}".format(
+        repo = repo,
+        name = plugin_name,
+        v = version,
+        triple = p.rust_triple,
+        ext = ext,
+    )
+    return url, "{name}-{v}-{triple}".format(name = plugin_name, v = version, triple = p.rust_triple)
 
 # ---------- Download primitives ---------------------------------------------
 
@@ -144,20 +147,11 @@ def _resolve_integrity(rctx, integrity_key):
     return DEFAULT_INTEGRITY.get(integrity_key, "")
 
 def _download_executable(rctx, url, output, integrity):
-    rctx.download(
-        url = [url],
-        output = output,
-        executable = True,
-        integrity = integrity,
-    )
+    rctx.download(url = [url], output = output, executable = True, integrity = integrity)
     return rctx.path(output)
 
 def _download_and_extract(rctx, url, subdir, expected_relpath, integrity):
-    rctx.download_and_extract(
-        url = [url],
-        output = subdir,
-        integrity = integrity,
-    )
+    rctx.download_and_extract(url = [url], output = subdir, integrity = integrity)
     p = rctx.path("{}/{}".format(subdir, expected_relpath))
     if p.exists:
         return p
@@ -169,7 +163,6 @@ def _download_and_extract(rctx, url, subdir, expected_relpath, integrity):
 # ---------- Hermetic gRPC Python plugin -------------------------------------
 
 def _install_grpcio_tools(rctx, python_exe, grpcio_version, protobuf_version):
-    """Install grpcio-tools into a private site-packages using hermetic Python."""
     site = rctx.path("_buffalo_python_site_packages")
     args = [
         str(python_exe),
@@ -218,13 +211,26 @@ def _emit_grpc_python_shim(rctx, platform, python_exe, site_packages):
     rctx.file(shim_name, content, executable = True)
     return shim_name
 
+# ---------- Stub generation -------------------------------------------------
+
+def _emit_disabled_stub(rctx, platform, name, reason):
+    """Emit a non-functional placeholder for plugins that weren't enabled."""
+    suffix = ".bat" if platform.is_windows else ""
+    target = "{}{}".format(name, suffix)
+    if platform.is_windows:
+        content = "@echo off\r\necho {}\r\nexit /b 1\r\n".format(reason)
+    else:
+        content = "#!/usr/bin/env sh\necho '{}' >&2\nexit 1\n".format(reason.replace("'", "'\\''"))
+    rctx.file(target, content, executable = True)
+    return target
+
 # ---------- Repository rule implementation ----------------------------------
 
 def _buffalo_toolchain_repo_impl(rctx):
     p = _detect_platform(rctx)
     suffix = p.exe_suffix
 
-    # --- Hermetic upstream tools ----------------------------------------
+    # --- Hermetic upstream tools (always provisioned) ------------------
     buffalo_url, buffalo_key = _buffalo_artifact(rctx.attr.buffalo_repo, rctx.attr.buffalo_version, p)
     buffalo = _download_executable(
         rctx,
@@ -260,7 +266,6 @@ def _buffalo_toolchain_repo_impl(rctx):
         _resolve_integrity(rctx, pgg_key),
     )
 
-    # --- Python gRPC plugin via hermetic interpreter --------------------
     python_exe = rctx.path(rctx.attr.python_interpreter)
     site_packages = _install_grpcio_tools(
         rctx,
@@ -269,6 +274,55 @@ def _buffalo_toolchain_repo_impl(rctx):
         rctx.attr.protobuf_version,
     )
     grpc_python_target = _emit_grpc_python_shim(rctx, p, python_exe, site_packages)
+
+    # --- Optional: Rust plugins (opt-in via buffalo.rust() tag) --------
+    prost_target = None
+    tonic_target = None
+    if rctx.attr.enable_rust:
+        prost_url, prost_key = _rust_plugin_artifact(
+            rctx.attr.protoc_gen_prost_repo,
+            "protoc-gen-prost",
+            rctx.attr.protoc_gen_prost_version,
+            p,
+        )
+        prost = _download_and_extract(
+            rctx,
+            prost_url,
+            "_protoc_gen_prost",
+            "protoc-gen-prost{}".format(suffix),
+            _resolve_integrity(rctx, prost_key),
+        )
+        prost_target = "protoc-gen-prost{}".format(suffix)
+        rctx.symlink(prost, prost_target)
+
+        tonic_url, tonic_key = _rust_plugin_artifact(
+            rctx.attr.protoc_gen_prost_repo,
+            "protoc-gen-tonic",
+            rctx.attr.protoc_gen_tonic_version,
+            p,
+        )
+        tonic = _download_and_extract(
+            rctx,
+            tonic_url,
+            "_protoc_gen_tonic",
+            "protoc-gen-tonic{}".format(suffix),
+            _resolve_integrity(rctx, tonic_key),
+        )
+        tonic_target = "protoc-gen-tonic{}".format(suffix)
+        rctx.symlink(tonic, tonic_target)
+    else:
+        prost_target = _emit_disabled_stub(
+            rctx,
+            p,
+            "protoc-gen-prost",
+            "protoc-gen-prost is disabled. Add buffalo.rust() to MODULE.bazel to enable.",
+        )
+        tonic_target = _emit_disabled_stub(
+            rctx,
+            p,
+            "protoc-gen-tonic",
+            "protoc-gen-tonic is disabled. Add buffalo.rust() to MODULE.bazel to enable.",
+        )
 
     # --- Stage tools under stable filenames -----------------------------
     files = {
@@ -289,6 +343,8 @@ def _buffalo_toolchain_repo_impl(rctx):
         "protoc-gen-go{}".format(suffix),
         "protoc-gen-go-grpc{}".format(suffix),
         grpc_python_target,
+        prost_target,
+        tonic_target,
     ]
     aliases = [
         ("buffalo_bin", "buffalo{}".format(suffix)),
@@ -296,6 +352,8 @@ def _buffalo_toolchain_repo_impl(rctx):
         ("protoc_gen_go_bin", "protoc-gen-go{}".format(suffix)),
         ("protoc_gen_go_grpc_bin", "protoc-gen-go-grpc{}".format(suffix)),
         ("protoc_gen_grpc_python_bin", grpc_python_target),
+        ("protoc_gen_prost_bin", prost_target),
+        ("protoc_gen_tonic_bin", tonic_target),
     ]
     exports_block = ",\n".join(['    "{}"'.format(n) for n in exports])
     aliases_block = "\n\n".join([
@@ -324,14 +382,19 @@ buffalo_toolchain_repo = repository_rule(
         "protoc_gen_go_grpc_version": attr.string(default = DEFAULT_PROTOC_GEN_GO_GRPC_VERSION),
         "grpcio_tools_version": attr.string(default = DEFAULT_GRPCIO_TOOLS_VERSION),
         "protobuf_version": attr.string(default = DEFAULT_PROTOBUF_PY_VERSION),
+        "enable_rust": attr.bool(default = False),
+        "protoc_gen_prost_version": attr.string(default = DEFAULT_PROTOC_GEN_PROST_VERSION),
+        "protoc_gen_tonic_version": attr.string(default = DEFAULT_PROTOC_GEN_TONIC_VERSION),
+        "protoc_gen_prost_repo": attr.string(default = DEFAULT_PROTOC_GEN_PROST_REPO),
         "integrity": attr.string_dict(
             default = {},
             doc = "Map of artifact-id -> sha256 integrity (`sha256-<base64>`). " +
                   "Artifact-id format: 'protoc-<v>-<plat>', " +
                   "'protoc-gen-go-<v>-<os>-<arch>', " +
                   "'protoc-gen-go-grpc-<v>-<os>-<arch>', " +
-                  "'buffalo-<v>-<os>-<arch>'. Bazel prints the expected " +
-                  "value on first download; copy it here to lock the artifact.",
+                  "'buffalo-<v>-<os>-<arch>', " +
+                  "'protoc-gen-prost-<v>-<triple>', " +
+                  "'protoc-gen-tonic-<v>-<triple>'.",
         ),
         "python_interpreter": attr.label(
             mandatory = True,
@@ -340,5 +403,5 @@ buffalo_toolchain_repo = repository_rule(
         ),
     },
     environ = ["PATH", "HOME", "USERPROFILE", "TMP", "TEMP"],
-    doc = "Hermetically provisions Buffalo CLI, protoc, and Go/Python plugins from upstream releases. Zero host-tool dependencies.",
+    doc = "Hermetically provisions Buffalo CLI, protoc, Go/Python plugins and (opt-in) Rust plugins from upstream releases.",
 )

@@ -10,20 +10,32 @@ no host plugins are required.**
 ## Setup (bzlmod)
 
 `rules_buffalo` is not yet published to the Bazel Central Registry. Use
-`git_override` to consume it from GitHub directly:
+`archive_override` to pin a release by version tag (recommended — no
+commit SHA needed):
 
 ```python
 # MODULE.bazel
 bazel_dep(name = "rules_buffalo", version = "1.0.0")
-git_override(
+archive_override(
     module_name = "rules_buffalo",
-    remote = "https://github.com/massonsky/buffalo.git",
-    commit = "<pin a commit SHA from devb or main>",
-    strip_prefix = "bazel/rules_buffalo",
+    urls = ["https://github.com/massonsky/buffalo/archive/refs/tags/v1.0.0.tar.gz"],
+    strip_prefix = "buffalo-1.0.0/bazel/rules_buffalo",
+    # integrity = "sha256-...",  # optional but recommended for production
 )
 
 buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
 use_repo(buffalo, "buffalo_toolchain")
+```
+
+If you need a specific commit instead of a release tag, use `git_override`:
+
+```python
+git_override(
+    module_name = "rules_buffalo",
+    remote = "https://github.com/massonsky/buffalo.git",
+    commit = "<sha>",
+    strip_prefix = "bazel/rules_buffalo",
+)
 ```
 
 For local development of `rules_buffalo` itself:
@@ -177,9 +189,33 @@ Returned by `buffalo_proto_compile`:
 | Go | ✅ Hermetic | `protoc-gen-go` + `protoc-gen-go-grpc` |
 | Python | ✅ Hermetic | `grpc_tools.protoc` via hermetic CPython |
 | C++ | ✅ Hermetic | built into `protoc` |
-| Rust | 🚧 Planned | `protoc-gen-prost` / `protoc-gen-tonic` via `rules_rust` |
-| TypeScript | 🚧 Planned | via `rules_nodejs` |
+| Rust | ✅ Hermetic (opt-in) | `protoc-gen-prost` + `protoc-gen-tonic` |
+| TypeScript | 🚧 Planned | via `aspect_rules_js` |
 
-Rust and TypeScript will be added in follow-up commits with their respective
-`rules_rust` and `rules_nodejs` integrations. Until then they are not
-available in the hermetic toolchain.
+### Enabling Rust
+
+Rust is opt-in to keep download size minimal for projects that don't use it.
+Add a `buffalo.rust()` tag to enable hermetic `protoc-gen-prost` and
+`protoc-gen-tonic`:
+
+```python
+buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
+buffalo.rust()  # enables prost + tonic with default versions
+use_repo(buffalo, "buffalo_toolchain")
+```
+
+Optional version pinning:
+
+```python
+buffalo.rust(
+    protoc_gen_prost_version = "0.4.0",
+    protoc_gen_tonic_version = "0.4.1",
+)
+```
+
+Prebuilt binaries are sourced from
+[`neoeinstein/protoc-gen-prost`](https://github.com/neoeinstein/protoc-gen-prost)
+for linux/darwin (amd64+arm64) and windows (amd64).
+
+TypeScript will be added in a follow-up commit via `aspect_rules_js`. Until
+then it is not available in the hermetic toolchain.

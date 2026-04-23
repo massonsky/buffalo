@@ -46,6 +46,10 @@ def _buffalo_proto_compile_impl(ctx):
     ]
     if ctx.file.protoc_gen_grpc_python:
         tool_files.append((ctx.file.protoc_gen_grpc_python, ctx.file.protoc_gen_grpc_python.basename))
+    if ctx.file.protoc_gen_prost:
+        tool_files.append((ctx.file.protoc_gen_prost, ctx.file.protoc_gen_prost.basename))
+    if ctx.file.protoc_gen_tonic:
+        tool_files.append((ctx.file.protoc_gen_tonic, ctx.file.protoc_gen_tonic.basename))
 
     command_parts = [
         "buffalo",
@@ -190,6 +194,10 @@ def _buffalo_proto_compile_impl(ctx):
         inputs.append(ctx.file.protoc_gen_go_grpc)
     if ctx.file.protoc_gen_grpc_python:
         inputs.append(ctx.file.protoc_gen_grpc_python)
+    if ctx.file.protoc_gen_prost:
+        inputs.append(ctx.file.protoc_gen_prost)
+    if ctx.file.protoc_gen_tonic:
+        inputs.append(ctx.file.protoc_gen_tonic)
     if ctx.file.config:
         inputs.append(ctx.file.config)
     if ctx.file._config_output_reader:
@@ -254,6 +262,16 @@ buffalo_proto_compile = rule(
             allow_single_file = True,
             default = Label("@buffalo_toolchain//:protoc_gen_grpc_python_bin"),
             doc = "Path to the protoc-gen-grpc_python plugin binary file (optional in non-strict mode).",
+        ),
+        "protoc_gen_prost": attr.label(
+            allow_single_file = True,
+            default = Label("@buffalo_toolchain//:protoc_gen_prost_bin"),
+            doc = "Path to the protoc-gen-prost plugin binary file. Functional only when buffalo.rust() is enabled.",
+        ),
+        "protoc_gen_tonic": attr.label(
+            allow_single_file = True,
+            default = Label("@buffalo_toolchain//:protoc_gen_tonic_bin"),
+            doc = "Path to the protoc-gen-tonic plugin binary file. Functional only when buffalo.rust() is enabled.",
         ),
         "languages": attr.string_list(
             default = ["go", "python", "rust"],
