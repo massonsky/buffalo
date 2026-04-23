@@ -9,6 +9,9 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: write
@@ -20,6 +23,9 @@ jobs:
   release:
     name: Build & Release
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,15 +38,28 @@ jobs:
       - name: Parse version from tag
         id: version
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            TAG=$(git tag --points-at "$SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            if [[ -z "$TAG" ]]; then
+              echo "No release tag found for CI SHA ${SHA}; skipping release job."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
           VERSION="${TAG#v}"
           SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "Release: ${TAG} (version: ${VERSION})"
 
       - name: Build all platforms
+        if: steps.version.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           SHORT_SHA: ${{ steps.version.outputs.short_sha }}
@@ -58,15 +77,18 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o dist/buffalo-windows-amd64.exe ./cmd/buffalo
 
       - name: Verify binary
+        if: steps.version.outputs.skip != 'true'
         run: |
           chmod +x dist/buffalo-linux-amd64
           dist/buffalo-linux-amd64 version
 
       - name: Generate checksums
+        if: steps.version.outputs.skip != 'true'
         working-directory: dist
         run: sha256sum * > checksums.txt
 
       - name: Create GitHub Release
+        if: steps.version.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -106,13 +128,3 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Merge to main
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main || true
-          git checkout main 2>/dev/null || git checkout -b main
-          git merge --ff-only ${{ github.sha }} \
-            -m "ci: merge release ${{ steps.version.outputs.tag }} → main"
-          git push origin main
