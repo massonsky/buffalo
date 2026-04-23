@@ -6,11 +6,42 @@ _BUFFALO_GO_TOOLS = {
     "protoc-gen-go-grpc": "google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest",
 }
 
+_STRICT_MODE_ENV = "BUFFALO_TOOLCHAIN_STRICT_SANDBOX"
+
+_TOOL_URL_ENVS = {
+    "buffalo": "BUFFALO_TOOLCHAIN_BUFFALO_URL",
+    "protoc": "BUFFALO_TOOLCHAIN_PROTOC_URL",
+    "protoc-gen-go": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_URL",
+    "protoc-gen-go-grpc": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_URL",
+    "protoc-gen-grpc_python": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GRPC_PYTHON_URL",
+}
+
 def _require_tool(rctx, name, install_hint):
     tool = rctx.which(name)
     if not tool:
         fail("{} binary not found in PATH.\n{}".format(name, install_hint))
     return tool
+
+def _env(rctx, key, default = ""):
+    return rctx.os.environ.get(key, default)
+
+def _strict_mode(rctx):
+    value = _env(rctx, _STRICT_MODE_ENV, "1").lower()
+    return value not in ["0", "false", "no", "off"]
+
+def _download_tool_from_env(rctx, tool_name, suffix):
+    env_name = _TOOL_URL_ENVS[tool_name]
+    url = _env(rctx, env_name)
+    if not url:
+        return None
+
+    output_name = "{}{}".format(tool_name, suffix)
+    rctx.download(
+        url = [url],
+        output = output_name,
+        executable = True,
+    )
+    return rctx.path(output_name)
 
 def _python_candidates(rctx, is_windows):
     candidates = []
@@ -125,46 +156,99 @@ def _install_grpc_tools_python(rctx, is_windows):
 def _buffalo_toolchain_repo_impl(rctx):
     is_windows = rctx.os.name.lower().startswith("windows")
     suffix = ".exe" if is_windows else ""
-    protoc_name = "protoc.bat" if is_windows else "protoc"
+    strict = _strict_mode(rctx)
 
-    buffalo = _install_go_tool(rctx, "buffalo", _BUFFALO_GO_TOOLS["buffalo"], suffix)
-    protoc_gen_go = _install_go_tool(rctx, "protoc-gen-go", _BUFFALO_GO_TOOLS["protoc-gen-go"], suffix)
-    protoc_gen_go_grpc = _install_go_tool(rctx, "protoc-gen-go-grpc", _BUFFALO_GO_TOOLS["protoc-gen-go-grpc"], suffix)
-    grpc_tools_python = _install_grpc_tools_python(rctx, is_windows)
+    buffalo = _download_tool_from_env(rctx, "buffalo", suffix)
+    protoc = _download_tool_from_env(rctx, "protoc", suffix)
+    protoc_gen_go = _download_tool_from_env(rctx, "protoc-gen-go", suffix)
+    protoc_gen_go_grpc = _download_tool_from_env(rctx, "protoc-gen-go-grpc", suffix)
+    protoc_gen_grpc_python = _download_tool_from_env(rctx, "protoc-gen-grpc_python", suffix)
+
+    if strict:
+        missing = []
+        if not buffalo:
+            missing.append(_TOOL_URL_ENVS["buffalo"])
+        if not protoc:
+            missing.append(_TOOL_URL_ENVS["protoc"])
+        if not protoc_gen_go:
+            missing.append(_TOOL_URL_ENVS["protoc-gen-go"])
+        if not protoc_gen_go_grpc:
+            missing.append(_TOOL_URL_ENVS["protoc-gen-go-grpc"])
+        if not protoc_gen_grpc_python:
+            missing.append(_TOOL_URL_ENVS["protoc-gen-grpc_python"])
+
+        if missing:
+            fail(
+                "Strict sandbox mode is enabled ({}=1). Missing tool URLs in environment: {}".format(
+                    _STRICT_MODE_ENV,
+                    ", ".join(missing),
+                ),
+            )
+    else:
+        if not buffalo:
+            buffalo = _install_go_tool(rctx, "buffalo", _BUFFALO_GO_TOOLS["buffalo"], suffix)
+        if not protoc_gen_go:
+            protoc_gen_go = _install_go_tool(rctx, "protoc-gen-go", _BUFFALO_GO_TOOLS["protoc-gen-go"], suffix)
+        if not protoc_gen_go_grpc:
+            protoc_gen_go_grpc = _install_go_tool(rctx, "protoc-gen-go-grpc", _BUFFALO_GO_TOOLS["protoc-gen-go-grpc"], suffix)
+
+        # Non-strict fallback keeps compatibility by using grpc_tools.protoc wrapper.
+        if not protoc:
+            grpc_tools_python = _install_grpc_tools_python(rctx, is_windows)
+
+            protoc_name = "protoc.bat" if is_windows else "protoc"
+            py_cmd = grpc_tools_python.python
+            pythonpath = grpc_tools_python.site_packages
+            if is_windows:
+                extra_args = " ".join(py_cmd[1:])
+                pythonpath_line = ""
+                if pythonpath:
+                    pythonpath_line = "set \"PYTHONPATH={}{}%PYTHONPATH%\"\r\n".format(pythonpath.replace("/", "\\"), ";")
+                protoc_content = "@echo off\r\n{}\"{}\" {} -m grpc_tools.protoc %*\r\n".format(
+                    pythonpath_line,
+                    py_cmd[0],
+                    extra_args,
+                )
+            else:
+                extra_args = " ".join(py_cmd[1:])
+                pythonpath_line = ""
+                if pythonpath:
+                    escaped = pythonpath.replace("'", "'\\''")
+                    pythonpath_line = "export PYTHONPATH='{}':\"${{PYTHONPATH:-}}\"\n".format(escaped)
+                protoc_content = "#!/usr/bin/env sh\n{}exec \"{}\" {} -m grpc_tools.protoc \"$@\"\n".format(
+                    pythonpath_line,
+                    py_cmd[0],
+                    extra_args,
+                )
+            rctx.file(protoc_name, protoc_content, executable = True)
+            protoc = rctx.path(protoc_name)
+
+        if not protoc_gen_grpc_python:
+            existing_plugin = rctx.which("protoc-gen-grpc_python")
+            if existing_plugin:
+                protoc_gen_grpc_python = existing_plugin
 
     files = {
         "buffalo{}".format(suffix): buffalo,
+        "protoc{}".format(suffix): protoc,
         "protoc-gen-go{}".format(suffix): protoc_gen_go,
         "protoc-gen-go-grpc{}".format(suffix): protoc_gen_go_grpc,
     }
 
+    if protoc_gen_grpc_python:
+        files["protoc-gen-grpc_python{}".format(suffix)] = protoc_gen_grpc_python
+
     for target_name, source in files.items():
         rctx.symlink(source, target_name)
 
-    py_cmd = grpc_tools_python.python
-    pythonpath = grpc_tools_python.site_packages
-    if is_windows:
-        extra_args = " ".join(py_cmd[1:])
-        pythonpath_line = ""
-        if pythonpath:
-            pythonpath_line = "set \"PYTHONPATH={}{}%PYTHONPATH%\"\r\n".format(pythonpath.replace("/", "\\"), ";")
-        protoc_content = "@echo off\r\n{}\"{}\" {} -m grpc_tools.protoc %*\r\n".format(
-            pythonpath_line,
-            py_cmd[0],
-            extra_args,
-        )
-    else:
-        extra_args = " ".join(py_cmd[1:])
-        pythonpath_line = ""
-        if pythonpath:
-            escaped = pythonpath.replace("'", "'\\''")
-            pythonpath_line = "export PYTHONPATH='{}':\"${{PYTHONPATH:-}}\"\n".format(escaped)
-        protoc_content = "#!/usr/bin/env sh\n{}exec \"{}\" {} -m grpc_tools.protoc \"$@\"\n".format(
-            pythonpath_line,
-            py_cmd[0],
-            extra_args,
-        )
-    rctx.file(protoc_name, protoc_content, executable = True)
+    grpc_python_name = "protoc-gen-grpc_python{}".format(suffix)
+    if not protoc_gen_grpc_python:
+        # Compatibility stub: in non-strict mode grpc_tools.protoc handles grpc python generation,
+        # so this executable is not expected to be invoked. We still provide it to keep labels stable.
+        if is_windows:
+            rctx.file(grpc_python_name, "@echo off\r\necho protoc-gen-grpc_python is not provisioned in non-strict mode.\r\nexit /b 1\r\n", executable = True)
+        else:
+            rctx.file(grpc_python_name, "#!/usr/bin/env sh\necho 'protoc-gen-grpc_python is not provisioned in non-strict mode.' >&2\nexit 1\n", executable = True)
 
     rctx.file("BUILD.bazel", content = """\
 package(default_visibility = ["//visibility:public"])
@@ -174,6 +258,7 @@ exports_files([
     "{protoc}",
     "{protoc_gen_go}",
     "{protoc_gen_go_grpc}",
+    "{protoc_gen_grpc_python}",
 ])
 
 alias(
@@ -195,15 +280,33 @@ alias(
     name = "protoc_gen_go_grpc_bin",
     actual = ":{protoc_gen_go_grpc}",
 )
+
+alias(
+    name = "protoc_gen_grpc_python_bin",
+    actual = ":{protoc_gen_grpc_python}",
+)
 """.format(
         buffalo = "buffalo{}".format(suffix),
-        protoc = protoc_name,
+        protoc = "protoc{}".format(suffix),
         protoc_gen_go = "protoc-gen-go{}".format(suffix),
         protoc_gen_go_grpc = "protoc-gen-go-grpc{}".format(suffix),
+        protoc_gen_grpc_python = "protoc-gen-grpc_python{}".format(suffix),
     ))
 
 buffalo_toolchain_repo = repository_rule(
     implementation = _buffalo_toolchain_repo_impl,
-    environ = ["PATH", "HOME", "USERPROFILE", "TMP", "TEMP"],
+    environ = [
+        "PATH",
+        "HOME",
+        "USERPROFILE",
+        "TMP",
+        "TEMP",
+        _STRICT_MODE_ENV,
+        _TOOL_URL_ENVS["buffalo"],
+        _TOOL_URL_ENVS["protoc"],
+        _TOOL_URL_ENVS["protoc-gen-go"],
+        _TOOL_URL_ENVS["protoc-gen-go-grpc"],
+        _TOOL_URL_ENVS["protoc-gen-grpc_python"],
+    ],
     doc = "Bootstraps Buffalo and required protoc tooling into the Bazel toolchain repository for sandbox execution.",
 )

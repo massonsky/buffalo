@@ -44,6 +44,8 @@ def _buffalo_proto_compile_impl(ctx):
         (ctx.file.protoc_gen_go, ctx.file.protoc_gen_go.basename),
         (ctx.file.protoc_gen_go_grpc, ctx.file.protoc_gen_go_grpc.basename),
     ]
+    if ctx.file.protoc_gen_grpc_python:
+        tool_files.append((ctx.file.protoc_gen_grpc_python, ctx.file.protoc_gen_grpc_python.basename))
 
     command_parts = [
         "buffalo",
@@ -186,6 +188,8 @@ def _buffalo_proto_compile_impl(ctx):
         inputs.append(ctx.file.protoc_gen_go)
     if ctx.file.protoc_gen_go_grpc:
         inputs.append(ctx.file.protoc_gen_go_grpc)
+    if ctx.file.protoc_gen_grpc_python:
+        inputs.append(ctx.file.protoc_gen_grpc_python)
     if ctx.file.config:
         inputs.append(ctx.file.config)
     if ctx.file._config_output_reader:
@@ -245,6 +249,11 @@ buffalo_proto_compile = rule(
             allow_single_file = True,
             default = Label("@buffalo_toolchain//:protoc_gen_go_grpc_bin"),
             doc = "Path to the protoc-gen-go-grpc plugin binary file.",
+        ),
+        "protoc_gen_grpc_python": attr.label(
+            allow_single_file = True,
+            default = Label("@buffalo_toolchain//:protoc_gen_grpc_python_bin"),
+            doc = "Path to the protoc-gen-grpc_python plugin binary file (optional in non-strict mode).",
         ),
         "languages": attr.string_list(
             default = ["go", "python", "rust"],

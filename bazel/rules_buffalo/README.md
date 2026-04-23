@@ -43,6 +43,28 @@ Minimal host prerequisites:
 - `go` in `PATH` (for auto-install of Go-based tools)
 - `python`/`python3`/`py` in `PATH` (for grpc tools bootstrap)
 
+## Strict hermetic sandbox mode
+
+By default, strict sandbox mode is enabled (`BUFFALO_TOOLCHAIN_STRICT_SANDBOX=1`).
+In this mode, runtime tooling must be provided via URLs and is downloaded into the
+toolchain repository (sandbox input), with no runtime dependency on host-installed
+Buffalo/protoc/plugins.
+
+Required environment variables in strict mode:
+
+- `BUFFALO_TOOLCHAIN_BUFFALO_URL`
+- `BUFFALO_TOOLCHAIN_PROTOC_URL`
+- `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_URL`
+- `BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_URL`
+- `BUFFALO_TOOLCHAIN_PROTOC_GEN_GRPC_PYTHON_URL`
+
+Optional compatibility mode:
+
+- `BUFFALO_TOOLCHAIN_STRICT_SANDBOX=0`
+
+Compatibility mode keeps older bootstrap behavior (host `go`/`python` may be used
+to prepare tools), but generated actions still run with tools staged in sandbox.
+
 ## Rules
 
 ### `buffalo_proto_compile`
