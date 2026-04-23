@@ -18,6 +18,7 @@ import (
 	"github.com/massonsky/buffalo/internal/versioning"
 	"github.com/massonsky/buffalo/pkg/logger"
 	"github.com/massonsky/buffalo/pkg/metrics"
+	"github.com/massonsky/buffalo/pkg/tracing"
 	"github.com/massonsky/buffalo/pkg/utils"
 )
 
@@ -287,7 +288,22 @@ func (e *executor) Execute(ctx context.Context, plan *ExecutionPlan) (*Execution
 }
 
 // compileFile compiles a single proto file for a language
-func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language string, plan *ExecutionPlan) (*compileOutcome, error) {
+func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language string, plan *ExecutionPlan) (outcome *compileOutcome, err error) {
+	ctx, span := tracing.StartSpan(ctx, "build.compile", tracing.WithAttributes(map[string]any{
+		"file":     file.Path,
+		"language": language,
+		"package":  file.Package,
+	}))
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(tracing.StatusError, err.Error())
+		} else {
+			span.SetStatus(tracing.StatusOK, "")
+		}
+		span.End()
+	}()
+
 	e.log.Debug("Compiling file",
 		"file", file.Path,
 		"language", language,

@@ -103,7 +103,13 @@ func initLogger() {
 	}
 
 	var fmt logger.Formatter = logger.NewColoredFormatter()
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("BUFFALO_LOG_FORMAT"))) {
+	formatEnv := strings.ToLower(strings.TrimSpace(os.Getenv("BUFFALO_LOG_FORMAT")))
+	if formatEnv == "" && isCIEnvironment() {
+		// CI runners typically don't render ANSI well and structured logs
+		// are easier to ingest.
+		formatEnv = "json"
+	}
+	switch formatEnv {
 	case "text":
 		fmt = logger.NewTextFormatter()
 	case "json":
@@ -117,6 +123,30 @@ func initLogger() {
 		logger.WithFormatter(fmt),
 		logger.WithOutput(logger.NewStdoutOutput()),
 	)
+}
+
+// isCIEnvironment returns true when the process runs under a typical CI
+// system. It checks the de-facto-standard CI=true variable plus common
+// vendor-specific markers so that pipelines without CI= still get JSON logs.
+func isCIEnvironment() bool {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("CI"))); v == "true" || v == "1" {
+		return true
+	}
+	for _, k := range []string{
+		"GITHUB_ACTIONS",
+		"GITLAB_CI",
+		"BUILDKITE",
+		"CIRCLECI",
+		"TF_BUILD", // Azure Pipelines
+		"TEAMCITY_VERSION",
+		"JENKINS_URL",
+		"BITBUCKET_BUILD_NUMBER",
+	} {
+		if os.Getenv(k) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // GetLogger returns the global logger

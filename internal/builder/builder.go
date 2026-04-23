@@ -130,7 +130,7 @@ func New(cfg *config.Config, opts ...Option) (Builder, error) {
 		b.resolver = NewDependencyResolver(logAdapter)
 	}
 	if b.cache == nil {
-		b.cache = NewCacheManager(logAdapter)
+		b.cache = NewCacheManagerWithTools(logAdapter, pinnedToolVersions(cfg))
 	}
 	if b.executor == nil {
 		b.executor = NewExecutor(logAdapter, b.metrics, cfg)

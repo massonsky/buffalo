@@ -33,6 +33,7 @@ type Config struct {
 	Plugins      []PluginConfig          `mapstructure:"plugins"`
 	Templates    []TemplateConfig        `mapstructure:"templates"`
 	Models       ModelsConfig            `mapstructure:"models"`
+	Tools        ToolsConfig             `mapstructure:"tools"`
 
 	// ConfigDir is the directory containing the loaded config file.
 	// All relative paths in the config are resolved relative to this directory.
@@ -210,6 +211,33 @@ type LoggingConfig struct {
 	Format string `mapstructure:"format"`
 	Output string `mapstructure:"output"`
 	File   string `mapstructure:"file"`
+}
+
+// ToolsConfig pins external code-generation binaries (protoc and the
+// protoc-gen-* family). Pinning makes builds reproducible across machines and
+// is required by `buffalo build --frozen-lockfile`.
+type ToolsConfig struct {
+	// Protoc pins the protoc compiler binary itself.
+	Protoc *ToolPin `mapstructure:"protoc,omitempty"`
+
+	// Plugins pins protoc-gen-* helpers keyed by their bare plugin name
+	// (e.g. "go", "go-grpc", "python", "ts"). Buffalo prepends "protoc-gen-"
+	// when resolving the actual binary on PATH.
+	Plugins map[string]ToolPin `mapstructure:"plugins,omitempty"`
+}
+
+// ToolPin describes the expected version (and optional checksum) of a tool.
+type ToolPin struct {
+	// Version is the expected `--version` output substring (e.g. "3.21.12").
+	Version string `mapstructure:"version"`
+
+	// Sha256 optionally pins the binary content. When set, `buffalo tools
+	// verify` recomputes the digest of the resolved binary and refuses to
+	// run on mismatch.
+	Sha256 string `mapstructure:"sha256,omitempty"`
+
+	// Path overrides PATH-based discovery and forces a specific binary.
+	Path string `mapstructure:"path,omitempty"`
 }
 
 // PluginConfig contains plugin configuration

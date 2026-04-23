@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/massonsky/buffalo/pkg/logger"
+	"github.com/massonsky/buffalo/pkg/tracing"
 )
 
 // Downloader handles downloading dependencies from various sources.
@@ -28,7 +29,21 @@ func NewDownloader(targetDir string, log *logger.Logger) *Downloader {
 }
 
 // Download downloads a dependency based on its source.
-func (d *Downloader) Download(ctx context.Context, dep Dependency) (*DownloadResult, error) {
+func (d *Downloader) Download(ctx context.Context, dep Dependency) (result *DownloadResult, err error) {
+	ctx, span := tracing.StartSpan(ctx, "dep.fetch", tracing.WithAttributes(map[string]any{
+		"dep.name":   dep.Name,
+		"dep.source": dep.Source.Type,
+	}))
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(tracing.StatusError, err.Error())
+		} else {
+			span.SetStatus(tracing.StatusOK, "")
+		}
+		span.End()
+	}()
+
 	switch dep.Source.Type {
 	case "git":
 		return d.downloadGit(ctx, dep)

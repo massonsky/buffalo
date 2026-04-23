@@ -294,6 +294,10 @@ var envWhitelist = []string{
 	"VIRTUAL_ENV",
 	"CARGO_HOME",
 	"RUSTUP_HOME",
+	// SOURCE_DATE_EPOCH is honored by reproducible-build aware tools
+	// (protoc, jar, gzip, …) and Buffalo intentionally forwards it so
+	// downstream codegen produces byte-identical output.
+	"SOURCE_DATE_EPOCH",
 }
 
 // MinimalEnv returns a copy of os.Environ filtered to envWhitelist plus
