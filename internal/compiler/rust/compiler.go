@@ -58,23 +58,23 @@ func (c *Compiler) Name() string {
 // Validate checks if the compiler is properly configured
 func (c *Compiler) Validate() error {
 	// Check protoc
-	if err := c.checkTool(c.options.ProtocPath, "--version"); err != nil {
+	if err := c.checkTool(c.options.ProtocPath); err != nil {
 		return errors.Wrap(err, errors.ErrConfig, "protoc not found")
 	}
 
 	// Check generator-specific tools
 	switch c.options.Generator {
 	case "prost":
-		if err := c.checkTool("protoc-gen-prost", "--version"); err != nil {
+		if err := c.checkTool("protoc-gen-prost"); err != nil {
 			return errors.Wrap(err, errors.ErrConfig, "protoc-gen-prost not found, install: cargo install protoc-gen-prost")
 		}
 		if c.options.GenerateGrpc {
-			if err := c.checkTool("protoc-gen-tonic", "--version"); err != nil {
+			if err := c.checkTool("protoc-gen-tonic"); err != nil {
 				return errors.Wrap(err, errors.ErrConfig, "protoc-gen-tonic not found (optional for gRPC), install: cargo install protoc-gen-tonic")
 			}
 		}
 	case "rust-protobuf", "protoc-gen-rs":
-		if err := c.checkTool("protoc-gen-rs", "--version"); err != nil {
+		if err := c.checkTool("protoc-gen-rs"); err != nil {
 			return errors.Wrap(err, errors.ErrConfig, "protoc-gen-rs not found, install: cargo install protobuf-codegen")
 		}
 	default:
@@ -85,8 +85,8 @@ func (c *Compiler) Validate() error {
 }
 
 // checkTool checks if a tool is available
-func (c *Compiler) checkTool(toolPath, versionArg string) error {
-	cmd := exec.Command(toolPath, versionArg)
+func (c *Compiler) checkTool(toolPath string) error {
+	cmd := exec.Command(toolPath, "--version")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("tool not found: %s", toolPath)
 	}
@@ -99,6 +99,17 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 		GeneratedFiles: []string{},
 		Warnings:       []string{},
 		Success:        false,
+	}
+
+	if c.options.Generator == "prost" {
+		warning, err := c.validateProstCargoSetup(files)
+		if err != nil {
+			return nil, errors.Wrap(err, errors.ErrCompilation, "failed to validate Cargo integration for Rust/prost")
+		}
+
+		result.Warnings = append(result.Warnings, warning)
+		result.Success = true
+		return result, nil
 	}
 
 	for _, file := range files {
@@ -202,27 +213,10 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 
 	switch c.options.Generator {
 	case "prost":
-		// Create output directory if it doesn't exist
-		if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create output directory: %v", err)
-		}
-
-		// Use protoc with prost plugin
-		args := c.buildProtocArgs(file, opts, "prost")
-
-		c.log.Debug("Running protoc for Rust (prost)",
-			logger.String("command", c.options.ProtocPath),
-			logger.Any("args", args))
-
-		cmd := exec.CommandContext(ctx, c.options.ProtocPath, args...)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return nil, fmt.Errorf("protoc failed: %v\nOutput: %s", err, string(output))
-		}
-
-		// Add generated .rs file
-		outputPath := c.GetOutputPath(file, opts)
-		generatedFiles = append(generatedFiles, outputPath)
+		// Prost generation is handled through Cargo build.rs integration.
+		// Validation happens in Compile(), so by the time we are here there is
+		// nothing direct for Buffalo to invoke per-file.
+		return generatedFiles, nil
 
 	case "rust-protobuf":
 		// Create output directory if it doesn't exist
