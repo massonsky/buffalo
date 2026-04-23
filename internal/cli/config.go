@@ -77,10 +77,23 @@ the single source of truth (the Config struct in internal/config).`,
 		RunE: runConfigSchema,
 	}
 
+	configMigrateCmd = &cobra.Command{
+		Use:   "migrate",
+		Short: "Upgrade buffalo.yaml to the current schema version",
+		Long: `Apply schema migrations in-place to bring buffalo.yaml up to the current schema_version.
+
+This is YAML-preserving (comments and key order are kept). Use --dry-run to
+print the migrated file to stdout without modifying the source.`,
+		Example: `  buffalo config migrate -c buffalo.yaml
+  buffalo config migrate -c buffalo.yaml --dry-run`,
+		RunE: runConfigMigrate,
+	}
+
 	configFile    string
 	configForce   bool
 	configFormat  string
 	configProfile string
+	configDryRun  bool
 )
 
 func init() {
@@ -90,6 +103,7 @@ func init() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configInitCmd)
 	configCmd.AddCommand(configSchemaCmd)
+	configCmd.AddCommand(configMigrateCmd)
 
 	// Validate command flags
 	configValidateCmd.Flags().StringVarP(&configFile, "config", "c", "buffalo.yaml", "configuration file to validate")
@@ -106,6 +120,10 @@ func init() {
 	// Schema command flags
 	configSchemaCmd.Flags().StringVar(&configFormat, "format", "json", "output format: json (JSON Schema) or yaml (default config)")
 	configSchemaCmd.Flags().StringVar(&configProfile, "profile", "full", "YAML profile when --format=yaml: minimal, full, bazel")
+
+	// Migrate command flags
+	configMigrateCmd.Flags().StringVarP(&configFile, "config", "c", "buffalo.yaml", "configuration file to migrate")
+	configMigrateCmd.Flags().BoolVar(&configDryRun, "dry-run", false, "print the migrated file to stdout without modifying the source")
 }
 
 // ValidationIssue represents a configuration validation issue
@@ -148,8 +166,8 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 
 	log.Info("✅ Valid YAML syntax")
 
-	// Load config using standard loader
-	cfg, err := loadConfig(log)
+	// Load config from the specific file (not from CWD-bound viper).
+	cfg, err := config.LoadFromFile(absPath)
 	if err != nil {
 		log.Error("❌ Configuration validation failed", logger.Any("error", err))
 		return err
@@ -481,4 +499,41 @@ func runConfigSchema(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("unknown --format=%q (expected json or yaml)", configFormat)
 	}
+}
+
+func runConfigMigrate(cmd *cobra.Command, args []string) error {
+	log := GetLogger()
+
+	absPath, err := filepath.Abs(configFile)
+	if err != nil {
+		return fmt.Errorf("invalid config path: %w", err)
+	}
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return errors.New(errors.ErrConfig, fmt.Sprintf("configuration file not found: %s", absPath))
+	}
+
+	out, from, to, err := config.MigrateFile(absPath, configDryRun)
+	if err != nil {
+		return err
+	}
+
+	if from == to {
+		log.Info("✅ Already at current schema version",
+			logger.String("file", absPath),
+			logger.Any("schema_version", to))
+		return nil
+	}
+
+	if configDryRun {
+		log.Info("ℹ️  Dry run — file not modified",
+			logger.Any("from", from), logger.Any("to", to))
+		_, err = os.Stdout.Write(out)
+		return err
+	}
+
+	log.Info("✅ Migrated configuration",
+		logger.String("file", absPath),
+		logger.Any("from", from),
+		logger.Any("to", to))
+	return nil
 }
