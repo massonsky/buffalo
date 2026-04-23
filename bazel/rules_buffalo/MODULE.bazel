@@ -6,8 +6,8 @@ module(
 
 bazel_dep(name = "rules_python", version = "1.7.0")
 
-# Locate the buffalo binary on the host system. Consumers do not need to
-# repeat this — the implicit `buffalo` attribute of buffalo_proto_compile
-# already points at @buffalo_toolchain//:buffalo_bin.
+# Locate the buffalo binary on the host system. The dev macro and helper
+# repositories still use this, while buffalo_proto_compile invokes the
+# `buffalo` CLI directly from the action environment.
 buffalo = use_extension("//buffalo:extensions.bzl", "buffalo")
 use_repo(buffalo, "buffalo_toolchain")

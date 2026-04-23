@@ -9,6 +9,7 @@ py_binary(
 )
 
 exports_files([
+    "config_output_dir.py",
     "defs.bzl",
     "extensions.bzl",
     "repositories.bzl",
