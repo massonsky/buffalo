@@ -46,12 +46,24 @@ def _buffalo_proto_compile_impl(ctx):
     ]
     if ctx.file.protoc_gen_grpc_python:
         tool_files.append((ctx.file.protoc_gen_grpc_python, ctx.file.protoc_gen_grpc_python.basename))
+    # Rust plugins may come from rules_rust crate_universe which names the
+    # binary `<crate>__<bin>(.exe)` (e.g. `protoc-gen-prost__protoc-gen-prost`).
+    # protoc resolves plugins by the canonical `protoc-gen-<lang>(.exe)` name,
+    # so we always stage them under that exact name regardless of the source
+    # repository's naming convention.
+    plugin_ext = ".exe" if is_windows else ""
     if ctx.file.protoc_gen_prost:
-        tool_files.append((ctx.file.protoc_gen_prost, ctx.file.protoc_gen_prost.basename))
+        tool_files.append((ctx.file.protoc_gen_prost, "protoc-gen-prost" + plugin_ext))
     if ctx.file.protoc_gen_tonic:
-        tool_files.append((ctx.file.protoc_gen_tonic, ctx.file.protoc_gen_tonic.basename))
+        tool_files.append((ctx.file.protoc_gen_tonic, "protoc-gen-tonic" + plugin_ext))
     if ctx.file.protoc_gen_ts_proto:
         tool_files.append((ctx.file.protoc_gen_ts_proto, ctx.file.protoc_gen_ts_proto.basename))
+    if ctx.file.python_shim:
+        # Stage the python shim under PATH as `python` (and `python3` on POSIX)
+        # so buffalo's hard-coded `exec.Command("python", ...)` resolves to the
+        # hermetic interpreter wrapper instead of any host Python.
+        py_basename = "python.bat" if is_windows else "python"
+        tool_files.append((ctx.file.python_shim, py_basename))
 
     command_parts = [
         "buffalo",
@@ -119,6 +131,22 @@ def _buffalo_proto_compile_impl(ctx):
             stage_setup.append("copy /Y \"{}\" \"%STAGE%\\{}\" >nul\r\n".format(src, rel))
         for tool_file, tool_name in tool_files:
             stage_setup.append("copy /Y \"{}\" \"%TOOLS%\\{}\" >nul\r\n".format(tool_file.path.replace("/", "\\"), tool_name))
+        # Stage protoc well-known include tree at STAGE\include so protoc's
+        # `<exe>/../include` discovery resolves google/protobuf/*.proto.
+        for inc_file in ctx.files.protoc_includes:
+            src_norm = inc_file.path.replace("\\", "/")
+            marker = "_protoc/include/"
+            idx = src_norm.find(marker)
+            if idx < 0:
+                continue
+            rel = src_norm[idx + len(marker):].replace("/", "\\")
+            src = inc_file.path.replace("/", "\\")
+            if "\\" in rel:
+                parent = rel.rsplit("\\", 1)[0]
+                stage_setup.append("if not exist \"%STAGE%\\include\\{}\" mkdir \"%STAGE%\\include\\{}\"\r\n".format(parent, parent))
+            else:
+                stage_setup.append("if not exist \"%STAGE%\\include\" mkdir \"%STAGE%\\include\"\r\n")
+            stage_setup.append("copy /Y \"{}\" \"%STAGE%\\include\\{}\" >nul\r\n".format(src, rel))
         if ctx.attr.respect_config_output and ctx.file.config:
             helper_path = helper_rel.replace("/", "\\")
             stage_setup.append("for /f \"usebackq delims=\" %%i in (`py -3 \"%EXECROOT%\\{}\" \"%STAGE%\\{}\" 2^>nul`) do set \"CONFIG_OUTPUT=%%i\"\r\n".format(helper_path, ctx.file.config.short_path.replace("/", "\\")))
@@ -162,6 +190,20 @@ def _buffalo_proto_compile_impl(ctx):
         for tool_file, tool_name in tool_files:
             stage_setup.append("cp '{}' '$TOOLS/{}'\n".format(tool_file.path.replace("'", "'\\''"), tool_name))
             stage_setup.append("chmod +x '$TOOLS/{}'\n".format(tool_name))
+        for inc_file in ctx.files.protoc_includes:
+            src_norm = inc_file.path.replace("\\", "/")
+            marker = "_protoc/include/"
+            idx = src_norm.find(marker)
+            if idx < 0:
+                continue
+            rel = src_norm[idx + len(marker):]
+            src = inc_file.path.replace("'", "'\\''")
+            if "/" in rel:
+                parent = rel.rsplit("/", 1)[0].replace("'", "'\\''")
+                stage_setup.append("mkdir -p \"$STAGE/include/{}\"\n".format(parent))
+            else:
+                stage_setup.append("mkdir -p \"$STAGE/include\"\n")
+            stage_setup.append("cp '{}' \"$STAGE/include/{}\"\n".format(src, rel.replace("'", "'\\''")))
         if ctx.attr.respect_config_output and ctx.file.config:
             helper_path = helper_rel.replace("'", "'\\''")
             config_rel = ctx.file.config.short_path.replace("'", "'\\''")
@@ -202,6 +244,9 @@ def _buffalo_proto_compile_impl(ctx):
         inputs.append(ctx.file.protoc_gen_tonic)
     if ctx.file.protoc_gen_ts_proto:
         inputs.append(ctx.file.protoc_gen_ts_proto)
+    if ctx.file.python_shim:
+        inputs.append(ctx.file.python_shim)
+    inputs.extend(ctx.files.protoc_includes)
     if ctx.file.config:
         inputs.append(ctx.file.config)
     if ctx.file._config_output_reader:
@@ -281,6 +326,18 @@ buffalo_proto_compile = rule(
             allow_single_file = True,
             default = Label("@buffalo_toolchain//:protoc_gen_ts_proto_bin"),
             doc = "Path to the protoc-gen-ts_proto plugin binary file. Functional only when buffalo.typescript() is enabled.",
+        ),
+        "python_shim": attr.label(
+            allow_single_file = True,
+            default = Label("@buffalo_toolchain//:python_shim_bin"),
+            doc = "Path to the python shim that bridges hermetic CPython + grpcio-tools site-packages. " +
+                  "Staged into the sandbox PATH so buffalo's `python -m grpc_tools.protoc` invocation works without host Python.",
+        ),
+        "protoc_includes": attr.label(
+            default = Label("@buffalo_toolchain//:protoc_includes"),
+            allow_files = True,
+            doc = "Well-known proto descriptors (google/protobuf/*.proto) bundled with the protoc release. " +
+                  "Staged next to protoc.exe inside the sandbox so `<exe>/../include` discovery resolves them hermetically.",
         ),
         "languages": attr.string_list(
             default = ["go", "python", "rust"],

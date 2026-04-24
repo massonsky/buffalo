@@ -41,6 +41,33 @@ DEFAULT_TS_PROTO_VERSION = "1.181.2"
 
 DEFAULT_INTEGRITY = {}
 
+# ---------- Local-binary overrides ------------------------------------------
+#
+# Each tool may be redirected at a binary that already exists on the host by
+# setting the matching env var below. Useful when iterating on a locally built
+# buffalo without re-publishing a release. Wire the variables into Bazel via
+# `common --repo_env=BUFFALO_TOOLCHAIN_BUFFALO_PATH=...` in `.bazelrc`.
+_TOOL_PATH_ENVS = {
+    "buffalo": "BUFFALO_TOOLCHAIN_BUFFALO_PATH",
+    "protoc": "BUFFALO_TOOLCHAIN_PROTOC_PATH",
+    "protoc-gen-go": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_PATH",
+    "protoc-gen-go-grpc": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GO_GRPC_PATH",
+    "protoc-gen-grpc_python": "BUFFALO_TOOLCHAIN_PROTOC_GEN_GRPC_PYTHON_PATH",
+}
+
+def _local_tool_from_env(rctx, tool_name, suffix):
+    env_name = _TOOL_PATH_ENVS[tool_name]
+    path_str = rctx.os.environ.get(env_name, "")
+    if not path_str:
+        return None
+    src = rctx.path(path_str)
+    if not src.exists:
+        fail("{}={!r} does not exist (resolved as {}).".format(env_name, path_str, src))
+    output_name = "{}{}".format(tool_name, suffix)
+    rctx.symlink(src, output_name)
+    return rctx.path(output_name)
+
+
 # ---------- Platform detection ----------------------------------------------
 
 def _detect_platform(rctx):
@@ -254,8 +281,43 @@ def _download_executable(rctx, url, output, integrity):
     rctx.download(url = [url], output = output, executable = True, integrity = integrity)
     return rctx.path(output)
 
+def _native_unzip(rctx, archive_path, output_dir):
+    # Bazel 9's built-in ZipReader only scans the last 64 bytes for the EOCD
+    # signature. Some upstream release zips append metadata after the central
+    # directory (e.g. protobuf-go protoc-gen-go ships with a trailing GOOS=...
+    # string), which pushes the EOCD outside that window and triggers
+    # `ArrayIndexOutOfBoundsException`. Delegate extraction to the host's zip
+    # tooling, which uses a 64KB scan window like every other zip reader.
+    is_windows = rctx.os.name.lower().startswith("windows")
+    if is_windows:
+        archive_win = str(rctx.path(archive_path)).replace("/", "\\")
+        out_win = str(rctx.path(output_dir)).replace("/", "\\")
+        ps_cmd = (
+            "$ErrorActionPreference='Stop';" +
+            "Add-Type -AssemblyName System.IO.Compression.FileSystem;" +
+            "[IO.Compression.ZipFile]::ExtractToDirectory('{src}','{dst}')"
+        ).format(src = archive_win.replace("'", "''"), dst = out_win.replace("'", "''"))
+        result = rctx.execute(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd])
+    else:
+        result = rctx.execute(["unzip", "-o", "-q", str(rctx.path(archive_path)), "-d", str(rctx.path(output_dir))])
+    if result.return_code != 0:
+        fail("Failed to extract {} natively.\nstdout:\n{}\nstderr:\n{}".format(
+            archive_path,
+            result.stdout,
+            result.stderr,
+        ))
+
 def _download_and_extract(rctx, url, subdir, expected_relpath, integrity):
-    rctx.download_and_extract(url = [url], output = subdir, integrity = integrity)
+    # Workaround for bazel 9's narrow EOCD scan window: download first, then
+    # extract via host tooling (Expand-Archive / unzip / tar). See _native_unzip.
+    archive_name = url.rstrip("/").split("/")[-1]
+    archive_path = "{}/{}".format(subdir, archive_name)
+    rctx.download(url = [url], output = archive_path, integrity = integrity)
+    if archive_name.endswith(".zip"):
+        _native_unzip(rctx, archive_path, subdir)
+    else:
+        rctx.extract(archive = archive_path, output = subdir)
+    rctx.delete(archive_path)
     p = rctx.path("{}/{}".format(subdir, expected_relpath))
     if p.exists:
         return p
@@ -315,6 +377,35 @@ def _emit_grpc_python_shim(rctx, platform, python_exe, site_packages):
     rctx.file(shim_name, content, executable = True)
     return shim_name
 
+# Buffalo's Python compiler invokes `python -m grpc_tools.protoc` directly
+# (see internal/compiler/python/compiler.go). For a fully hermetic Bazel
+# sandbox this `python` lookup must resolve to the rules_python interpreter
+# with PYTHONPATH already pointing at the grpcio-tools site-packages — no
+# host Python required. We emit a thin shim into the toolchain repo and
+# stage it into the sandbox PATH from buffalo_proto_compile.
+def _emit_python_shim(rctx, platform, python_exe, site_packages):
+    if platform.is_windows:
+        shim_name = "python.bat"
+        pp = site_packages.replace("/", "\\")
+        py = str(python_exe).replace("/", "\\")
+        content = (
+            "@echo off\r\n" +
+            "set \"PYTHONPATH={pp};%PYTHONPATH%\"\r\n" +
+            "\"{py}\" %*\r\n"
+        ).format(pp = pp, py = py)
+    else:
+        shim_name = "python"
+        content = (
+            "#!/usr/bin/env sh\n" +
+            "export PYTHONPATH='{pp}':\"${{PYTHONPATH:-}}\"\n" +
+            "exec '{py}' \"$@\"\n"
+        ).format(
+            pp = site_packages.replace("'", "'\\''"),
+            py = str(python_exe).replace("'", "'\\''"),
+        )
+    rctx.file(shim_name, content, executable = True)
+    return shim_name
+
 # ---------- Stub generation -------------------------------------------------
 
 def _emit_disabled_stub(rctx, platform, name, reason):
@@ -335,40 +426,48 @@ def _buffalo_toolchain_repo_impl(rctx):
     suffix = p.exe_suffix
 
     # --- Hermetic upstream tools (always provisioned) ------------------
-    buffalo_url, buffalo_key = _buffalo_artifact(rctx.attr.buffalo_repo, rctx.attr.buffalo_version, p)
-    buffalo = _download_executable(
-        rctx,
-        buffalo_url,
-        "buffalo{}".format(suffix),
-        _resolve_integrity(rctx, buffalo_key),
-    )
+    buffalo = _local_tool_from_env(rctx, "buffalo", suffix)
+    if not buffalo:
+        buffalo_url, buffalo_key = _buffalo_artifact(rctx.attr.buffalo_repo, rctx.attr.buffalo_version, p)
+        buffalo = _download_executable(
+            rctx,
+            buffalo_url,
+            "buffalo{}".format(suffix),
+            _resolve_integrity(rctx, buffalo_key),
+        )
 
-    protoc_url, protoc_key = _protoc_artifact(rctx.attr.protoc_version, p)
-    protoc = _download_and_extract(
-        rctx,
-        protoc_url,
-        "_protoc",
-        "bin/protoc{}".format(suffix),
-        _resolve_integrity(rctx, protoc_key),
-    )
+    protoc = _local_tool_from_env(rctx, "protoc", suffix)
+    if not protoc:
+        protoc_url, protoc_key = _protoc_artifact(rctx.attr.protoc_version, p)
+        protoc = _download_and_extract(
+            rctx,
+            protoc_url,
+            "_protoc",
+            "bin/protoc{}".format(suffix),
+            _resolve_integrity(rctx, protoc_key),
+        )
 
-    pgo_url, pgo_key = _protoc_gen_go_artifact(rctx.attr.protoc_gen_go_version, p)
-    protoc_gen_go = _download_and_extract(
-        rctx,
-        pgo_url,
-        "_protoc_gen_go",
-        "protoc-gen-go{}".format(suffix),
-        _resolve_integrity(rctx, pgo_key),
-    )
+    protoc_gen_go = _local_tool_from_env(rctx, "protoc-gen-go", suffix)
+    if not protoc_gen_go:
+        pgo_url, pgo_key = _protoc_gen_go_artifact(rctx.attr.protoc_gen_go_version, p)
+        protoc_gen_go = _download_and_extract(
+            rctx,
+            pgo_url,
+            "_protoc_gen_go",
+            "protoc-gen-go{}".format(suffix),
+            _resolve_integrity(rctx, pgo_key),
+        )
 
-    pgg_url, pgg_key = _protoc_gen_go_grpc_artifact(rctx.attr.protoc_gen_go_grpc_version, p)
-    protoc_gen_go_grpc = _download_and_extract(
-        rctx,
-        pgg_url,
-        "_protoc_gen_go_grpc",
-        "protoc-gen-go-grpc{}".format(suffix),
-        _resolve_integrity(rctx, pgg_key),
-    )
+    protoc_gen_go_grpc = _local_tool_from_env(rctx, "protoc-gen-go-grpc", suffix)
+    if not protoc_gen_go_grpc:
+        pgg_url, pgg_key = _protoc_gen_go_grpc_artifact(rctx.attr.protoc_gen_go_grpc_version, p)
+        protoc_gen_go_grpc = _download_and_extract(
+            rctx,
+            pgg_url,
+            "_protoc_gen_go_grpc",
+            "protoc-gen-go-grpc{}".format(suffix),
+            _resolve_integrity(rctx, pgg_key),
+        )
 
     python_exe = rctx.path(rctx.attr.python_interpreter)
     site_packages = _install_grpcio_tools(
@@ -378,55 +477,32 @@ def _buffalo_toolchain_repo_impl(rctx):
         rctx.attr.protobuf_version,
     )
     grpc_python_target = _emit_grpc_python_shim(rctx, p, python_exe, site_packages)
+    python_shim_target = _emit_python_shim(rctx, p, python_exe, site_packages)
 
     # --- Optional: Rust plugins (opt-in via buffalo.rust() tag) --------
-    prost_target = None
-    tonic_target = None
-    if rctx.attr.enable_rust:
-        prost_url, prost_key = _rust_plugin_artifact(
-            rctx.attr.protoc_gen_prost_repo,
-            "protoc-gen-prost",
-            rctx.attr.protoc_gen_prost_version,
-            p,
-        )
-        prost = _download_and_extract(
-            rctx,
-            prost_url,
-            "_protoc_gen_prost",
-            "protoc-gen-prost{}".format(suffix),
-            _resolve_integrity(rctx, prost_key),
-        )
-        prost_target = "protoc-gen-prost{}".format(suffix)
-        rctx.symlink(prost, prost_target)
-
-        tonic_url, tonic_key = _rust_plugin_artifact(
-            rctx.attr.protoc_gen_prost_repo,
-            "protoc-gen-tonic",
-            rctx.attr.protoc_gen_tonic_version,
-            p,
-        )
-        tonic = _download_and_extract(
-            rctx,
-            tonic_url,
-            "_protoc_gen_tonic",
-            "protoc-gen-tonic{}".format(suffix),
-            _resolve_integrity(rctx, tonic_key),
-        )
-        tonic_target = "protoc-gen-tonic{}".format(suffix)
-        rctx.symlink(tonic, tonic_target)
-    else:
-        prost_target = _emit_disabled_stub(
-            rctx,
-            p,
-            "protoc-gen-prost",
-            "protoc-gen-prost is disabled. Add buffalo.rust() to MODULE.bazel to enable.",
-        )
-        tonic_target = _emit_disabled_stub(
-            rctx,
-            p,
-            "protoc-gen-tonic",
-            "protoc-gen-tonic is disabled. Add buffalo.rust() to MODULE.bazel to enable.",
-        )
+    #
+    # IMPORTANT: neoeinstein/protoc-gen-prost does not publish prebuilt release
+    # binaries on GitHub, so we cannot fetch them via http_archive. The
+    # canonical hermetic path is to build the plugins from crates.io source
+    # using rules_rust `crate_universe`, then pass the resulting binary labels
+    # to `buffalo_proto_compile` via its `protoc_gen_prost` / `protoc_gen_tonic`
+    # attributes. See onboard-uxv-systems/MODULE.bazel for an example wiring
+    # `@buffalo_rust_plugins//:protoc-gen-{prost,tonic}__protoc-gen-{prost,tonic}`.
+    #
+    # The toolchain itself only emits stubs for these targets so existing
+    # default attribute values keep resolving when Rust is not used.
+    prost_target = _emit_disabled_stub(
+        rctx,
+        p,
+        "protoc-gen-prost",
+        "protoc-gen-prost is provisioned via rules_rust crate_universe; pass `protoc_gen_prost = \"@buffalo_rust_plugins//:protoc-gen-prost__protoc-gen-prost\"` (or your own label) to buffalo_proto_compile.",
+    )
+    tonic_target = _emit_disabled_stub(
+        rctx,
+        p,
+        "protoc-gen-tonic",
+        "protoc-gen-tonic is provisioned via rules_rust crate_universe; pass `protoc_gen_tonic = \"@buffalo_rust_plugins//:protoc-gen-tonic__protoc-gen-tonic\"` (or your own label) to buffalo_proto_compile.",
+    )
 
     # --- Optional: TypeScript plugin (opt-in via buffalo.typescript() tag)
     ts_proto_target = None
@@ -450,7 +526,12 @@ def _buffalo_toolchain_repo_impl(rctx):
         "protoc-gen-go-grpc{}".format(suffix): protoc_gen_go_grpc,
     }
     for target_name, source in files.items():
-        if str(source).replace("\\", "/").endswith("/" + target_name):
+        # Only skip when the binary already lives at the repo root under the
+        # expected name (e.g. local-path overrides symlink there directly).
+        # Sources nested inside extraction subdirectories like `_protoc/bin/`
+        # must still be staged at the root for `exports_files` to find them.
+        target_path = rctx.path(target_name)
+        if str(source) == str(target_path):
             continue
         rctx.symlink(source, target_name)
 
@@ -461,6 +542,7 @@ def _buffalo_toolchain_repo_impl(rctx):
         "protoc-gen-go{}".format(suffix),
         "protoc-gen-go-grpc{}".format(suffix),
         grpc_python_target,
+        python_shim_target,
         prost_target,
         tonic_target,
         ts_proto_target,
@@ -471,6 +553,7 @@ def _buffalo_toolchain_repo_impl(rctx):
         ("protoc_gen_go_bin", "protoc-gen-go{}".format(suffix)),
         ("protoc_gen_go_grpc_bin", "protoc-gen-go-grpc{}".format(suffix)),
         ("protoc_gen_grpc_python_bin", grpc_python_target),
+        ("python_shim_bin", python_shim_target),
         ("protoc_gen_prost_bin", prost_target),
         ("protoc_gen_tonic_bin", tonic_target),
         ("protoc_gen_ts_proto_bin", ts_proto_target),
@@ -481,6 +564,23 @@ def _buffalo_toolchain_repo_impl(rctx):
         for a, t in aliases
     ])
 
+    # Filegroups exposing runtime data needed by the hermetic sandbox:
+    #   * protoc_includes — well-known .proto descriptors (timestamp, empty,
+    #     any, …) bundled with the protoc release. Staged next to protoc.exe
+    #     so its `<exe>/../include` discovery works inside the sandbox.
+    #   * grpc_python_runfiles — entire grpcio-tools/protobuf install. Used
+    #     by the python.bat / protoc-gen-grpc_python shims via PYTHONPATH.
+    extra_filegroups = (
+        "filegroup(\n" +
+        '    name = "protoc_includes",\n' +
+        '    srcs = glob(["_protoc/include/**"]),\n' +
+        ")\n\n" +
+        "filegroup(\n" +
+        '    name = "grpc_python_runfiles",\n' +
+        '    srcs = glob(["_buffalo_python_site_packages/**"]),\n' +
+        ")\n"
+    )
+
     rctx.file("BUILD.bazel", content = """package(default_visibility = ["//visibility:public"])
 
 exports_files([
@@ -488,7 +588,9 @@ exports_files([
 ])
 
 {aliases}
-""".format(exports = exports_block, aliases = aliases_block))
+
+{extra}
+""".format(exports = exports_block, aliases = aliases_block, extra = extra_filegroups))
 
 # ---------- Public repository rule ------------------------------------------
 

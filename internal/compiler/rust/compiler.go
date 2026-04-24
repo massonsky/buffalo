@@ -103,13 +103,25 @@ func (c *Compiler) Compile(ctx context.Context, files []compiler.ProtoFile, opts
 
 	if c.options.Generator == "prost" {
 		warning, err := c.validateProstCargoSetup(files)
-		if err != nil {
-			return nil, errors.Wrap(err, errors.ErrCompilation, "failed to validate Cargo integration for Rust/prost")
+		if err == nil {
+			// Cargo project (Cargo.toml + build.rs) exists alongside the
+			// protos — defer .rs generation to `cargo build` via
+			// prost_build::compile_protos. Buffalo only validates the
+			// integration in this mode.
+			result.Warnings = append(result.Warnings, warning)
+			result.Success = true
+			return result, nil
 		}
 
-		result.Warnings = append(result.Warnings, warning)
-		result.Success = true
-		return result, nil
+		// No Cargo project found: fall back to direct, hermetic generation
+		// via `protoc --prost_out=` (+ `--tonic_out=` for gRPC). This is the
+		// path used by Bazel's `buffalo_proto_compile`, where the sandbox
+		// stages `protoc-gen-prost` / `protoc-gen-tonic` next to protoc and
+		// no Cargo project lives next to the .proto sources. The validation
+		// error is downgraded to a warning so callers can see why the
+		// Cargo-integration mode was skipped.
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Rust/prost: Cargo integration not detected (%v) — generating .rs files directly via protoc-gen-prost.", err))
 	}
 
 	for _, file := range files {
@@ -213,9 +225,26 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 
 	switch c.options.Generator {
 	case "prost":
-		// Prost generation is handled through Cargo build.rs integration.
-		// Validation happens in Compile(), so by the time we are here there is
-		// nothing direct for Buffalo to invoke per-file.
+		// Direct, hermetic generation via protoc-gen-prost (+ tonic for gRPC).
+		// Reached only when no Cargo project sits next to the .proto sources;
+		// the Cargo-integration path returns early in Compile().
+		if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create output directory: %v", err)
+		}
+
+		args := c.buildProtocArgs(file, opts, "prost")
+
+		c.log.Debug("Running protoc for Rust (prost)",
+			logger.String("command", c.options.ProtocPath),
+			logger.Any("args", args))
+
+		cmd := exec.CommandContext(ctx, c.options.ProtocPath, args...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return nil, fmt.Errorf("protoc failed: %v\nOutput: %s", err, string(output))
+		}
+
+		generatedFiles = append(generatedFiles, c.GetOutputPath(file, opts))
 		return generatedFiles, nil
 
 	case "rust-protobuf":

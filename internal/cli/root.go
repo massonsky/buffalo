@@ -21,7 +21,7 @@ var (
 		Short: "🦬 Buffalo - Protobuf/gRPC Multi-Language Builder",
 		Long: `Buffalo is a cross-platform, multi-language builder for protobuf and gRPC files.
 
-It supports Python, Go, Rust, and C++ code generation with intelligent caching,
+It supports Python, Go, Rust, C++ ant TypeScript code generation with intelligent caching,
 parallel compilation, and incremental builds.`,
 		Version: version.Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {

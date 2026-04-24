@@ -66,12 +66,23 @@ func TestCompileProstFailsWithoutCargoIntegration(t *testing.T) {
 		t.Fatalf("failed to write proto file: %v", err)
 	}
 
-	comp := New(logger.New(), nil)
-	_, err := comp.Compile(context.Background(), []compiler.ProtoFile{{Path: filepath.Join("araviec", "test.proto")}}, compiler.CompileOptions{})
+	// Without a Cargo project alongside the protos, buffalo no longer treats
+	// missing Cargo integration as a hard error: it falls back to direct
+	// generation via `protoc --prost_out=` (the hermetic Bazel sandbox path).
+	// In the test environment protoc itself isn't available, so the call is
+	// expected to fail — but the error must come from protoc, NOT from the
+	// Cargo-integration validator.
+	comp := New(logger.New(), &Options{
+		ProtocPath:   "protoc",
+		Generator:    "prost",
+		GenerateGrpc: false,
+	})
+	_, err := comp.Compile(context.Background(), []compiler.ProtoFile{{Path: filepath.Join("araviec", "test.proto")}}, compiler.CompileOptions{OutputDir: filepath.Join(tempDir, "out")})
 	if err == nil {
-		t.Fatal("expected missing Cargo integration to fail")
+		// protoc happens to be on PATH — that's fine, Compile succeeded.
+		return
 	}
-	if !strings.Contains(err.Error(), "prost generator requires manual Cargo setup") {
-		t.Fatalf("expected helpful prost error, got: %v", err)
+	if strings.Contains(err.Error(), "prost generator requires manual Cargo setup") {
+		t.Fatalf("Cargo-integration check should be a soft warning, not a hard error; got: %v", err)
 	}
 }
