@@ -22,6 +22,11 @@ type CompileOptions struct {
 	// ImportPaths are additional import paths for proto files
 	ImportPaths []string
 
+	// ProtoPaths are source roots scanned for project proto files.
+	// They are distinct from import-only paths and may be stripped from generated
+	// Python module imports when PreserveProtoStructure is enabled.
+	ProtoPaths []string
+
 	// Plugins are additional plugins to use (e.g., "grpc")
 	Plugins []string
 

@@ -200,6 +200,11 @@ func TestPythonPydanticGenerator_Model_Pb2Import_NoPrefixWhenEmpty(t *testing.T)
 	assertContains(t, content, "from araviec.common.v1.resolution_pb2 import UserProfile as _ProtoClass")
 }
 
+func TestPythonSysPathSetup_UsesCwdWithPb2Prefix(t *testing.T) {
+	result := pythonSysPathSetup("generated/models/python", "araviec_apis.generated.python")
+	assertContains(t, result, "_pb2_root = _os.getcwd()\n")
+}
+
 func TestPythonPydanticGenerator_Model_EscapesQuotedDescription(t *testing.T) {
 	gen := &PythonPydanticGenerator{version: "2.0"}
 	m := testModel()

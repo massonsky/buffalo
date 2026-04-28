@@ -41,7 +41,9 @@ type Options struct {
 	// PythonPackagePrefix is the Python package prefix for imports
 	PythonPackagePrefix string
 
-	// WorkDir is the working directory prefix for imports (e.g., "myapp" -> "from myapp.generated.python import ...")
+	// WorkDir is an optional Python package prefix prepended before the output
+	// directory module path.
+	// e.g., workdir = "myapp", outputDir = "generated/python" -> "from myapp.generated.python.araviec.sys.v1 import ..."
 	WorkDir string
 
 	// ExcludeImports is a list of module prefixes to exclude from import path fixing
@@ -295,7 +297,7 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 		}
 
 		// Add generated files
-		baseName := strings.TrimSuffix(filepath.Base(file.Path), ".proto")
+		baseName := c.generatedBasePath(file, opts, protoFilePath, importPaths)
 		generatedFiles = append(generatedFiles,
 			filepath.Join(outputDir, baseName+"_pb2.py"),
 			filepath.Join(outputDir, baseName+"_pb2_grpc.py"))
@@ -318,7 +320,7 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 		}
 
 		// Add generated _pb2.py file
-		baseName := strings.TrimSuffix(filepath.Base(file.Path), ".proto")
+		baseName := c.generatedBasePath(file, opts, protoFilePath, importPaths)
 		pbFile := filepath.Join(outputDir, baseName+"_pb2.py")
 		generatedFiles = append(generatedFiles, pbFile)
 
@@ -344,6 +346,18 @@ func (c *Compiler) compileFile(ctx context.Context, file compiler.ProtoFile, opt
 	}
 
 	return generatedFiles, nil
+}
+
+func (c *Compiler) generatedBasePath(file compiler.ProtoFile, opts compiler.CompileOptions, protoFilePath string, importPaths []string) string {
+	if !opts.PreserveProtoStructure {
+		return strings.TrimSuffix(filepath.Base(file.Path), ".proto")
+	}
+
+	resolved := compiler.ResolveProtoFileArg(protoFilePath, importPaths)
+	if filepath.IsAbs(resolved) || strings.HasPrefix(filepath.ToSlash(resolved), "../") {
+		return strings.TrimSuffix(filepath.Base(file.Path), ".proto")
+	}
+	return strings.TrimSuffix(filepath.ToSlash(filepath.Clean(resolved)), ".proto")
 }
 
 // isGrpcToolsAvailable checks if grpc_tools is available in Python
@@ -437,17 +451,17 @@ func (c *Compiler) generateInitFiles(outputDir string) error {
 	})
 }
 
-// fixImports rewrites imports in generated Python files to use full paths from working directory.
-// This fixes the issue where protoc generates relative imports like "from module1.v1 import service_pb2"
-// instead of full paths like "from api.generated.python.module1.v1 import service_pb2"
+// fixImports rewrites imports in generated Python files to use absolute module paths.
+// protoc generates relative imports like "from module1.v1 import service_pb2"; this
+// rewrites them to absolute paths so the files work regardless of sys.path.
 //
-// When PreserveProtoStructure is false, files are generated flat in output directory,
-// so imports should be like "from generated.python import service_pb2".
-// When PreserveProtoStructure is true, directory structure is preserved,
-// so imports should include the full path like "from generated.python.module1.v1 import service_pb2".
+// The output directory path (e.g. "generated/python") is part of the Python module
+// path when imports are resolved from the project root.
 //
-// If WorkDir option is set, it will be prepended to the module prefix:
-// e.g., workdir = "myapp", outputDir = "generated/python" -> "from myapp.generated.python import ..."
+// WorkDir is an optional Python package prefix for projects imported from their
+// parent directory:
+//
+//	workdir="myapp", outputDir="generated/python" -> "from myapp.generated.python.module1.v1 import ..."
 func (c *Compiler) fixImports(opts compiler.CompileOptions, _ []string) error {
 	outputDir := opts.OutputDir
 
@@ -461,28 +475,9 @@ func (c *Compiler) fixImports(opts compiler.CompileOptions, _ []string) error {
 		}
 	}
 
-	// Calculate the Python module prefix from the output directory relative to working directory
-	// e.g., outputDir = "api/generated/python" -> modulePrefix = "api.generated.python"
-	relOutputDir, err := filepath.Rel(workDir, outputDir)
-	if err != nil {
-		// If we can't get relative path, try using outputDir as-is
-		relOutputDir = outputDir
-	}
-
-	// Clean the path and convert to module format
-	relOutputDir = filepath.Clean(relOutputDir)
-	// Convert path separators to dots for Python module path
-	modulePrefix := strings.ReplaceAll(relOutputDir, string(filepath.Separator), ".")
-	// Also handle forward slashes (in case of mixed paths)
-	modulePrefix = strings.ReplaceAll(modulePrefix, "/", ".")
-	// Remove leading dots if any
-	modulePrefix = strings.TrimPrefix(modulePrefix, ".")
-
-	// Prepend WorkDir if configured
-	// e.g., if workdir = "myapp" and modulePrefix = "generated.python"
-	// result should be "myapp.generated.python"
-	if c.options.WorkDir != "" {
-		modulePrefix = c.options.WorkDir + "." + modulePrefix
+	modulePrefix, relOutputDir := c.modulePrefix(workDir, outputDir)
+	if modulePrefix == "" {
+		return nil
 	}
 
 	c.log.Debug("Fixing Python imports",
@@ -492,6 +487,8 @@ func (c *Compiler) fixImports(opts compiler.CompileOptions, _ []string) error {
 		logger.String("modulePrefix", modulePrefix),
 		logger.String("configWorkDir", c.options.WorkDir),
 		logger.Bool("preserveProtoStructure", opts.PreserveProtoStructure))
+
+	stripPrefixes := protoRootModulePrefixes(workDir, opts.ProtoPaths)
 
 	// Walk through all Python files in output directory
 	return filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
@@ -528,7 +525,7 @@ func (c *Compiler) fixImports(opts compiler.CompileOptions, _ []string) error {
 			logger.String("modulePrefix", modulePrefix))
 
 		// Fix imports in this file
-		if err := c.fixFileImports(path, modulePrefix, subModulePath, opts.PreserveProtoStructure); err != nil {
+		if err := c.fixFileImports(path, modulePrefix, subModulePath, opts.PreserveProtoStructure, stripPrefixes); err != nil {
 			c.log.Warn("Failed to fix imports in file",
 				logger.String("file", path),
 				logger.String("error", err.Error()))
@@ -538,11 +535,65 @@ func (c *Compiler) fixImports(opts compiler.CompileOptions, _ []string) error {
 	})
 }
 
+func (c *Compiler) modulePrefix(projectDir, outputDir string) (string, string) {
+	rel, err := filepath.Rel(projectDir, outputDir)
+	if err != nil {
+		rel = outputDir
+	}
+	rel = filepath.Clean(rel)
+	if rel == "." {
+		return strings.Trim(c.options.WorkDir, "."), rel
+	}
+
+	outputPrefix := strings.ReplaceAll(rel, string(filepath.Separator), ".")
+	outputPrefix = strings.ReplaceAll(outputPrefix, "/", ".")
+	outputPrefix = strings.Trim(outputPrefix, ".")
+
+	workDir := strings.Trim(c.options.WorkDir, ".")
+	if workDir == "" {
+		return outputPrefix, rel
+	}
+	if outputPrefix == "" {
+		return workDir, rel
+	}
+	return workDir + "." + outputPrefix, rel
+}
+
+func protoRootModulePrefixes(projectDir string, protoPaths []string) []string {
+	prefixes := make([]string, 0, len(protoPaths))
+	seen := make(map[string]struct{})
+
+	for _, protoPath := range protoPaths {
+		rel, err := filepath.Rel(projectDir, protoPath)
+		if err != nil {
+			continue
+		}
+		rel = filepath.Clean(rel)
+		if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+
+		prefix := strings.ReplaceAll(rel, string(filepath.Separator), ".")
+		prefix = strings.ReplaceAll(prefix, "/", ".")
+		prefix = strings.Trim(prefix, ".")
+		if prefix == "" {
+			continue
+		}
+		if _, ok := seen[prefix]; ok {
+			continue
+		}
+		seen[prefix] = struct{}{}
+		prefixes = append(prefixes, prefix)
+	}
+
+	return prefixes
+}
+
 // fixFileImports rewrites imports in a single Python file
 // modulePrefix: the full module path prefix (e.g., "generated.python")
 // subModulePath: the subdirectory module path for this file (e.g., "module1.v1") when PreserveProtoStructure is true
 // preserveStructure: whether the proto directory structure is preserved
-func (c *Compiler) fixFileImports(filePath string, modulePrefix string, _ string, preserveStructure bool) error {
+func (c *Compiler) fixFileImports(filePath string, modulePrefix string, _ string, preserveStructure bool, stripPrefixes []string) error {
 	// Read the file
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -598,19 +649,8 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, _ string
 				continue
 			}
 
-			// Check if this import already has the full prefix
-			if !strings.HasPrefix(modulePath, modulePrefix) {
-				var newModulePath string
-				if preserveStructure {
-					// When structure is preserved, add full prefix + original module path
-					newModulePath = modulePrefix + "." + modulePath
-				} else {
-					// When structure is NOT preserved (flat), imports should be from the output dir directly
-					// The modulePath from protoc might include the original proto directory structure,
-					// but since files are flat, we need to use just the module prefix
-					// Example: "from module1.v1 import service_pb2" -> "from generated.python import service_pb2"
-					newModulePath = modulePrefix
-				}
+			newModulePath, changed := normalizedImportModulePath(modulePath, modulePrefix, preserveStructure, stripPrefixes)
+			if changed {
 				newLine := leadingWhitespace + fromPart + newModulePath + importPart
 				lines[i] = newLine
 				modified = true
@@ -638,22 +678,8 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, _ string
 				continue
 			}
 
-			// Check if this import already has the full prefix
-			if !strings.HasPrefix(modulePath, modulePrefix) {
-				var newModulePath string
-				if preserveStructure {
-					// When structure is preserved, add full prefix
-					// Example: "import module1.v1_pb2" -> "import generated.python.module1.v1_pb2"
-					newModulePath = modulePrefix + "." + modulePath
-				} else {
-					// When structure is NOT preserved (flat), keep the file name only
-					// Extract just the last part (actual file name)
-					// Example: "import ais_pb2" (modulePath="ais") -> "import generated.python.ais_pb2"
-					// Example: "import module1.v1_pb2" (modulePath="module1.v1") -> "import generated.python.v1_pb2"
-					parts := strings.Split(modulePath, ".")
-					fileName := parts[len(parts)-1]
-					newModulePath = modulePrefix + "." + fileName
-				}
+			newModulePath, changed := normalizedDirectImportModulePath(modulePath, modulePrefix, preserveStructure, stripPrefixes)
+			if changed {
 				newLine := leadingWhitespace + importKeyword + newModulePath + pb2Suffix
 				lines[i] = newLine
 				modified = true
@@ -676,6 +702,60 @@ func (c *Compiler) fixFileImports(filePath string, modulePrefix string, _ string
 	}
 
 	return nil
+}
+
+func normalizedImportModulePath(modulePath, modulePrefix string, preserveStructure bool, stripPrefixes []string) (string, bool) {
+	if !preserveStructure {
+		if modulePath == modulePrefix {
+			return modulePath, false
+		}
+		return modulePrefix, true
+	}
+
+	if hasModulePrefix(modulePath, modulePrefix) {
+		suffix := strings.TrimPrefix(modulePath, modulePrefix+".")
+		stripped := stripProtoRootPrefix(suffix, stripPrefixes)
+		if stripped == suffix {
+			return modulePath, false
+		}
+		return modulePrefix + "." + stripped, true
+	}
+
+	return modulePrefix + "." + stripProtoRootPrefix(modulePath, stripPrefixes), true
+}
+
+func normalizedDirectImportModulePath(modulePath, modulePrefix string, preserveStructure bool, stripPrefixes []string) (string, bool) {
+	if preserveStructure {
+		return normalizedImportModulePath(modulePath, modulePrefix, true, stripPrefixes)
+	}
+
+	if hasModulePrefix(modulePath, modulePrefix) {
+		return modulePath, false
+	}
+
+	// When structure is NOT preserved (flat), keep the file name only.
+	parts := strings.Split(modulePath, ".")
+	fileName := parts[len(parts)-1]
+	return modulePrefix + "." + fileName, true
+}
+
+func stripProtoRootPrefix(modulePath string, stripPrefixes []string) string {
+	for _, prefix := range stripPrefixes {
+		if modulePath == prefix {
+			return modulePath
+		}
+		if strings.HasPrefix(modulePath, prefix+".") {
+			return strings.TrimPrefix(modulePath, prefix+".")
+		}
+	}
+	return modulePath
+}
+
+func hasModulePrefix(modulePath, modulePrefix string) bool {
+	if modulePrefix == "" {
+		return true
+	}
+	return modulePath == modulePrefix || strings.HasPrefix(modulePath, modulePrefix+".")
 }
 
 // isExternalModule checks if the module path is an external dependency that should not be modified

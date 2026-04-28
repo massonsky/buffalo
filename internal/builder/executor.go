@@ -378,6 +378,7 @@ func (e *executor) compileFile(ctx context.Context, file *ProtoFile, language st
 	compilerOpts := compiler.CompileOptions{
 		OutputDir:              outputDir,
 		ImportPaths:            plan.ImportPaths,
+		ProtoPaths:             e.config.Proto.Paths,
 		Verbose:                plan.Options.Verbose,
 		PreserveProtoStructure: e.config.Output.PreserveProtoStructure,
 		ProjectDir:             e.config.ConfigDir,
@@ -476,6 +477,7 @@ func (e *executor) compileTypescriptDependencyProto(ctx context.Context, plan *E
 	compilerOpts := compiler.CompileOptions{
 		OutputDir:              e.config.GetOutputDir("typescript"),
 		ImportPaths:            plan.ImportPaths,
+		ProtoPaths:             e.config.Proto.Paths,
 		Verbose:                plan.Options.Verbose,
 		PreserveProtoStructure: e.config.Output.PreserveProtoStructure,
 		ProjectDir:             e.config.ConfigDir,
