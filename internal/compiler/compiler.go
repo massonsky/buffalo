@@ -94,40 +94,38 @@ func MergeImportPaths(opts CompileOptions, file ProtoFile) []string {
 }
 
 // ResolveProtoFileArg returns the proto file path that should be passed to
-// protoc as the input argument, expressed relative to the longest matching
-// --proto_path entry. This avoids the "Input is shadowed in the --proto_path"
-// error when the file is reachable via multiple paths (e.g. the file is given
-// as `proto/foo.proto` while `--proto_path=proto` is also passed, making the
-// file also reachable as `foo.proto`).
+// protoc as the input argument, expressed relative to the first matching
+// --proto_path entry. Matching protoc's import path order is important because
+// the resolved input name becomes the FileDescriptorProto name embedded in
+// generated code; choosing a later, narrower root can make generated files
+// register a different descriptor name than dependent protos import.
 //
 // If no import path is a prefix of filePath, filePath is returned unchanged.
 func ResolveProtoFileArg(filePath string, importPaths []string) string {
-	clean := filepath.ToSlash(filepath.Clean(filePath))
-	bestRel := ""
-	bestLen := -1
+	cleanPath := filepath.Clean(filePath)
+	clean := filepath.ToSlash(cleanPath)
 	for _, p := range importPaths {
 		if p == "" {
 			continue
 		}
-		base := filepath.ToSlash(filepath.Clean(p))
+		basePath := filepath.Clean(p)
+		if basePath == "." {
+			if !filepath.IsAbs(cleanPath) {
+				return clean
+			}
+			continue
+		}
+
+		base := filepath.ToSlash(basePath)
 		if base == "." {
 			continue
 		}
 		prefix := base + "/"
 		if strings.HasPrefix(clean, prefix) {
-			if len(base) > bestLen {
-				bestLen = len(base)
-				bestRel = strings.TrimPrefix(clean, prefix)
-			}
+			return strings.TrimPrefix(clean, prefix)
 		} else if clean == base {
-			if len(base) > bestLen {
-				bestLen = len(base)
-				bestRel = filepath.Base(clean)
-			}
+			return filepath.Base(clean)
 		}
 	}
-	if bestRel == "" {
-		return filePath
-	}
-	return bestRel
+	return filePath
 }
