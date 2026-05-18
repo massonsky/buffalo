@@ -66,6 +66,41 @@ def _read_output_dir(config_path: str) -> str:
     return "generated"
 
 
+def _copy_new_files(src_dir: str, dst_dir: str) -> tuple[int, int]:
+    copied = 0
+    skipped = 0
+    os.makedirs(dst_dir, exist_ok=True)
+
+    for current_root, dirnames, filenames in os.walk(src_dir):
+        rel_root = os.path.relpath(current_root, src_dir)
+        dst_root = dst_dir if rel_root == "." else os.path.join(dst_dir, rel_root)
+        os.makedirs(dst_root, exist_ok=True)
+
+        for dirname in dirnames:
+            os.makedirs(os.path.join(dst_root, dirname), exist_ok=True)
+
+        for filename in filenames:
+            src_file = os.path.join(current_root, filename)
+            dst_file = os.path.join(dst_root, filename)
+            if os.path.exists(dst_file):
+                skipped += 1
+                continue
+            shutil.copy2(src_file, dst_file)
+            copied += 1
+
+    return copied, skipped
+
+
+def _run_bazel_build(root: str, target: str) -> None:
+    if not target:
+        return
+    cmd = ["bazel", "build", target]
+    print("buffalo: build =", " ".join(cmd))
+    result = subprocess.run(cmd, cwd=root)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
 def _prepend_grpc_python_plugin_dir() -> None:
     try:
         import importlib.resources
@@ -128,6 +163,7 @@ def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--config", default="buffalo.yaml")
     parser.add_argument("--copy-from-bazel-bin", default="")
+    parser.add_argument("--build-target", default="")
     known, _ = parser.parse_known_args(sys.argv[1:])
 
     if known.copy_from_bazel_bin:
@@ -142,23 +178,18 @@ def main():
         print("buffalo: source =", src_dir)
         print("buffalo: target =", dst_dir)
 
+        _run_bazel_build(root, known.build_target)
+
         if not os.path.isdir(src_dir):
             print("buffalo: error: source directory not found:", src_dir)
             print("buffalo: hint: build compile target first (e.g. //:buffalo_compile)")
             sys.exit(1)
 
-        if os.path.exists(dst_dir):
-            shutil.rmtree(dst_dir)
-        os.makedirs(dst_dir, exist_ok=True)
-        for entry in os.listdir(src_dir):
-            src_entry = os.path.join(src_dir, entry)
-            dst_entry = os.path.join(dst_dir, entry)
-            if os.path.isdir(src_entry):
-                shutil.copytree(src_entry, dst_entry)
-            else:
-                shutil.copy2(src_entry, dst_entry)
-
-        print("buffalo: copied generated files from bazel-bin to config output dir")
+        copied, skipped = _copy_new_files(src_dir, dst_dir)
+        print(
+            "buffalo: copied generated files from bazel-bin to config output dir "
+            f"(copied={copied}, skipped_existing={skipped})"
+        )
         sys.exit(0)
 
     _prepend_protoc_shim_dir()

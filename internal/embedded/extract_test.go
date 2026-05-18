@@ -216,12 +216,13 @@ func TestBazelRules_RunTargetUsesHermeticCompileOutput(t *testing.T) {
 	for _, want := range []string{
 		`srcs = None`,
 		`copy_from_bazel_bin = None`,
-		`copy_from_bazel_bin = srcs != None or compile_target != None`,
-		`buffalo_proto_compile(`,
-		`name = compile_name`,
-		`compile_target = ":" + compile_name`,
-		`data.append(compile_target)`,
-	} {
+			`copy_from_bazel_bin = srcs != None or compile_target != None`,
+			`buffalo_proto_compile(`,
+			`name = compile_name`,
+			`compile_target = "//{}:{}".format(package_name, compile_name) if package_name else "//:{}".format(compile_name)`,
+			`args.extend(["--build-target", compile_target])`,
+			`data.append(compile_target)`,
+		} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("buffalo_proto_gen should build a hermetic compile target before bazel run copy mode: missing %q", want)
 		}
@@ -233,13 +234,28 @@ func TestBazelRules_RunTargetUsesHermeticCompileOutput(t *testing.T) {
 	}
 	runnerContent := string(runner)
 	for _, want := range []string{
-		`path or "generated"`,
-		`--copy-from-bazel-bin`,
-		`src_dir = os.path.join(root, "bazel-bin", known.copy_from_bazel_bin)`,
-		`dst_rel = _read_output_dir(config_path)`,
+			`path or "generated"`,
+			`--copy-from-bazel-bin`,
+			`parser.add_argument("--build-target", default="")`,
+			`def _run_bazel_build(root: str, target: str) -> None:`,
+			`cmd = ["bazel", "build", target]`,
+			`_run_bazel_build(root, known.build_target)`,
+			`src_dir = os.path.join(root, "bazel-bin", known.copy_from_bazel_bin)`,
+			`dst_rel = _read_output_dir(config_path)`,
+		`def _copy_new_files(src_dir: str, dst_dir: str) -> tuple[int, int]:`,
+		`if os.path.exists(dst_file):`,
+		`skipped_existing=`,
 	} {
 		if !strings.Contains(runnerContent, want) {
 			t.Fatalf("gen_runner.py should copy Bazel output into config output dir: missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		`shutil.rmtree(dst_dir)`,
+		`shutil.copytree(src_entry, dst_entry)`,
+	} {
+		if strings.Contains(runnerContent, forbidden) {
+			t.Fatalf("gen_runner.py must not replace existing config output dir contents: found %q", forbidden)
 		}
 	}
 }

@@ -467,11 +467,13 @@ def buffalo_proto_gen(
             out = out,
             visibility = ["//visibility:private"],
         )
-        compile_target = ":" + compile_name
+        compile_target = "//{}:{}".format(package_name, compile_name) if package_name else "//:{}".format(compile_name)
 
     args = ["--config", config]
     if copy_from_bazel_bin:
         args.extend(["--copy-from-bazel-bin", compile_out])
+        if compile_target:
+            args.extend(["--build-target", compile_target])
     for lang in languages:
         args.extend(["-l", lang])
     for p in proto_paths:
