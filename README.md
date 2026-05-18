@@ -104,6 +104,9 @@ Buffalo встраивается в Bazel build graph как нативное п
 ```bash
 # Инициализация — извлекает rules_buffalo в .buffalo/bazel/rules_buffalo/
 buffalo init --bazel
+
+# С примером proto-файла
+buffalo init --examples
 ```
 
 Добавь в `MODULE.bazel`:
@@ -179,5 +182,4 @@ bazel run //:buffalo_gen -- --verbose
 - Bugs/Ideas: [GitHub Issues](https://github.com/massonsky/buffalo/issues)
 - Discussions: [GitHub Discussions](https://github.com/massonsky/buffalo/discussions)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-
 

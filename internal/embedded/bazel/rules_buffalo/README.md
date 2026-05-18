@@ -2,12 +2,10 @@
 
 Bazel rules for [Buffalo](https://github.com/massonsky/buffalo) — multi-language protobuf/gRPC code generator.
 
-**Fully hermetic for the default Go/Python/C++ toolchain.** Bazel itself
-downloads `protoc`, the Go plugins, the Python gRPC plugin (with its own
-hermetic Python interpreter), and the Buffalo CLI. **No host `go`, no host
-`python`, no host `protoc`, no host plugins are required.** Rust generation
-also runs hermetically, but the Rust plugin binaries must be declared through
-`rules_rust` / `crate_universe`.
+**Fully hermetic.** Bazel itself downloads `protoc`, the Go plugins, the Python
+gRPC plugin (with its own hermetic Python interpreter), the Rust prost/tonic
+generators, TypeScript support when enabled, and the Buffalo CLI. **No host
+`go`, no host `python`, no host `protoc`, no host plugins are required.**
 
 ## Setup (bzlmod)
 
@@ -191,16 +189,16 @@ Returned by `buffalo_proto_compile`:
 | Go | ✅ Hermetic | `protoc-gen-go` + `protoc-gen-go-grpc` |
 | Python | ✅ Hermetic | `grpc_tools.protoc` via hermetic CPython |
 | C++ | ✅ Hermetic | built into `protoc` |
-| Rust | ✅ Hermetic via `rules_rust` (opt-in) | `protoc-gen-prost` + `protoc-gen-tonic` |
+| Rust | ✅ Hermetic (opt-in) | `protoc-gen-prost` + `protoc-gen-tonic` |
 | TypeScript | ✅ Hermetic (opt-in) | `ts-proto` via hermetic Node.js |
 
 ### Enabling Rust
 
 Rust is opt-in to keep download size minimal for projects that don't use it.
-`buffalo.rust()` records the desired Rust plugin versions, but the actual
-`protoc-gen-prost` and `protoc-gen-tonic` binaries are built from crates.io by
-`rules_rust` / `crate_universe`. Add both the Buffalo tag and a separate
-`crate_universe` extension for the binary plugins:
+`buffalo.rust()` enables the hermetic `protoc-gen-prost` and
+`protoc-gen-tonic` binaries bundled by `rules_buffalo` through its internal
+`rules_rust` / `crate_universe` setup. Consuming projects do not need to declare
+`rules_rust`, `crate_universe`, or a separate `buffalo_rust_plugins` repo.
 
 ```python
 # MODULE.bazel
@@ -210,30 +208,9 @@ buffalo.rust(
     protoc_gen_tonic_version = "0.4.1",
 )
 use_repo(buffalo, "buffalo_toolchain")
-
-# Requires a rules_rust bazel_dep compatible with your workspace.
-bindeps = use_extension("@rules_rust//crate_universe:extension.bzl", "crate")
-bindeps.spec(
-    package = "protoc-gen-prost",
-    version = "0.4.0",
-)
-bindeps.spec(
-    package = "protoc-gen-tonic",
-    version = "0.4.1",
-)
-bindeps.annotation(
-    crate = "protoc-gen-prost",
-    gen_all_binaries = True,
-)
-bindeps.annotation(
-    crate = "protoc-gen-tonic",
-    gen_all_binaries = True,
-)
-bindeps.from_specs(name = "buffalo_rust_plugins")
-use_repo(bindeps, "buffalo_rust_plugins")
 ```
 
-Then pass the generated binary labels to `buffalo_proto_compile`:
+Then `buffalo_proto_compile` can use Rust without per-target plugin labels:
 
 ```python
 load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_compile")
@@ -243,14 +220,13 @@ buffalo_proto_compile(
     srcs = glob(["proto/**/*.proto"]),
     config = "buffalo.yaml",
     languages = ["rust"],
-    protoc_gen_prost = "@buffalo_rust_plugins//:protoc-gen-prost__protoc-gen-prost",
-    protoc_gen_tonic = "@buffalo_rust_plugins//:protoc-gen-tonic__protoc-gen-tonic",
 )
 ```
 
-If the labels are omitted, `rules_buffalo` provides stub targets that fail with
-an error explaining which labels to pass. This keeps non-Rust builds working
-without forcing every project to download and build Rust plugin crates.
+Without `buffalo.rust()`, `rules_buffalo` provides stub targets so non-Rust
+builds work without forcing every project to download and build Rust plugin
+crates. To use custom Rust generator versions, provide your own binary labels
+via `buffalo.rust(protoc_gen_prost = ..., protoc_gen_tonic = ...)`.
 
 ### Enabling TypeScript
 

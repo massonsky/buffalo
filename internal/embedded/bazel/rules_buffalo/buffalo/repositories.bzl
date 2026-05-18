@@ -1,10 +1,9 @@
 """Hermetic repository rule for the Buffalo + protoc toolchain.
 
 Bazel itself downloads everything required to compile .proto files for Go,
-Python and C++ — no host tools are required. Rust generation is also hermetic,
-but `protoc-gen-prost` and `protoc-gen-tonic` must be supplied by labels built
-with rules_rust `crate_universe`. Versions and sha256 integrity are configurable
-via the `buffalo.toolchain(...)` tag in the consuming MODULE.bazel.
+Python, C++ and Rust — no host tools are required. Versions and sha256 integrity
+are configurable via the `buffalo.toolchain(...)` tag in the consuming
+MODULE.bazel.
 
 Provisioned tools (linux/darwin amd64+arm64, windows amd64):
 
@@ -15,8 +14,8 @@ Provisioned tools (linux/darwin amd64+arm64, windows amd64):
                               Python interpreter from rules_python
   * buffalo CLI             — massonsky/buffalo releases
 
-Optional Rust plugins (declare with rules_rust crate_universe and pass labels to
-buffalo_proto_compile):
+Optional Rust plugins (enabled by `buffalo.rust()` and built by rules_buffalo's
+internal rules_rust/crate_universe setup):
 
   * protoc-gen-prost        — crates.io package protoc-gen-prost
   * protoc-gen-tonic        — crates.io package protoc-gen-tonic
@@ -68,6 +67,13 @@ def _local_tool_from_env(rctx, tool_name, suffix):
     output_name = "{}{}".format(tool_name, suffix)
     rctx.symlink(src, output_name)
     return rctx.path(output_name)
+
+def _stage_label_tool(rctx, label_file, tool_name, suffix):
+    if not label_file:
+        return None
+    output_name = "{}{}".format(tool_name, suffix)
+    rctx.symlink(rctx.path(label_file), output_name)
+    return output_name
 
 
 # ---------- Platform detection ----------------------------------------------
@@ -486,25 +492,31 @@ def _buffalo_toolchain_repo_impl(rctx):
     # IMPORTANT: neoeinstein/protoc-gen-prost does not publish prebuilt release
     # binaries on GitHub, so we cannot fetch them via http_archive. The
     # canonical hermetic path is to build the plugins from crates.io source
-    # using rules_rust `crate_universe`, then pass the resulting binary labels
-    # to `buffalo_proto_compile` via its `protoc_gen_prost` / `protoc_gen_tonic`
-    # attributes. See onboard-uxv-systems/MODULE.bazel for an example wiring
-    # `@buffalo_rust_plugins//:protoc-gen-{prost,tonic}__protoc-gen-{prost,tonic}`.
+    # using rules_rust `crate_universe` inside rules_buffalo's own MODULE.bazel.
     #
-    # The toolchain itself only emits stubs for these targets so existing
-    # default attribute values keep resolving when Rust is not used.
-    prost_target = _emit_disabled_stub(
-        rctx,
-        p,
-        "protoc-gen-prost",
-        "protoc-gen-prost is provisioned via rules_rust crate_universe; pass `protoc_gen_prost = \"@buffalo_rust_plugins//:protoc-gen-prost__protoc-gen-prost\"` (or your own label) to buffalo_proto_compile.",
-    )
-    tonic_target = _emit_disabled_stub(
-        rctx,
-        p,
-        "protoc-gen-tonic",
-        "protoc-gen-tonic is provisioned via rules_rust crate_universe; pass `protoc_gen_tonic = \"@buffalo_rust_plugins//:protoc-gen-tonic__protoc-gen-tonic\"` (or your own label) to buffalo_proto_compile.",
-    )
+    # When buffalo.rust() is used, the extension passes crate_universe binary
+    # labels into this repository rule and we stage them under the canonical
+    # PATH names expected by protoc/Buffalo. Without buffalo.rust(), emit stubs
+    # so non-Rust builds do not have to define the Rust plugin repository.
+    prost_target = None
+    tonic_target = None
+    if rctx.attr.enable_rust:
+        prost_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_prost, "protoc-gen-prost", suffix)
+        tonic_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_tonic, "protoc-gen-tonic", suffix)
+    if not prost_target:
+        prost_target = _emit_disabled_stub(
+            rctx,
+            p,
+            "protoc-gen-prost",
+            "protoc-gen-prost is not wired. Add buffalo.rust() to MODULE.bazel to enable rules_buffalo's bundled Rust plugin.",
+        )
+    if not tonic_target:
+        tonic_target = _emit_disabled_stub(
+            rctx,
+            p,
+            "protoc-gen-tonic",
+            "protoc-gen-tonic is not wired. Add buffalo.rust() to MODULE.bazel to enable rules_buffalo's bundled Rust plugin.",
+        )
 
     # --- Optional: TypeScript plugin (opt-in via buffalo.typescript() tag)
     ts_proto_target = None
@@ -610,6 +622,8 @@ buffalo_toolchain_repo = repository_rule(
         "protoc_gen_prost_version": attr.string(default = DEFAULT_PROTOC_GEN_PROST_VERSION),
         "protoc_gen_tonic_version": attr.string(default = DEFAULT_PROTOC_GEN_TONIC_VERSION),
         "protoc_gen_prost_repo": attr.string(default = DEFAULT_PROTOC_GEN_PROST_REPO),
+        "protoc_gen_prost": attr.label(allow_single_file = True),
+        "protoc_gen_tonic": attr.label(allow_single_file = True),
         "enable_typescript": attr.bool(default = False),
         "node_version": attr.string(default = DEFAULT_NODE_VERSION),
         "ts_proto_version": attr.string(default = DEFAULT_TS_PROTO_VERSION),
@@ -631,5 +645,5 @@ buffalo_toolchain_repo = repository_rule(
         ),
     },
     environ = ["PATH", "HOME", "USERPROFILE", "TMP", "TEMP"],
-    doc = "Hermetically provisions Buffalo CLI, protoc, and Go/Python plugins. Rust plugin binaries must be supplied via rules_rust crate_universe labels.",
+    doc = "Hermetically provisions Buffalo CLI, protoc, and Go/Python/Rust plugins.",
 )

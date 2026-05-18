@@ -5,6 +5,7 @@ module(
 )
 
 bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "rules_rust", version = "0.70.0")
 
 # Hermetic Python interpreter used by the buffalo toolchain to install
 # grpcio-tools (Python gRPC plugin) without depending on host Python.
@@ -15,6 +16,34 @@ python.toolchain(
     ignore_root_user_error = True,
 )
 use_repo(python, "python_3_12_host")
+
+# Hermetic Rust proto generator binaries used by buffalo.rust().
+# Kept inside rules_buffalo so consuming projects do not need to declare
+# rules_rust/crate_universe boilerplate just to generate Rust protobuf code.
+rust_plugins = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+rust_plugins.spec(
+    package = "protoc-gen-prost",
+    version = "=0.4.0",
+    artifact = "bin",
+)
+rust_plugins.spec(
+    package = "protoc-gen-tonic",
+    version = "=0.4.1",
+    artifact = "bin",
+)
+rust_plugins.annotation(
+    crate = "protoc-gen-prost",
+    gen_all_binaries = True,
+)
+rust_plugins.annotation(
+    crate = "protoc-gen-tonic",
+    gen_all_binaries = True,
+)
+rust_plugins.from_specs(
+    name = "buffalo_rust_plugins",
+    host_tools = "@rust_host_tools_nightly",
+)
+use_repo(rust_plugins, "buffalo_rust_plugins")
 
 # Hermetic Buffalo + protoc + Go/Python plugin toolchain.
 buffalo = use_extension("//buffalo:extensions.bzl", "buffalo")

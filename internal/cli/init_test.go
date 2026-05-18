@@ -9,10 +9,10 @@ import (
 
 func TestRunInitKeepsExistingConfigAndContinues(t *testing.T) {
 	runInTempDir(t)
-	oldForce, oldBazel := initForce, initBazel
-	initForce, initBazel = false, true
+	oldForce, oldBazel, oldExamples := initForce, initBazel, initExamples
+	initForce, initBazel, initExamples = false, true, false
 	t.Cleanup(func() {
-		initForce, initBazel = oldForce, oldBazel
+		initForce, initBazel, initExamples = oldForce, oldBazel, oldExamples
 	})
 
 	existingConfig := "project:\n  name: existing\n"
@@ -32,7 +32,6 @@ func TestRunInitKeepsExistingConfigAndContinues(t *testing.T) {
 		t.Fatalf("runInit rewrote existing config:\n%s", data)
 	}
 	for _, path := range []string{
-		filepath.Join("protos", "example.proto"),
 		filepath.Join("generated"),
 		filepath.Join(".buffalo", "proto", "buffalo", "validate", "validate.proto"),
 		filepath.Join(".buffalo", "bazel", "rules_buffalo", "buffalo", "defs.bzl"),
@@ -41,14 +40,17 @@ func TestRunInitKeepsExistingConfigAndContinues(t *testing.T) {
 			t.Fatalf("expected init artifact %s: %v", path, err)
 		}
 	}
+	if _, err := os.Stat("protos"); !os.IsNotExist(err) {
+		t.Fatalf("init without --examples should not create protos directory, stat err: %v", err)
+	}
 }
 
 func TestRunInitForceOverwritesExistingConfig(t *testing.T) {
 	runInTempDir(t)
-	oldForce, oldBazel := initForce, initBazel
-	initForce, initBazel = true, false
+	oldForce, oldBazel, oldExamples := initForce, initBazel, initExamples
+	initForce, initBazel, initExamples = true, false, false
 	t.Cleanup(func() {
-		initForce, initBazel = oldForce, oldBazel
+		initForce, initBazel, initExamples = oldForce, oldBazel, oldExamples
 	})
 
 	if err := os.WriteFile("buffalo.yaml", []byte("project:\n  name: existing\n"), 0o600); err != nil {
@@ -65,6 +67,28 @@ func TestRunInitForceOverwritesExistingConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "name: my-proto-project") {
 		t.Fatalf("--force should rewrite config with defaults:\n%s", data)
+	}
+}
+
+func TestRunInitExamplesCreatesProtoExample(t *testing.T) {
+	runInTempDir(t)
+	oldForce, oldBazel, oldExamples := initForce, initBazel, initExamples
+	initForce, initBazel, initExamples = false, false, true
+	t.Cleanup(func() {
+		initForce, initBazel, initExamples = oldForce, oldBazel, oldExamples
+	})
+
+	if err := runInit(nil, nil); err != nil {
+		t.Fatalf("runInit failed: %v", err)
+	}
+
+	examplePath := filepath.Join("protos", "examples.proto")
+	data, err := os.ReadFile(examplePath)
+	if err != nil {
+		t.Fatalf("expected --examples to create %s: %v", examplePath, err)
+	}
+	if !strings.Contains(string(data), "service ExampleService") {
+		t.Fatalf("example proto does not contain expected service:\n%s", data)
 	}
 }
 

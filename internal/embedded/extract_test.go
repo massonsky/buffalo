@@ -181,6 +181,62 @@ func TestBazelRules_DefaultBuffaloReleaseIsTemplatedAndPosixWrapperQuoting(t *te
 	}
 }
 
+func TestBazelRules_RustPluginsAreWiredThroughBuffaloRust(t *testing.T) {
+	moduleFile, err := BazelFS.ReadFile("bazel/rules_buffalo/MODULE.bazel")
+	if err != nil {
+		t.Fatalf("failed to read embedded rules_buffalo MODULE.bazel: %v", err)
+	}
+	moduleContent := string(moduleFile)
+	for _, want := range []string{
+		`bazel_dep(name = "rules_rust", version = "0.70.0")`,
+		`rust_plugins = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")`,
+		`package = "protoc-gen-prost"`,
+		`package = "protoc-gen-tonic"`,
+		`artifact = "bin"`,
+		`rust_plugins.from_specs(`,
+		`name = "buffalo_rust_plugins"`,
+		`use_repo(rust_plugins, "buffalo_rust_plugins")`,
+	} {
+		if !strings.Contains(moduleContent, want) {
+			t.Fatalf("MODULE.bazel is missing bundled Rust plugin dependency %q", want)
+		}
+	}
+
+	extensions, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/extensions.bzl")
+	if err != nil {
+		t.Fatalf("failed to read embedded extensions.bzl: %v", err)
+	}
+	extContent := string(extensions)
+	for _, want := range []string{
+		`"protoc_gen_prost": attr.label(`,
+		`default = Label("@buffalo_rust_plugins//:protoc-gen-prost__protoc-gen-prost")`,
+		`"protoc_gen_tonic": attr.label(`,
+		`default = Label("@buffalo_rust_plugins//:protoc-gen-tonic__protoc-gen-tonic")`,
+		`protoc_gen_prost = cfg.protoc_gen_prost`,
+		`protoc_gen_tonic = cfg.protoc_gen_tonic`,
+	} {
+		if !strings.Contains(extContent, want) {
+			t.Fatalf("extensions.bzl is missing Rust plugin wiring %q", want)
+		}
+	}
+
+	repositories, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/repositories.bzl")
+	if err != nil {
+		t.Fatalf("failed to read embedded repositories.bzl: %v", err)
+	}
+	repoContent := string(repositories)
+	for _, want := range []string{
+		`prost_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_prost, "protoc-gen-prost", suffix)`,
+		`tonic_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_tonic, "protoc-gen-tonic", suffix)`,
+		`"protoc_gen_prost": attr.label(allow_single_file = True)`,
+		`"protoc_gen_tonic": attr.label(allow_single_file = True)`,
+	} {
+		if !strings.Contains(repoContent, want) {
+			t.Fatalf("repositories.bzl is missing Rust plugin staging %q", want)
+		}
+	}
+}
+
 func TestExtractBazelRules_RendersBuffaloVersionTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 

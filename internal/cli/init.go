@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	initForce bool
-	initBazel bool
+	initForce    bool
+	initBazel    bool
+	initExamples bool
 
 	initCmd = &cobra.Command{
 		Use:   "init",
@@ -20,10 +21,13 @@ var (
 		Long: `Initialize a new Buffalo project with default configuration.
 
 This will create a buffalo.yaml configuration file in the current directory
-with sensible defaults.
+with sensible defaults. Existing buffalo.yaml files are reused unless --force
+is passed.
 
 Use --bazel to also initialize Bazel integration: extracts rules_buffalo
-into .buffalo/bazel/rules_buffalo/ for use with bzlmod.`,
+into .buffalo/bazel/rules_buffalo/ for use with bzlmod.
+
+Use --examples to also create protos/examples.proto.`,
 		RunE: runInit,
 	}
 )
@@ -32,6 +36,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "overwrite existing config file")
 	initCmd.Flags().BoolVar(&initBazel, "bazel", false, "initialize Bazel integration (rules_buffalo)")
+	initCmd.Flags().BoolVar(&initExamples, "examples", false, "create example proto files")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -140,8 +145,13 @@ logging:
 		}
 	}
 
-	// Create default directory structure
-	dirs := []string{"./protos", "./generated"}
+	// Create default directory structure. The proto source directory is created
+	// only when examples are requested; otherwise init leaves source layout to
+	// the project.
+	dirs := []string{"./generated"}
+	if initExamples {
+		dirs = append(dirs, "./protos")
+	}
 	for _, dir := range dirs {
 		if err := utils.EnsureDir(dir); err != nil {
 			log.Warn("Failed to create directory", logger.String("dir", dir), logger.Any("error", err))
@@ -151,8 +161,8 @@ logging:
 	}
 
 	// Create example proto file
-	exampleProto := filepath.Join("protos", "example.proto")
-	if !utils.FileExists(exampleProto) {
+	if initExamples {
+		exampleProto := filepath.Join("protos", "examples.proto")
 		exampleContent := `syntax = "proto3";
 
 package example;
