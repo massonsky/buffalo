@@ -397,17 +397,26 @@ Example:
 
 def buffalo_proto_gen(
     name,
+    srcs = None,
     config = "buffalo.yaml",
     languages = [],
     proto_paths = [],
     import_paths = [],
-    copy_from_bazel_bin = False,
+    deps = [],
+    out = "generated",
+    copy_from_bazel_bin = None,
     compile_target = None,
-    compile_out = "generated",
+    compile_out = None,
     extra_args = [],
     visibility = None,
     **kwargs):
     """Creates a `bazel run` target that invokes Buffalo in the workspace root.
+
+    By default, when `srcs` are provided, this macro creates a hermetic
+    `buffalo_proto_compile` target and `bazel run` copies its Bazel output into
+    the source tree path configured by `output.base_dir` in `buffalo.yaml`.
+    Without `srcs` or `compile_target`, it falls back to invoking `buffalo build`
+    from PATH for compatibility with older BUILD files.
 
     Generated code goes into the source tree (e.g., generated/).
     Useful for development workflows where downstream targets
@@ -419,13 +428,46 @@ def buffalo_proto_gen(
 
     Args:
         name: Target name.
+        srcs: Proto sources. When set, a private `<name>_compile` target is created.
         config: Path to buffalo.yaml (relative to workspace root).
         languages: List of target languages (e.g., ["go", "rust"]).
         proto_paths: Directories to search for proto imports.
         import_paths: Additional import-only directories passed to Buffalo via -I.
+        deps: Additional proto file dependencies for the compile target.
+        out: Bazel tree artifact name for the generated compile target.
+        copy_from_bazel_bin: Force copy mode. Defaults to true when `srcs` or
+            `compile_target` is set.
+        compile_target: Existing compile target to build before copying.
+        compile_out: Path under bazel-bin to copy from. Defaults to the package
+            path plus `out`.
         extra_args: Additional CLI arguments for `buffalo build`.
         visibility: Bazel visibility.
     """
+    if copy_from_bazel_bin == None:
+        copy_from_bazel_bin = srcs != None or compile_target != None
+
+    if srcs != None and compile_target != None:
+        fail("buffalo_proto_gen: use either srcs or compile_target, not both")
+
+    package_name = native.package_name()
+    if compile_out == None:
+        compile_out = out if package_name == "" else package_name + "/" + out
+
+    if srcs != None:
+        compile_name = name + "_compile"
+        buffalo_proto_compile(
+            name = compile_name,
+            srcs = srcs,
+            config = config,
+            languages = languages,
+            proto_paths = proto_paths,
+            import_paths = import_paths,
+            deps = deps,
+            out = out,
+            visibility = ["//visibility:private"],
+        )
+        compile_target = ":" + compile_name
+
     args = ["--config", config]
     if copy_from_bazel_bin:
         args.extend(["--copy-from-bazel-bin", compile_out])

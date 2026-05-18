@@ -190,7 +190,8 @@ func TestBazelRules_DefaultBazelOutputMatchesInitConfig(t *testing.T) {
 	for _, want := range []string{
 		`default = "generated"`,
 		`Keep this aligned with output.base_dir in buffalo.yaml.`,
-		`compile_out = "generated"`,
+		`compile_out = None`,
+		`compile_out = out if package_name == "" else package_name + "/" + out`,
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("defs.bzl should keep Bazel output aligned with Buffalo config output: missing %q", want)
@@ -203,6 +204,43 @@ func TestBazelRules_DefaultBazelOutputMatchesInitConfig(t *testing.T) {
 	}
 	if !strings.Contains(string(readme), `out = "generated"`) {
 		t.Fatal("rules_buffalo README should show out matching output.base_dir")
+	}
+}
+
+func TestBazelRules_RunTargetUsesHermeticCompileOutput(t *testing.T) {
+	defs, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/defs.bzl")
+	if err != nil {
+		t.Fatalf("failed to read embedded defs.bzl: %v", err)
+	}
+	content := string(defs)
+	for _, want := range []string{
+		`srcs = None`,
+		`copy_from_bazel_bin = None`,
+		`copy_from_bazel_bin = srcs != None or compile_target != None`,
+		`buffalo_proto_compile(`,
+		`name = compile_name`,
+		`compile_target = ":" + compile_name`,
+		`data.append(compile_target)`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("buffalo_proto_gen should build a hermetic compile target before bazel run copy mode: missing %q", want)
+		}
+	}
+
+	runner, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/gen_runner.py")
+	if err != nil {
+		t.Fatalf("failed to read embedded gen_runner.py: %v", err)
+	}
+	runnerContent := string(runner)
+	for _, want := range []string{
+		`path or "generated"`,
+		`--copy-from-bazel-bin`,
+		`src_dir = os.path.join(root, "bazel-bin", known.copy_from_bazel_bin)`,
+		`dst_rel = _read_output_dir(config_path)`,
+	} {
+		if !strings.Contains(runnerContent, want) {
+			t.Fatalf("gen_runner.py should copy Bazel output into config output dir: missing %q", want)
+		}
 	}
 }
 

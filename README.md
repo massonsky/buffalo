@@ -136,6 +136,18 @@ buffalo_proto_compile(
 
 Для генерации в source tree (dev-workflow):
 
+```python
+load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_gen")
+
+buffalo_proto_gen(
+    name = "buffalo_gen",
+    srcs = glob(["proto/**/*.proto"]),
+    config = "buffalo.yaml",
+    languages = ["go", "rust", "python"],
+    out = "generated",
+)
+```
+
 ```bash
 bazel run //:buffalo_gen
 bazel run //:buffalo_gen -- --verbose

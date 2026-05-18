@@ -153,8 +153,10 @@ load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_gen")
 
 buffalo_proto_gen(
     name = "buffalo_gen",
+    srcs = glob(["proto/**/*.proto"]),
     config = "buffalo.yaml",
     languages = ["go", "python"],
+    out = "generated",  # keep aligned with output.base_dir in buffalo.yaml
 )
 ```
 
@@ -165,14 +167,22 @@ bazel run //:buffalo_gen
 bazel run //:buffalo_gen -- --verbose
 ```
 
+With `srcs`, `buffalo_proto_gen` creates a private
+`<name>_compile` target that uses the same hermetic toolchain as
+`buffalo_proto_compile`. `bazel run` builds that target, then copies the
+compiled tree artifact from `bazel-bin` into the source-tree directory from
+`output.base_dir`.
+
 ## Attributes
 
-- `srcs` (`label_list`, required): proto source files
+- `srcs` (`label_list`, optional): proto source files; enables hermetic compile-and-copy mode for `bazel run`
 - `config` (`label`, default: `None`): Buffalo config file (`buffalo.yaml`)
 - `languages` (`string_list`, default: `["go", "python"]`): target languages
 - `proto_paths` (`string_list`, default: `["proto"]`): proto import directories
 - `deps` (`label_list`, default: `[]`): additional proto dependencies
 - `out` (`string`, default: `"generated"`): Bazel tree artifact name; keep it aligned with `output.base_dir` in `buffalo.yaml`
+- `compile_target` (`label`, optional): existing `buffalo_proto_compile` target to copy from
+- `compile_out` (`string`, optional): path under `bazel-bin`; defaults to the package path plus `out`
 - `verbose` (`bool`, default: `False`): enable verbose output
 
 ## Providers

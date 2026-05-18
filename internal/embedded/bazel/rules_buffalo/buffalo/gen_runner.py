@@ -13,14 +13,14 @@ import tempfile
 
 
 def _normalize(path: str) -> str:
-    value = (path or "gen").strip().strip('"').strip("'")
+    value = (path or "generated").strip().strip('"').strip("'")
     if not value:
-        value = "gen"
+        value = "generated"
     value = value.replace("\\", "/")
     if value.startswith("./"):
         value = value[2:]
     value = value.strip("/")
-    return value or "gen"
+    return value or "generated"
 
 
 def _read_output_dir(config_path: str) -> str:
@@ -38,7 +38,7 @@ def _read_output_dir(config_path: str) -> str:
         with open(config_path, "r", encoding="utf-8") as fh:
             lines = fh.readlines()
     except Exception:
-        return "gen"
+        return "generated"
 
     in_output = False
     output_indent = None
@@ -63,7 +63,7 @@ def _read_output_dir(config_path: str) -> str:
             _, _, value = text.partition(":")
             return _normalize(value)
 
-    return "gen"
+    return "generated"
 
 
 def _prepend_grpc_python_plugin_dir() -> None:
