@@ -251,18 +251,28 @@ func TestBazelRules_RustPluginsAreWiredThroughBuffaloRust(t *testing.T) {
 	}
 	moduleContent := string(moduleFile)
 	for _, want := range []string{
-		`bazel_dep(name = "rules_rust", version = "0.70.0")`,
+		`bazel_dep(name = "rules_rust", version = "0.66.0")`,
+		`rust_host_tools = use_extension("@rules_rust//rust:extensions.bzl", "rust_host_tools")`,
+		`rust_host_tools.host_tools(`,
+		`name = "rust_host_tools_nightly"`,
+		`version = "nightly/2025-02-17"`,
+		`use_repo(rust_host_tools, "rust_host_tools_nightly")`,
 		`rust_plugins = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")`,
 		`package = "protoc-gen-prost"`,
 		`package = "protoc-gen-tonic"`,
 		`artifact = "bin"`,
 		`rust_plugins.from_specs(`,
 		`name = "buffalo_rust_plugins"`,
+		`generate_binaries = True`,
+		`host_tools = "@rust_host_tools_nightly//:rust_host_tools"`,
 		`use_repo(rust_plugins, "buffalo_rust_plugins")`,
 	} {
 		if !strings.Contains(moduleContent, want) {
 			t.Fatalf("MODULE.bazel is missing bundled Rust plugin dependency %q", want)
 		}
+	}
+	if strings.Contains(moduleContent, `host_tools = "@rust_host_tools_nightly"`) {
+		t.Fatal("rules_buffalo MODULE.bazel should pass a fully qualified rust_host_tools target label")
 	}
 
 	extensions, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/extensions.bzl")
