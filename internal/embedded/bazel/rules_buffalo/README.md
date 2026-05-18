@@ -236,10 +236,10 @@ buffalo_proto_compile(
 )
 ```
 
-Without `buffalo.rust()`, `rules_buffalo` provides stub targets so non-Rust
-builds work without forcing every project to download and build Rust plugin
-crates. To use custom Rust generator versions, provide your own binary labels
-via `buffalo.rust(protoc_gen_prost = ..., protoc_gen_tonic = ...)`.
+Rust plugin binaries are consumed directly from `@buffalo_rust_plugins` as
+normal Bazel action inputs. They are not staged into `@buffalo_toolchain`,
+because crate_universe produces build outputs rather than source files.
+Non-Rust `buffalo_proto_compile` targets do not stage those plugins.
 
 ### Enabling TypeScript
 

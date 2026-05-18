@@ -55,9 +55,10 @@ def _buffalo_proto_compile_impl(ctx):
     # so we always stage them under that exact name regardless of the source
     # repository's naming convention.
     plugin_ext = ".exe" if is_windows else ""
-    if ctx.file.protoc_gen_prost:
+    rust_enabled = "rust" in ctx.attr.languages
+    if rust_enabled and ctx.file.protoc_gen_prost:
         tool_files.append((ctx.file.protoc_gen_prost, "protoc-gen-prost" + plugin_ext))
-    if ctx.file.protoc_gen_tonic:
+    if rust_enabled and ctx.file.protoc_gen_tonic:
         tool_files.append((ctx.file.protoc_gen_tonic, "protoc-gen-tonic" + plugin_ext))
     if ctx.file.protoc_gen_ts_proto:
         tool_files.append((ctx.file.protoc_gen_ts_proto, ctx.file.protoc_gen_ts_proto.basename))
@@ -241,9 +242,9 @@ def _buffalo_proto_compile_impl(ctx):
         inputs.append(ctx.file.protoc_gen_go_grpc)
     if ctx.file.protoc_gen_grpc_python:
         inputs.append(ctx.file.protoc_gen_grpc_python)
-    if ctx.file.protoc_gen_prost:
+    if rust_enabled and ctx.file.protoc_gen_prost:
         inputs.append(ctx.file.protoc_gen_prost)
-    if ctx.file.protoc_gen_tonic:
+    if rust_enabled and ctx.file.protoc_gen_tonic:
         inputs.append(ctx.file.protoc_gen_tonic)
     if ctx.file.protoc_gen_ts_proto:
         inputs.append(ctx.file.protoc_gen_ts_proto)
@@ -317,13 +318,13 @@ buffalo_proto_compile = rule(
         ),
         "protoc_gen_prost": attr.label(
             allow_single_file = True,
-            default = Label("@buffalo_toolchain//:protoc_gen_prost_bin"),
-            doc = "Path to the protoc-gen-prost plugin binary file. Defaults to the binary wired by buffalo.rust().",
+            default = Label("@buffalo_rust_plugins//:protoc-gen-prost__protoc-gen-prost"),
+            doc = "Path to the protoc-gen-prost plugin binary file. Defaults to the crate_universe binary wired by rules_buffalo.",
         ),
         "protoc_gen_tonic": attr.label(
             allow_single_file = True,
-            default = Label("@buffalo_toolchain//:protoc_gen_tonic_bin"),
-            doc = "Path to the protoc-gen-tonic plugin binary file. Defaults to the binary wired by buffalo.rust().",
+            default = Label("@buffalo_rust_plugins//:protoc-gen-tonic__protoc-gen-tonic"),
+            doc = "Path to the protoc-gen-tonic plugin binary file. Defaults to the crate_universe binary wired by rules_buffalo.",
         ),
         "protoc_gen_ts_proto": attr.label(
             allow_single_file = True,

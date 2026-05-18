@@ -14,8 +14,9 @@ Provisioned tools (linux/darwin amd64+arm64, windows amd64):
                               Python interpreter from rules_python
   * buffalo CLI             — massonsky/buffalo releases
 
-Optional Rust plugins (enabled by `buffalo.rust()` and built by rules_buffalo's
-internal rules_rust/crate_universe setup):
+Optional Rust plugins are built by rules_buffalo's internal
+rules_rust/crate_universe setup and consumed directly by buffalo_proto_compile
+as Bazel action inputs:
 
   * protoc-gen-prost        — crates.io package protoc-gen-prost
   * protoc-gen-tonic        — crates.io package protoc-gen-tonic
@@ -67,14 +68,6 @@ def _local_tool_from_env(rctx, tool_name, suffix):
     output_name = "{}{}".format(tool_name, suffix)
     rctx.symlink(src, output_name)
     return rctx.path(output_name)
-
-def _stage_label_tool(rctx, label_file, tool_name, suffix):
-    if not label_file:
-        return None
-    output_name = "{}{}".format(tool_name, suffix)
-    rctx.symlink(rctx.path(label_file), output_name)
-    return output_name
-
 
 # ---------- Platform detection ----------------------------------------------
 
@@ -487,37 +480,6 @@ def _buffalo_toolchain_repo_impl(rctx):
     grpc_python_target = _emit_grpc_python_shim(rctx, p, python_exe, site_packages)
     python_shim_target = _emit_python_shim(rctx, p, python_exe, site_packages)
 
-    # --- Optional: Rust plugins (provided via rules_rust crate_universe) -
-    #
-    # IMPORTANT: neoeinstein/protoc-gen-prost does not publish prebuilt release
-    # binaries on GitHub, so we cannot fetch them via http_archive. The
-    # canonical hermetic path is to build the plugins from crates.io source
-    # using rules_rust `crate_universe` inside rules_buffalo's own MODULE.bazel.
-    #
-    # When buffalo.rust() is used, the extension passes crate_universe binary
-    # labels into this repository rule and we stage them under the canonical
-    # PATH names expected by protoc/Buffalo. Without buffalo.rust(), emit stubs
-    # so non-Rust builds do not have to define the Rust plugin repository.
-    prost_target = None
-    tonic_target = None
-    if rctx.attr.enable_rust:
-        prost_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_prost, "protoc-gen-prost", suffix)
-        tonic_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_tonic, "protoc-gen-tonic", suffix)
-    if not prost_target:
-        prost_target = _emit_disabled_stub(
-            rctx,
-            p,
-            "protoc-gen-prost",
-            "protoc-gen-prost is not wired. Add buffalo.rust() to MODULE.bazel to enable rules_buffalo's bundled Rust plugin.",
-        )
-    if not tonic_target:
-        tonic_target = _emit_disabled_stub(
-            rctx,
-            p,
-            "protoc-gen-tonic",
-            "protoc-gen-tonic is not wired. Add buffalo.rust() to MODULE.bazel to enable rules_buffalo's bundled Rust plugin.",
-        )
-
     # --- Optional: TypeScript plugin (opt-in via buffalo.typescript() tag)
     ts_proto_target = None
     if rctx.attr.enable_typescript:
@@ -557,8 +519,6 @@ def _buffalo_toolchain_repo_impl(rctx):
         "protoc-gen-go-grpc{}".format(suffix),
         grpc_python_target,
         python_shim_target,
-        prost_target,
-        tonic_target,
         ts_proto_target,
     ]
     aliases = [
@@ -568,8 +528,6 @@ def _buffalo_toolchain_repo_impl(rctx):
         ("protoc_gen_go_grpc_bin", "protoc-gen-go-grpc{}".format(suffix)),
         ("protoc_gen_grpc_python_bin", grpc_python_target),
         ("python_shim_bin", python_shim_target),
-        ("protoc_gen_prost_bin", prost_target),
-        ("protoc_gen_tonic_bin", tonic_target),
         ("protoc_gen_ts_proto_bin", ts_proto_target),
     ]
     exports_block = ",\n".join(['    "{}"'.format(n) for n in exports])
@@ -622,8 +580,6 @@ buffalo_toolchain_repo = repository_rule(
         "protoc_gen_prost_version": attr.string(default = DEFAULT_PROTOC_GEN_PROST_VERSION),
         "protoc_gen_tonic_version": attr.string(default = DEFAULT_PROTOC_GEN_TONIC_VERSION),
         "protoc_gen_prost_repo": attr.string(default = DEFAULT_PROTOC_GEN_PROST_REPO),
-        "protoc_gen_prost": attr.label(allow_single_file = True),
-        "protoc_gen_tonic": attr.label(allow_single_file = True),
         "enable_typescript": attr.bool(default = False),
         "node_version": attr.string(default = DEFAULT_NODE_VERSION),
         "ts_proto_version": attr.string(default = DEFAULT_TS_PROTO_VERSION),

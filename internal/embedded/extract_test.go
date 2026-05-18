@@ -275,22 +275,26 @@ func TestBazelRules_RustPluginsAreWiredThroughBuffaloRust(t *testing.T) {
 		t.Fatal("rules_buffalo MODULE.bazel should pass a fully qualified rust_host_tools target label")
 	}
 
-	extensions, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/extensions.bzl")
+	defs, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/defs.bzl")
 	if err != nil {
-		t.Fatalf("failed to read embedded extensions.bzl: %v", err)
+		t.Fatalf("failed to read embedded defs.bzl: %v", err)
 	}
-	extContent := string(extensions)
+	defsContent := string(defs)
 	for _, want := range []string{
 		`"protoc_gen_prost": attr.label(`,
 		`default = Label("@buffalo_rust_plugins//:protoc-gen-prost__protoc-gen-prost")`,
 		`"protoc_gen_tonic": attr.label(`,
 		`default = Label("@buffalo_rust_plugins//:protoc-gen-tonic__protoc-gen-tonic")`,
-		`protoc_gen_prost = cfg.protoc_gen_prost`,
-		`protoc_gen_tonic = cfg.protoc_gen_tonic`,
+		`if rust_enabled and ctx.file.protoc_gen_prost:`,
+		`if rust_enabled and ctx.file.protoc_gen_tonic:`,
 	} {
-		if !strings.Contains(extContent, want) {
-			t.Fatalf("extensions.bzl is missing Rust plugin wiring %q", want)
+		if !strings.Contains(defsContent, want) {
+			t.Fatalf("defs.bzl is missing direct Rust plugin action input wiring %q", want)
 		}
+	}
+	if strings.Contains(defsContent, `@buffalo_toolchain//:protoc_gen_prost_bin`) ||
+		strings.Contains(defsContent, `@buffalo_toolchain//:protoc_gen_tonic_bin`) {
+		t.Fatal("Rust plugin defaults must not point at @buffalo_toolchain aliases")
 	}
 
 	repositories, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/repositories.bzl")
@@ -298,14 +302,15 @@ func TestBazelRules_RustPluginsAreWiredThroughBuffaloRust(t *testing.T) {
 		t.Fatalf("failed to read embedded repositories.bzl: %v", err)
 	}
 	repoContent := string(repositories)
-	for _, want := range []string{
-		`prost_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_prost, "protoc-gen-prost", suffix)`,
-		`tonic_target = _stage_label_tool(rctx, rctx.attr.protoc_gen_tonic, "protoc-gen-tonic", suffix)`,
+	for _, forbidden := range []string{
+		`_stage_label_tool`,
+		`protoc_gen_prost_bin`,
+		`protoc_gen_tonic_bin`,
 		`"protoc_gen_prost": attr.label(allow_single_file = True)`,
 		`"protoc_gen_tonic": attr.label(allow_single_file = True)`,
 	} {
-		if !strings.Contains(repoContent, want) {
-			t.Fatalf("repositories.bzl is missing Rust plugin staging %q", want)
+		if strings.Contains(repoContent, forbidden) {
+			t.Fatalf("buffalo_toolchain repository must not stage Rust build outputs: found %q", forbidden)
 		}
 	}
 }
