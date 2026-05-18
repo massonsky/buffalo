@@ -172,14 +172,14 @@ def _buffalo_proto_compile_impl(ctx):
             if part == "-o" and index + 1 < len(command_parts):
                 out_part = command_parts[index + 1]
                 if not out_part.startswith("/"):
-                    quoted[index + 1] = '"$EXECROOT/{}"'.format(out_part.replace('"', '\\"'))
+                    quoted[index + 1] = '"$EXECROOT"/{}'.format(_sh_quote(out_part))
         stage_setup = [
             "#!/usr/bin/env sh\n",
             "set -eu\n",
             "EXECROOT=$PWD\n",
             "CONFIG_OUTPUT='{}'\n".format(ctx.attr.out.replace("'", "'\\''")),
             "STAGE=$(mktemp -d 2>/dev/null || mktemp -d -t buffalo)\n",
-            "TOOLS=$STAGE/_buffalo_tools\n",
+            "TOOLS=\"$STAGE\"/_buffalo_tools\n",
             "trap 'rm -rf \"$STAGE\"' EXIT\n",
             "mkdir -p \"$TOOLS\"\n",
         ]
@@ -203,10 +203,10 @@ def _buffalo_proto_compile_impl(ctx):
             src = _sh_quote(inc_file.path)
             if "/" in rel:
                 parent = _sh_quote(rel.rsplit("/", 1)[0])
-                stage_setup.append("mkdir -p \"$STAGE/include\"/{}\n".format(parent))
+                stage_setup.append("mkdir -p \"$STAGE\"/include/{}\n".format(parent))
             else:
-                stage_setup.append("mkdir -p \"$STAGE/include\"\n")
-            stage_setup.append("cp {} \"$STAGE/include\"/{}\n".format(src, _sh_quote(rel)))
+                stage_setup.append("mkdir -p \"$STAGE\"/include\n")
+            stage_setup.append("cp {} \"$STAGE\"/include/{}\n".format(src, _sh_quote(rel)))
         if ctx.attr.respect_config_output and ctx.file.config:
             helper_path = _sh_quote(helper_rel)
             config_rel = _sh_quote(ctx.file.config.short_path)
@@ -216,7 +216,7 @@ def _buffalo_proto_compile_impl(ctx):
         if ctx.attr.respect_config_output and ctx.file.config:
             declared_out = _sh_quote(output_dir.path)
             wrapper_content += (
-                "src_dir=\"$STAGE/$CONFIG_OUTPUT\"\n" +
+                "src_dir=\"$STAGE\"/\"$CONFIG_OUTPUT\"\n" +
                 "[ -d \"$src_dir\" ] || { echo \"Buffalo output directory not found: $CONFIG_OUTPUT\"; exit 1; }\n" +
                 "rm -rf \"$EXECROOT\"/{}\n".format(declared_out) +
                 "mkdir -p \"$EXECROOT\"/{}\n".format(declared_out) +

@@ -174,6 +174,11 @@ func TestBazelRules_DefaultBuffaloReleaseIsTemplatedAndPosixWrapperQuoting(t *te
 			t.Fatalf("POSIX wrapper must not single-quote shell variables literally: found %s", literal)
 		}
 	}
+	for _, expanded := range []string{`\"$STAGE\"/`, `\"$TOOLS\"/`, `\"$EXECROOT\"/`} {
+		if !strings.Contains(content, expanded) {
+			t.Fatalf("POSIX wrapper should expand shell variables in double quotes: missing %s", expanded)
+		}
+	}
 }
 
 func TestExtractBazelRules_RendersBuffaloVersionTemplate(t *testing.T) {
