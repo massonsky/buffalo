@@ -27,18 +27,21 @@ func pb2ImportPrefix(opts GenerateOptions) string {
 	return strings.TrimSuffix(strings.TrimSpace(opts.Pb2ImportPrefix), ".")
 }
 
-// pythonSysPathSetup generates Python code that adds the parent of the models
-// output directory (relative to cwd) to sys.path so that pb2 imports resolve.
+// pythonSysPathSetup generates Python code that adds a cwd-relative path to
+// sys.path so that pb2 imports resolve.
 //
-// Given outputDir="./generated/models", the parent is "generated".
-// The generated code does: sys.path.insert(0, os.path.join(os.getcwd(), "generated"))
-func pythonSysPathSetup(outputDir, _ string) string {
+// If pb2ImportPrefix is set, it is already a dotted path from cwd (for example
+// "araviec_apis.generated.python"), so cwd itself must be importable.
+// Otherwise, given outputDir="./generated/models", the parent is "generated".
+func pythonSysPathSetup(outputDir, pb2ImportPrefix string) string {
 	// Normalise outputDir and take its parent directory
 	norm := strings.ReplaceAll(outputDir, "\\", "/")
 	norm = strings.TrimPrefix(norm, "./")
 	norm = strings.TrimSuffix(norm, "/")
 	parent := ""
-	if idx := strings.LastIndex(norm, "/"); idx >= 0 {
+	if strings.TrimSpace(pb2ImportPrefix) != "" {
+		parent = ""
+	} else if idx := strings.LastIndex(norm, "/"); idx >= 0 {
 		parent = norm[:idx]
 	}
 	// parent is e.g. "generated" — the folder containing both models/ and python/
