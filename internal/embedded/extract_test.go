@@ -181,6 +181,31 @@ func TestBazelRules_DefaultBuffaloReleaseIsTemplatedAndPosixWrapperQuoting(t *te
 	}
 }
 
+func TestBazelRules_DefaultBazelOutputMatchesInitConfig(t *testing.T) {
+	defs, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/defs.bzl")
+	if err != nil {
+		t.Fatalf("failed to read embedded defs.bzl: %v", err)
+	}
+	content := string(defs)
+	for _, want := range []string{
+		`default = "generated"`,
+		`Keep this aligned with output.base_dir in buffalo.yaml.`,
+		`compile_out = "generated"`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("defs.bzl should keep Bazel output aligned with Buffalo config output: missing %q", want)
+		}
+	}
+
+	readme, err := BazelFS.ReadFile("bazel/rules_buffalo/README.md")
+	if err != nil {
+		t.Fatalf("failed to read embedded rules_buffalo README.md: %v", err)
+	}
+	if !strings.Contains(string(readme), `out = "generated"`) {
+		t.Fatal("rules_buffalo README should show out matching output.base_dir")
+	}
+}
+
 func TestBazelRules_RustPluginsAreWiredThroughBuffaloRust(t *testing.T) {
 	moduleFile, err := BazelFS.ReadFile("bazel/rules_buffalo/MODULE.bazel")
 	if err != nil {

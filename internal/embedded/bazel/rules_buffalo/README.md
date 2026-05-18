@@ -115,7 +115,8 @@ verified.
 ### `buffalo_proto_compile`
 
 Compiles proto files using Buffalo within the Bazel sandbox.
-Output is a tree artifact in `bazel-out/`.
+Output is a tree artifact in `bazel-out/`. By default the artifact is named
+`generated`, matching `buffalo init`'s `output.base_dir: ./generated`.
 
 ```python
 load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_compile")
@@ -125,6 +126,7 @@ buffalo_proto_compile(
     srcs = glob(["proto/**/*.proto"]),
     config = "buffalo.yaml",
     languages = ["go", "python"],
+    out = "generated",  # keep aligned with output.base_dir in buffalo.yaml
 )
 ```
 
@@ -143,7 +145,8 @@ buffalo_proto_compile(
 ### `buffalo_proto_gen`
 
 Macro that creates a `bazel run` target for source-tree generation.
-Generated code goes into the source tree (e.g., `gen/`).
+Generated code goes into the source tree path configured by
+`output.base_dir` (e.g., `generated/`).
 
 ```python
 load("@rules_buffalo//buffalo:defs.bzl", "buffalo_proto_gen")
@@ -169,7 +172,7 @@ bazel run //:buffalo_gen -- --verbose
 - `languages` (`string_list`, default: `["go", "python"]`): target languages
 - `proto_paths` (`string_list`, default: `["proto"]`): proto import directories
 - `deps` (`label_list`, default: `[]`): additional proto dependencies
-- `out` (`string`, default: `"gen"`): output directory name
+- `out` (`string`, default: `"generated"`): Bazel tree artifact name; keep it aligned with `output.base_dir` in `buffalo.yaml`
 - `verbose` (`bool`, default: `False`): enable verbose output
 
 ## Providers

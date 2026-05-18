@@ -9,7 +9,7 @@ Provides two integration modes:
 
 2. buffalo_proto_gen — source-tree generation macro
    Creates a `bazel run` target that invokes Buffalo in the workspace root.
-   Generated code goes into the source tree (gen/).
+   Generated code goes into the source tree (generated/ by default).
    Use this for development workflows.
 """
 
@@ -359,8 +359,8 @@ buffalo_proto_compile = rule(
             doc = "Additional proto file dependencies (e.g., third-party protos).",
         ),
         "out": attr.string(
-            default = "gen",
-            doc = "Output directory name (becomes a tree artifact).",
+            default = "generated",
+            doc = "Output directory name (becomes a tree artifact). Keep this aligned with output.base_dir in buffalo.yaml.",
         ),
         "respect_config_output": attr.bool(
             default = True,
@@ -378,8 +378,10 @@ buffalo_proto_compile = rule(
     doc = """Compiles proto files using Buffalo.
 
 Produces a tree artifact containing generated source code for the
-specified languages. The output directory structure mirrors what
-`buffalo build` produces: `<out>/<lang>/...`.
+specified languages. Keep `out` aligned with `output.base_dir` in
+`buffalo.yaml` so Bazel's final output directory has the same name
+as the Buffalo config output directory. The default matches the
+`buffalo init` default: `output.base_dir: ./generated`.
 
 Example:
     buffalo_proto_compile(
@@ -401,13 +403,13 @@ def buffalo_proto_gen(
     import_paths = [],
     copy_from_bazel_bin = False,
     compile_target = None,
-    compile_out = "gen",
+    compile_out = "generated",
     extra_args = [],
     visibility = None,
     **kwargs):
     """Creates a `bazel run` target that invokes Buffalo in the workspace root.
 
-    Generated code goes into the source tree (e.g., gen/).
+    Generated code goes into the source tree (e.g., generated/).
     Useful for development workflows where downstream targets
     reference files in the source tree.
 

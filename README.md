@@ -130,6 +130,7 @@ buffalo_proto_compile(
     srcs = glob(["proto/**/*.proto"]),
     config = "buffalo.yaml",
     languages = ["go", "rust", "python"],
+    out = "generated",  # совпадает с output.base_dir в buffalo.yaml
 )
 ```
 
@@ -182,4 +183,3 @@ bazel run //:buffalo_gen -- --verbose
 - Bugs/Ideas: [GitHub Issues](https://github.com/massonsky/buffalo/issues)
 - Discussions: [GitHub Discussions](https://github.com/massonsky/buffalo/discussions)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-
