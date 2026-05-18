@@ -38,9 +38,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	log := GetLogger()
 
 	configFile := "buffalo.yaml"
-	if utils.FileExists(configFile) && !initForce {
-		return fmt.Errorf("config file %s already exists (use --force to overwrite)", configFile)
-	}
 
 	log.Info("🚀 Initializing Buffalo project")
 
@@ -129,11 +126,19 @@ logging:
   file: buffalo.log
 `
 
-	if err := utils.WriteFile(configFile, []byte(defaultConfig)); err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
+	configExists := utils.FileExists(configFile)
+	if configExists && !initForce {
+		log.Info("✅ Using existing config file", logger.String("file", configFile))
+	} else {
+		if err := utils.WriteFile(configFile, []byte(defaultConfig)); err != nil {
+			return fmt.Errorf("failed to create config file: %w", err)
+		}
+		if configExists {
+			log.Info("✅ Recreated config file", logger.String("file", configFile))
+		} else {
+			log.Info("✅ Created config file", logger.String("file", configFile))
+		}
 	}
-
-	log.Info("✅ Created config file", logger.String("file", configFile))
 
 	// Create default directory structure
 	dirs := []string{"./protos", "./generated"}

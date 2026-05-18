@@ -40,7 +40,7 @@ _RUST_TAG = tag_class(
         "protoc_gen_tonic_version": attr.string(default = DEFAULT_PROTOC_GEN_TONIC_VERSION),
         "protoc_gen_prost_repo": attr.string(default = DEFAULT_PROTOC_GEN_PROST_REPO),
     },
-    doc = "Enables the Rust prost/tonic plugins in the Buffalo toolchain.",
+    doc = "Pins Rust prost/tonic plugin versions. The plugin binaries must be supplied via rules_rust crate_universe labels.",
 )
 
 _TYPESCRIPT_TAG = tag_class(
@@ -168,5 +168,5 @@ buffalo = module_extension(
         "rust": _RUST_TAG,
         "typescript": _TYPESCRIPT_TAG,
     },
-    doc = "Provisions the hermetic Buffalo toolchain. Use buffalo.toolchain() to pin versions, buffalo.rust() to enable Rust prost/tonic plugins, buffalo.typescript() to enable the ts-proto plugin (Node.js bundled).",
+    doc = "Provisions the hermetic Buffalo toolchain. Use buffalo.toolchain() to pin versions, buffalo.rust() to pin Rust prost/tonic versions for crate_universe-provided plugin labels, and buffalo.typescript() to enable the ts-proto plugin (Node.js bundled).",
 )

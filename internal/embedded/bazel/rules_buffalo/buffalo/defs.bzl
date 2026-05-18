@@ -318,12 +318,12 @@ buffalo_proto_compile = rule(
         "protoc_gen_prost": attr.label(
             allow_single_file = True,
             default = Label("@buffalo_toolchain//:protoc_gen_prost_bin"),
-            doc = "Path to the protoc-gen-prost plugin binary file. Functional only when buffalo.rust() is enabled.",
+            doc = "Path to the protoc-gen-prost plugin binary file. For Rust generation, pass the rules_rust crate_universe binary label.",
         ),
         "protoc_gen_tonic": attr.label(
             allow_single_file = True,
             default = Label("@buffalo_toolchain//:protoc_gen_tonic_bin"),
-            doc = "Path to the protoc-gen-tonic plugin binary file. Functional only when buffalo.rust() is enabled.",
+            doc = "Path to the protoc-gen-tonic plugin binary file. For Rust generation, pass the rules_rust crate_universe binary label.",
         ),
         "protoc_gen_ts_proto": attr.label(
             allow_single_file = True,

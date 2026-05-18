@@ -1,9 +1,10 @@
 """Hermetic repository rule for the Buffalo + protoc toolchain.
 
 Bazel itself downloads everything required to compile .proto files for Go,
-Python, C++ and (opt-in) Rust — no host tools are required. Versions and
-sha256 integrity are configurable via the `buffalo.toolchain(...)` and
-`buffalo.rust(...)` tags in the consuming MODULE.bazel.
+Python and C++ — no host tools are required. Rust generation is also hermetic,
+but `protoc-gen-prost` and `protoc-gen-tonic` must be supplied by labels built
+with rules_rust `crate_universe`. Versions and sha256 integrity are configurable
+via the `buffalo.toolchain(...)` tag in the consuming MODULE.bazel.
 
 Provisioned tools (linux/darwin amd64+arm64, windows amd64):
 
@@ -14,10 +15,11 @@ Provisioned tools (linux/darwin amd64+arm64, windows amd64):
                               Python interpreter from rules_python
   * buffalo CLI             — massonsky/buffalo releases
 
-Optional (enabled by `buffalo.rust()` tag):
+Optional Rust plugins (declare with rules_rust crate_universe and pass labels to
+buffalo_proto_compile):
 
-  * protoc-gen-prost        — neoeinstein/protoc-gen-prost releases
-  * protoc-gen-tonic        — neoeinstein/protoc-gen-prost releases
+  * protoc-gen-prost        — crates.io package protoc-gen-prost
+  * protoc-gen-tonic        — crates.io package protoc-gen-tonic
 
 C++ generation works out of the box (built into protoc).
 TypeScript: planned for a follow-up commit via `aspect_rules_js`.
@@ -479,7 +481,7 @@ def _buffalo_toolchain_repo_impl(rctx):
     grpc_python_target = _emit_grpc_python_shim(rctx, p, python_exe, site_packages)
     python_shim_target = _emit_python_shim(rctx, p, python_exe, site_packages)
 
-    # --- Optional: Rust plugins (opt-in via buffalo.rust() tag) --------
+    # --- Optional: Rust plugins (provided via rules_rust crate_universe) -
     #
     # IMPORTANT: neoeinstein/protoc-gen-prost does not publish prebuilt release
     # binaries on GitHub, so we cannot fetch them via http_archive. The
@@ -629,5 +631,5 @@ buffalo_toolchain_repo = repository_rule(
         ),
     },
     environ = ["PATH", "HOME", "USERPROFILE", "TMP", "TEMP"],
-    doc = "Hermetically provisions Buffalo CLI, protoc, Go/Python plugins and (opt-in) Rust plugins from upstream releases.",
+    doc = "Hermetically provisions Buffalo CLI, protoc, and Go/Python plugins. Rust plugin binaries must be supplied via rules_rust crate_universe labels.",
 )
