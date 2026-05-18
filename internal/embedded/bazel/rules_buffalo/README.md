@@ -18,8 +18,8 @@ commit SHA needed):
 bazel_dep(name = "rules_buffalo", version = "1.0.0")
 archive_override(
     module_name = "rules_buffalo",
-    urls = ["https://github.com/massonsky/buffalo/archive/refs/tags/v1.33.14.tar.gz"],
-    strip_prefix = "buffalo-1.0.0/bazel/rules_buffalo",
+    urls = ["https://github.com/massonsky/buffalo/archive/refs/tags/v{{BUFFALO_VERSION}}.tar.gz"],
+    strip_prefix = "buffalo-{{BUFFALO_VERSION}}/bazel/rules_buffalo",
     # integrity = "sha256-...",  # optional but recommended for production
 )
 
@@ -67,7 +67,7 @@ Defaults are good. To pin a different version, add a `toolchain` tag:
 ```python
 buffalo = use_extension("@rules_buffalo//buffalo:extensions.bzl", "buffalo")
 buffalo.toolchain(
-    buffalo_version            = "4.1.0",
+    buffalo_version            = "{{BUFFALO_VERSION}}",
     protoc_version             = "28.2",
     protoc_gen_go_version      = "1.34.2",
     protoc_gen_go_grpc_version = "1.5.1",
@@ -94,7 +94,7 @@ buffalo.toolchain(
         "protoc-25.1-linux-x86_64":            "sha256-...",
         "protoc-gen-go-1.34.2-linux-amd64":    "sha256-...",
         "protoc-gen-go-grpc-1.5.1-linux-amd64": "sha256-...",
-        "buffalo-4.0.0-linux-amd64":           "sha256-...",
+        "buffalo-{{BUFFALO_VERSION}}-linux-amd64": "sha256-...",
     },
 )
 ```

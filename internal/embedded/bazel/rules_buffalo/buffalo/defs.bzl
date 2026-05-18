@@ -26,6 +26,9 @@ BuffaloProtoInfo = provider(
     },
 )
 
+def _sh_quote(value):
+    return "'{}'".format(value.replace("'", "'\\''"))
+
 # ── buffalo_proto_compile (hermetic rule) ─────────────────────────────────────
 
 def _buffalo_proto_compile_impl(ctx):
@@ -182,14 +185,14 @@ def _buffalo_proto_compile_impl(ctx):
         ]
         for staged_file in staged_inputs:
             rel = staged_file.short_path
-            src = staged_file.path.replace("'", "'\\''")
+            src = _sh_quote(staged_file.path)
             if "/" in rel:
-                parent = rel.rsplit("/", 1)[0].replace("'", "'\\''")
-                stage_setup.append("mkdir -p '$STAGE/{}'\n".format(parent))
-            stage_setup.append("cp '{}' '$STAGE/{}'\n".format(src, rel.replace("'", "'\\''")))
+                parent = _sh_quote(rel.rsplit("/", 1)[0])
+                stage_setup.append("mkdir -p \"$STAGE\"/{}\n".format(parent))
+            stage_setup.append("cp {} \"$STAGE\"/{}\n".format(src, _sh_quote(rel)))
         for tool_file, tool_name in tool_files:
-            stage_setup.append("cp '{}' '$TOOLS/{}'\n".format(tool_file.path.replace("'", "'\\''"), tool_name))
-            stage_setup.append("chmod +x '$TOOLS/{}'\n".format(tool_name))
+            stage_setup.append("cp {} \"$TOOLS\"/{}\n".format(_sh_quote(tool_file.path), _sh_quote(tool_name)))
+            stage_setup.append("chmod +x \"$TOOLS\"/{}\n".format(_sh_quote(tool_name)))
         for inc_file in ctx.files.protoc_includes:
             src_norm = inc_file.path.replace("\\", "/")
             marker = "_protoc/include/"
@@ -197,27 +200,27 @@ def _buffalo_proto_compile_impl(ctx):
             if idx < 0:
                 continue
             rel = src_norm[idx + len(marker):]
-            src = inc_file.path.replace("'", "'\\''")
+            src = _sh_quote(inc_file.path)
             if "/" in rel:
-                parent = rel.rsplit("/", 1)[0].replace("'", "'\\''")
-                stage_setup.append("mkdir -p \"$STAGE/include/{}\"\n".format(parent))
+                parent = _sh_quote(rel.rsplit("/", 1)[0])
+                stage_setup.append("mkdir -p \"$STAGE/include\"/{}\n".format(parent))
             else:
                 stage_setup.append("mkdir -p \"$STAGE/include\"\n")
-            stage_setup.append("cp '{}' \"$STAGE/include/{}\"\n".format(src, rel.replace("'", "'\\''")))
+            stage_setup.append("cp {} \"$STAGE/include\"/{}\n".format(src, _sh_quote(rel)))
         if ctx.attr.respect_config_output and ctx.file.config:
-            helper_path = helper_rel.replace("'", "'\\''")
-            config_rel = ctx.file.config.short_path.replace("'", "'\\''")
-            stage_setup.append("if command -v python3 >/dev/null 2>&1; then CONFIG_OUTPUT=$(python3 '$EXECROOT/{}' '$STAGE/{}' 2>/dev/null || printf '%s' \"$CONFIG_OUTPUT\"); elif command -v python >/dev/null 2>&1; then CONFIG_OUTPUT=$(python '$EXECROOT/{}' '$STAGE/{}' 2>/dev/null || printf '%s' \"$CONFIG_OUTPUT\"); fi\n".format(helper_path, config_rel, helper_path, config_rel))
-        stage_setup.append("cd '$STAGE'\n")
+            helper_path = _sh_quote(helper_rel)
+            config_rel = _sh_quote(ctx.file.config.short_path)
+            stage_setup.append("if command -v python3 >/dev/null 2>&1; then CONFIG_OUTPUT=$(python3 \"$EXECROOT\"/{} \"$STAGE\"/{} 2>/dev/null || printf '%s' \"$CONFIG_OUTPUT\"); elif command -v python >/dev/null 2>&1; then CONFIG_OUTPUT=$(python \"$EXECROOT\"/{} \"$STAGE\"/{} 2>/dev/null || printf '%s' \"$CONFIG_OUTPUT\"); fi\n".format(helper_path, config_rel, helper_path, config_rel))
+        stage_setup.append("cd \"$STAGE\"\n")
         wrapper_content = "".join(stage_setup) + "export PATH=\"$TOOLS:$PATH\"\n" + " ".join(quoted) + "\n"
         if ctx.attr.respect_config_output and ctx.file.config:
-            declared_out = output_dir.path.replace("'", "'\\''")
+            declared_out = _sh_quote(output_dir.path)
             wrapper_content += (
                 "src_dir=\"$STAGE/$CONFIG_OUTPUT\"\n" +
                 "[ -d \"$src_dir\" ] || { echo \"Buffalo output directory not found: $CONFIG_OUTPUT\"; exit 1; }\n" +
-                "rm -rf '$EXECROOT/{}'\n".format(declared_out) +
-                "mkdir -p '$EXECROOT/{}'\n".format(declared_out) +
-                "cp -R \"$src_dir\"/. '$EXECROOT/{}'/\n".format(declared_out)
+                "rm -rf \"$EXECROOT\"/{}\n".format(declared_out) +
+                "mkdir -p \"$EXECROOT\"/{}\n".format(declared_out) +
+                "cp -R \"$src_dir\"/. \"$EXECROOT\"/{}/\n".format(declared_out)
             )
 
     ctx.actions.write(

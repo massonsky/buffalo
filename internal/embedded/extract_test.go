@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/massonsky/buffalo/internal/version"
 )
 
 func TestProtoFS_Contains_ValidateProto(t *testing.T) {
@@ -150,5 +152,70 @@ func TestExtractValidateProto(t *testing.T) {
 	// protoPath should be the directory to pass to protoc --proto_path
 	if !strings.HasSuffix(protoPath, "proto") {
 		t.Errorf("protoPath should end with 'proto', got %q", protoPath)
+	}
+}
+
+func TestBazelRules_DefaultBuffaloReleaseIsTemplatedAndPosixWrapperQuoting(t *testing.T) {
+	repositories, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/repositories.bzl")
+	if err != nil {
+		t.Fatalf("failed to read embedded repositories.bzl: %v", err)
+	}
+	if !strings.Contains(string(repositories), `DEFAULT_BUFFALO_VERSION = "{{BUFFALO_VERSION}}"`) {
+		t.Fatal("embedded rules_buffalo must template the Buffalo release version")
+	}
+
+	defs, err := BazelFS.ReadFile("bazel/rules_buffalo/buffalo/defs.bzl")
+	if err != nil {
+		t.Fatalf("failed to read embedded defs.bzl: %v", err)
+	}
+	content := string(defs)
+	for _, literal := range []string{"'$STAGE/", "'$TOOLS/", "'$EXECROOT/"} {
+		if strings.Contains(content, literal) {
+			t.Fatalf("POSIX wrapper must not single-quote shell variables literally: found %s", literal)
+		}
+	}
+}
+
+func TestExtractBazelRules_RendersBuffaloVersionTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	rulesPath, err := ExtractBazelRules(tmpDir)
+	if err != nil {
+		t.Fatalf("ExtractBazelRules failed: %v", err)
+	}
+
+	repositoriesPath := filepath.Join(rulesPath, "buffalo", "repositories.bzl")
+	data, err := os.ReadFile(repositoriesPath)
+	if err != nil {
+		t.Fatalf("failed to read extracted repositories.bzl: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "{{BUFFALO_VERSION}}") {
+		t.Fatal("extracted repositories.bzl still contains the Buffalo version template")
+	}
+	if !strings.Contains(content, `DEFAULT_BUFFALO_VERSION = "1.33.18"`) {
+		t.Fatalf("dev builds should render the fallback Buffalo release version, got:\n%s", content)
+	}
+}
+
+func TestExtractBazelRules_UsesInjectedReleaseVersion(t *testing.T) {
+	original := version.Version
+	version.Version = "9.8.7"
+	t.Cleanup(func() {
+		version.Version = original
+	})
+
+	tmpDir := t.TempDir()
+	rulesPath, err := ExtractBazelRules(tmpDir)
+	if err != nil {
+		t.Fatalf("ExtractBazelRules failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(rulesPath, "buffalo", "repositories.bzl"))
+	if err != nil {
+		t.Fatalf("failed to read extracted repositories.bzl: %v", err)
+	}
+	if !strings.Contains(string(data), `DEFAULT_BUFFALO_VERSION = "9.8.7"`) {
+		t.Fatal("extracted rules_buffalo should use the build-time injected Buffalo version")
 	}
 }

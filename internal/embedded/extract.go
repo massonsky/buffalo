@@ -5,7 +5,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/massonsky/buffalo/internal/version"
 )
 
 // ExtractValidateProto extracts the embedded buffalo/validate/validate.proto
@@ -107,6 +110,7 @@ func ListEmbeddedProtos() ([]string, error) {
 // Returns the absolute path to the extracted rules_buffalo directory.
 func ExtractBazelRules(workspaceDir string) (rulesPath string, err error) {
 	rulesPath = filepath.Join(workspaceDir, "bazel", "rules_buffalo")
+	buffaloVersion := bazelRulesBuffaloVersion()
 
 	// Walk embedded bazel/rules_buffalo/ and extract
 	err = fs.WalkDir(BazelFS, "bazel/rules_buffalo", func(path string, d fs.DirEntry, walkErr error) error {
@@ -132,6 +136,7 @@ func ExtractBazelRules(workspaceDir string) (rulesPath string, err error) {
 		if err != nil {
 			return fmt.Errorf("read embedded %s: %w", path, err)
 		}
+		data = renderBazelRulesTemplate(data, buffaloVersion)
 
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", filepath.Dir(target), err)
@@ -145,6 +150,36 @@ func ExtractBazelRules(workspaceDir string) (rulesPath string, err error) {
 	})
 
 	return rulesPath, err
+}
+
+const bazelRulesBuffaloVersionFallback = "1.33.18"
+
+func bazelRulesBuffaloVersion() string {
+	v := strings.TrimPrefix(strings.TrimSpace(version.Version), "v")
+	if isSemver(v) {
+		return v
+	}
+	return bazelRulesBuffaloVersionFallback
+}
+
+func isSemver(v string) bool {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		if _, err := strconv.Atoi(part); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func renderBazelRulesTemplate(data []byte, buffaloVersion string) []byte {
+	return []byte(strings.ReplaceAll(string(data), "{{BUFFALO_VERSION}}", buffaloVersion))
 }
 
 // ListEmbeddedBazelFiles returns a list of all embedded Bazel rule file paths.
